@@ -1,0 +1,120 @@
+{% extends "pipeline/base.html" %}
+{% load static %}
+
+{% block title %}RNAseek – Advanced Workspace{% endblock %}
+
+{% block content %}
+<section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
+    <div class="rna-flex rna-flex-between" style="align-items: flex-end;">
+        <div>
+            <h1 class="rna-section-title rna-mb-1">Advanced Single-Cell &amp; Spatial Workspace</h1>
+            <p class="rna-section-subtitle" style="margin-bottom: 0;">
+                Powered by the imputed <code>.h5ad</code> pseudo-single-cell matrix from deconvolution.
+            </p>
+        </div>
+        <a href="{% url 'core_hub' job_id %}" class="btn-rna btn-rna-outline btn-rna-sm">
+            <i class="bi bi-arrow-left"></i> Back to Core Hub
+        </a>
+    </div>
+
+    <!-- ═══ Spoke A: Trajectory Inference ═══ -->
+    <div class="rna-card rna-mt-3 rna-mb-3">
+        <div class="rna-card-header">
+            <i class="bi bi-bezier2"></i>&ensp;Spoke A: Trajectory Inference (Pseudotime)
+        </div>
+        <div class="rna-card-body">
+            <div class="rna-flex rna-gap-3" style="align-items: flex-start; flex-wrap: wrap;">
+                <div style="min-width: 240px;">
+                    <label class="rna-label">Root Cell Selection</label>
+                    <select class="rna-input rna-select rna-mb-2" id="root-cell-select">
+                        <option value="">— Select root cell type —</option>
+                        <option value="stem">Stem Cell</option>
+                        <option value="progenitor">Progenitor</option>
+                        <option value="healthy">Healthy Cell</option>
+                    </select>
+                    <button class="btn-rna btn-rna-teal btn-rna-sm" id="run-trajectory">
+                        <i class="bi bi-play-circle"></i> Run Trajectory
+                    </button>
+                </div>
+                <div style="flex: 1; min-width: 300px;">
+                    <div class="rna-plot-container" id="trajectory-plot">
+                        <span class="rna-text-sm rna-text-muted">PAGA / Pseudotime graph loads here</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Spoke B: Spatial Mapping ═══ -->
+    <div class="rna-card rna-mb-3">
+        <div class="rna-card-header">
+            <i class="bi bi-pin-map"></i>&ensp;Spoke B: Spatial Annotation &amp; Mapping
+        </div>
+        <div class="rna-card-body">
+            <div class="rna-flex rna-gap-3" style="align-items: flex-start; flex-wrap: wrap;">
+                <div style="min-width: 260px;">
+                    <label class="rna-label">Spatial Reference</label>
+                    <select class="rna-input rna-select rna-mb-2" id="spatial-template-select">
+                        <option value="">— Select template or upload —</option>
+                        <option value="lymph_node">Generic Human Lymph Node Slice</option>
+                        <option value="brain_cortex">Generic Human Brain Cortex</option>
+                        <option value="liver">Generic Human Liver Section</option>
+                    </select>
+
+                    <label class="rna-label rna-mt-2">Or Upload Custom H&amp;E Image</label>
+                    <input type="file" class="rna-input" id="he-image-upload" accept=".jpg,.jpeg,.png,.tiff,.tif"
+                        style="font-size: .78rem;">
+
+                    <button class="btn-rna btn-rna-teal btn-rna-sm rna-mt-2" id="run-spatial">
+                        <i class="bi bi-play-circle"></i> Run Spatial Mapping
+                    </button>
+                </div>
+                <div style="flex: 1; min-width: 350px;">
+                    <div class="rna-plot-container" id="spatial-plot" style="min-height: 400px;">
+                        <span class="rna-text-sm rna-text-muted">Spatial projection overlay loads here</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Spoke C: Spatial Autocorrelation ═══ -->
+    <div class="rna-card rna-mb-4">
+        <div class="rna-card-header">
+            <i class="bi bi-thermometer-half"></i>&ensp;Spoke C: Spatial Autocorrelation
+        </div>
+        <div class="rna-card-body">
+            <div class="rna-flex rna-gap-3" style="align-items: flex-start; flex-wrap: wrap;">
+                <div style="min-width: 260px;">
+                    <label class="rna-label">Gene Search</label>
+                    <input type="text" class="rna-input rna-mb-2" id="gene-search" placeholder="e.g. CXCL10">
+
+                    <button class="btn-rna btn-rna-teal btn-rna-sm" id="run-autocorr">
+                        <i class="bi bi-play-circle"></i> Run Autocorrelation
+                    </button>
+
+                    <!-- Download -->
+                    <div class="rna-mt-3">
+                        <label class="rna-label">Downloads</label>
+                        <div class="rna-download-item" style="padding-left: 0;">
+                            <div class="file-info">
+                                <i class="bi bi-file-earmark-spreadsheet"></i>
+                                <div>
+                                    <div class="file-name">Moran&rsquo;s I Statistics (.csv)</div>
+                                    <div class="file-desc">Ranked spatial clustering genes</div>
+                                </div>
+                            </div>
+                            <button class="rna-icon-btn rna-icon-btn-download"><i class="bi bi-download"></i></button>
+                        </div>
+                    </div>
+                </div>
+                <div style="flex: 1; min-width: 350px;">
+                    <div class="rna-plot-container" id="autocorr-plot" style="min-height: 400px;">
+                        <span class="rna-text-sm rna-text-muted">Spatial gene heatmap loads here</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

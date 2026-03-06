@@ -1,0 +1,97 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}RNAseek{% endblock %}</title>
+
+    <!-- Favicon (tab logo) -->
+    <link rel="icon" type="image/png" href="{% static 'pipeline/images/rnaseek_logo.png' %}">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Maven+Pro:wght@400;500;700;900&display=swap">
+
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+    <!-- RNAseek Theme -->
+    <link rel="stylesheet" href="{% static 'pipeline/css/variables.css' %}">
+    <link rel="stylesheet" href="{% static 'pipeline/css/global.css' %}">
+
+    {% block extra_css %}{% endblock %}
+
+    <!-- CSRF token for JS -->
+    <meta name="csrf-token" content="{{ csrf_token }}">
+</head>
+
+<body>
+    <!-- ═══ Navbar ═══ -->
+    <nav class="rna-navbar">
+        <!-- Left: Logo + Nav Links -->
+        <div class="rna-navbar-left">
+            <a href="{% url 'home' %}" class="rna-navbar-brand">
+                <img src="{% static 'pipeline/images/rnaseek_logo_name.png' %}" alt="RNAseek">
+            </a>
+            <ul class="rna-nav-links">
+                <li>
+                    <a href="{% url 'workspaces' %}"
+                        class="{% if request.resolver_match.url_name == 'workspaces' %}active{% endif %}">
+                        <i class="bi bi-collection"></i> Workspaces
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'new_submission' %}"
+                        class="{% if request.resolver_match.url_name == 'new_submission' %}active{% endif %}">
+                        <i class="bi bi-plus-circle"></i> New Analysis
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Center: Workflow Step Progress Bar -->
+        <div class="rna-navbar-steps">
+            <div class="rna-step-bar">
+                <span class="rna-nav-step {% if nav_step == 1 %}step-active{% else %}step-inactive{% endif %}">
+                    Upload Files
+                </span>
+                <i class="bi bi-arrow-right-circle-fill rna-step-arrow-icon"></i>
+                <span class="rna-nav-step {% if nav_step == 2 %}step-active{% else %}step-inactive{% endif %}">
+                    Processing
+                </span>
+                <i class="bi bi-arrow-right-circle-fill rna-step-arrow-icon"></i>
+                <span class="rna-nav-step {% if nav_step == 3 %}step-active{% else %}step-inactive{% endif %}">
+                    Core Hub
+                </span>
+                <i class="bi bi-arrow-right-circle-fill rna-step-arrow-icon"></i>
+                <span class="rna-nav-step {% if nav_step == 4 %}step-active{% else %}step-inactive{% endif %}">
+                    Advanced
+                </span>
+            </div>
+        </div>
+
+        <!-- Right: Session Badge -->
+        <span class="rna-session-badge">
+            <i class="bi bi-fingerprint"></i>
+            {{ session_id|truncatechars:13 }}
+        </span>
+    </nav>
+
+    <!-- ═══ Main Content ═══ -->
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- ═══ Footer ═══ -->
+    <footer class="rna-footer">
+        RNAseek Enterprise &middot; Session-based &middot; Data purged after 14 days
+    </footer>
+
+    {% block extra_js %}{% endblock %}
+</body>
+
+</html>

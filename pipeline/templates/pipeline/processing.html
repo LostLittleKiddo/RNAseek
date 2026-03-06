@@ -1,0 +1,196 @@
+{% extends "pipeline/base.html" %}
+{% load static %}
+
+{% block title %}RNAseek – Processing{% endblock %}
+
+{% block content %}
+<section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
+    <div class="rna-text-center rna-mb-3">
+        <h1 class="rna-section-title rna-mb-1">Processing Your Data</h1>
+        <p class="rna-section-subtitle">Monitoring job <code>{{ job_id|truncatechars:13 }}</code></p>
+    </div>
+
+    <!-- Pipeline Steps -->
+    <div class="rna-card rna-mb-3" style="max-width: 750px; margin-left: auto; margin-right: auto;">
+        <div class="rna-card-header rna-text-center">
+            <i class="bi bi-cpu"></i>&ensp;Core Pipeline Execution
+        </div>
+        <div class="rna-card-body">
+            <div id="pipeline-steps" style="display: flex; flex-direction: column; gap: 1rem;">
+                <div class="pipeline-step" data-step="fastqc">
+                    <div class="rna-flex" style="align-items: center; gap: .65rem;">
+                        <div class="step-indicator"
+                            style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
+                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
+                            <i class="bi bi-arrow-repeat rna-processing"
+                                style="display: none; color: var(--rna-teal);"></i>
+                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
+                        </div>
+                        <div>
+                            <strong style="font-size: .85rem;">FastQC</strong>
+                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Quality control on raw reads</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pipeline-step" data-step="trimmomatic">
+                    <div class="rna-flex" style="align-items: center; gap: .65rem;">
+                        <div class="step-indicator"
+                            style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
+                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
+                            <i class="bi bi-arrow-repeat rna-processing"
+                                style="display: none; color: var(--rna-teal);"></i>
+                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
+                        </div>
+                        <div>
+                            <strong style="font-size: .85rem;">Trimmomatic</strong>
+                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Adapter trimming &amp; quality
+                                filtering</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pipeline-step" data-step="hisat2">
+                    <div class="rna-flex" style="align-items: center; gap: .65rem;">
+                        <div class="step-indicator"
+                            style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
+                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
+                            <i class="bi bi-arrow-repeat rna-processing"
+                                style="display: none; color: var(--rna-teal);"></i>
+                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
+                        </div>
+                        <div>
+                            <strong style="font-size: .85rem;">HISAT2 Alignment</strong>
+                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Splice-aware alignment to reference
+                                genome &amp; CRAM compression</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pipeline-step" data-step="featurecounts">
+                    <div class="rna-flex" style="align-items: center; gap: .65rem;">
+                        <div class="step-indicator"
+                            style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
+                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
+                            <i class="bi bi-arrow-repeat rna-processing"
+                                style="display: none; color: var(--rna-teal);"></i>
+                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
+                        </div>
+                        <div>
+                            <strong style="font-size: .85rem;">featureCounts</strong>
+                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Gene-level read quantification</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pipeline-step" data-step="deseq2">
+                    <div class="rna-flex" style="align-items: center; gap: .65rem;">
+                        <div class="step-indicator"
+                            style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
+                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
+                            <i class="bi bi-arrow-repeat rna-processing"
+                                style="display: none; color: var(--rna-teal);"></i>
+                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
+                        </div>
+                        <div>
+                            <strong style="font-size: .85rem;">Batch Correction &amp; DESeq2</strong>
+                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Combat-seq normalization &amp;
+                                differential expression testing</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pipeline-step" data-step="multiqc">
+                    <div class="rna-flex" style="align-items: center; gap: .65rem;">
+                        <div class="step-indicator"
+                            style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
+                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
+                            <i class="bi bi-arrow-repeat rna-processing"
+                                style="display: none; color: var(--rna-teal);"></i>
+                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
+                        </div>
+                        <div>
+                            <strong style="font-size: .85rem;">MultiQC Report</strong>
+                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Aggregate all QC logs into a single
+                                report</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Overall progress -->
+            <div class="rna-mt-3">
+                <div class="rna-flex rna-flex-between rna-mb-1">
+                    <span class="rna-text-xs rna-text-muted" id="status-label">Waiting...</span>
+                    <span class="rna-text-xs rna-text-muted" id="progress-pct">0%</span>
+                </div>
+                <div class="rna-progress">
+                    <div class="rna-progress-bar animated" id="overall-progress" style="width: 0%;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Result area -->
+    <div id="result-area" class="rna-hidden rna-text-center">
+        <div class="rna-card" style="max-width: 500px; margin: 0 auto; padding: 2rem;">
+            <i class="bi bi-check-circle"
+                style="font-size: 3rem; color: var(--rna-accent-green); display: block; margin-bottom: .75rem;"></i>
+            <h2 class="rna-section-title rna-mb-1">Pipeline Complete!</h2>
+            <p class="rna-text-sm rna-text-muted rna-mb-3">Your data is ready. Proceed to the Core Hub to explore
+                results.</p>
+            <a href="{% url 'core_hub' job_id %}" class="btn-rna btn-rna-primary" id="go-to-hub">
+                <i class="bi bi-grid-3x3-gap"></i> Open Core Hub
+            </a>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        "use strict";
+        const JOB_ID = "{{ job_id }}";
+        const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+        const POLL_MS = 3000;
+
+        const progressBar = document.getElementById("overall-progress");
+        const statusLabel = document.getElementById("status-label");
+        const progressPct = document.getElementById("progress-pct");
+        const resultArea = document.getElementById("result-area");
+
+        function poll() {
+            fetch("/api/jobs/" + JOB_ID + "/", {
+                headers: { "X-CSRFToken": CSRF }
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === "RUNNING") {
+                        statusLabel.textContent = "Pipeline running...";
+                        progressBar.style.width = "50%";
+                        progressPct.textContent = "50%";
+                        setTimeout(poll, POLL_MS);
+                    } else if (data.status === "SUCCESS") {
+                        statusLabel.textContent = "Complete!";
+                        progressBar.style.width = "100%";
+                        progressBar.classList.remove("animated");
+                        progressPct.textContent = "100%";
+                        resultArea.classList.remove("rna-hidden");
+                    } else if (data.status === "FAILED") {
+                        statusLabel.textContent = "Pipeline failed.";
+                        progressBar.style.width = "100%";
+                        progressBar.style.background = "var(--rna-accent-red)";
+                        progressPct.textContent = "Error";
+                    } else {
+                        statusLabel.textContent = "Pending...";
+                        setTimeout(poll, POLL_MS);
+                    }
+                })
+                .catch(() => setTimeout(poll, POLL_MS));
+        }
+
+        poll();
+    })();
+</script>
+{% endblock %}

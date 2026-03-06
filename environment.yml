@@ -1,0 +1,30 @@
+name: rnaseek
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  # Python
+  - python=3.11
+
+  # R + Bioconductor (pre-built binaries)
+  - r-base=4.3
+  - bioconductor-deseq2
+  - bioconductor-sva
+  - bioconductor-dexseq
+  - bioconductor-isoformswitchanalyzer
+  - bioconductor-tcgabiolinks
+  - bioconductor-mixomics
+  - r-wgcna
+
+  # Bioinformatics CLI tools
+  - fastqc
+  - trimmomatic
+  - hisat2
+  - samtools
+  - subread
+  - stringtie
+  - pkg-config
+
+  # Python packages (installed via pip after conda env creation)
+  - pip

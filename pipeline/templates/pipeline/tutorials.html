@@ -1,0 +1,183 @@
+{% extends "pipeline/base.html" %}
+{% load static %}
+
+{% block title %}RNAseek – Tutorials{% endblock %}
+
+{% block content %}
+<section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
+    <h1 class="rna-section-title rna-mb-1">Tutorials &amp; Documentation</h1>
+    <p class="rna-section-subtitle">Everything you need to know to prepare your data for RNAseek.</p>
+
+    <!-- File Format Guide -->
+    <div class="rna-card rna-mb-3">
+        <div class="rna-card-header">
+            <i class="bi bi-file-earmark-zip"></i>&ensp;File Format Guide
+        </div>
+        <div class="rna-card-body">
+            <h3 style="font-size: .88rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .65rem;">Accepted
+                Raw Read Formats</h3>
+            <p class="rna-text-sm" style="line-height: 1.7;">
+                RNAseek accepts <strong><code>.fq.gz</code></strong> or <strong><code>.fastq.gz</code></strong>
+                (compressed FASTQ) files.
+                You must upload <em>at least two experimental groups</em> (e.g., 3 Control + 3 Treatment samples)
+                for statistical testing to be valid.
+            </p>
+
+            <div class="rna-banner-warn rna-mt-2 rna-mb-2">
+                <i class="bi bi-exclamation-triangle"></i>
+                <span>Uncompressed <code>.fastq</code> or <code>.fq</code> files are <strong>not accepted</strong>.
+                    Please gzip your files before uploading.</span>
+            </div>
+
+            <h3 style="font-size: .88rem; font-weight: 600; color: var(--rna-grey-900); margin: 1.25rem 0 .65rem;">
+                Paired-End Reads</h3>
+            <p class="rna-text-sm" style="line-height: 1.7;">
+                If your experiment uses paired-end sequencing, ensure filenames follow the standard convention:
+                <code>SampleName_R1.fq.gz</code> and <code>SampleName_R2.fq.gz</code>.
+                The system auto-detects read pairs, but you can also manually toggle Paired-End mode during setup.
+            </p>
+        </div>
+    </div>
+
+    <!-- Metadata Guide -->
+    <div class="rna-card rna-mb-3">
+        <div class="rna-card-header">
+            <i class="bi bi-table"></i>&ensp;Metadata Mapping Guide
+        </div>
+        <div class="rna-card-body">
+            <h3 style="font-size: .88rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .65rem;">Condition
+                Mapping (Required)</h3>
+            <p class="rna-text-sm rna-mb-2" style="line-height: 1.7;">
+                Every uploaded sample must be assigned to a biological condition for the statistical contrast.
+                You can map conditions interactively in the Setup Wizard or upload a <code>.csv</code> file.
+            </p>
+
+            <div class="rna-card" style="overflow-x: auto;">
+                <table class="rna-table">
+                    <thead>
+                        <tr>
+                            <th>Filename</th>
+                            <th>Condition</th>
+                            <th>Batch ID (optional)</th>
+                            <th>Timepoint (optional)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>WT_rep1_R1.fq.gz</code></td>
+                            <td>Control</td>
+                            <td>Batch_1</td>
+                            <td>Day 0</td>
+                        </tr>
+                        <tr>
+                            <td><code>WT_rep2_R1.fq.gz</code></td>
+                            <td>Control</td>
+                            <td>Batch_1</td>
+                            <td>Day 0</td>
+                        </tr>
+                        <tr>
+                            <td><code>KO_rep1_R1.fq.gz</code></td>
+                            <td>Treated</td>
+                            <td>Batch_2</td>
+                            <td>Day 7</td>
+                        </tr>
+                        <tr>
+                            <td><code>KO_rep2_R1.fq.gz</code></td>
+                            <td>Treated</td>
+                            <td>Batch_2</td>
+                            <td>Day 7</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 1rem;">
+                <p class="rna-text-sm"><strong>Batch ID</strong> &ndash; If provided, triggers automatic ComBat-seq
+                    batch correction in Stage 2.</p>
+                <p class="rna-text-sm"><strong>Timepoint</strong> &ndash; If provided, switches DESeq2 to the Likelihood
+                    Ratio Test (LRT) for time-series analysis.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workflow Diagram -->
+    <div class="rna-card rna-mb-3">
+        <div class="rna-card-header">
+            <i class="bi bi-diagram-3"></i>&ensp;Pipeline Workflow
+        </div>
+        <div class="rna-card-body rna-text-center">
+            <!-- PLACEHOLDER: Workflow diagram image -->
+            <!-- Image needed: 1 image, approx 900×400px, workflow diagram showing:
+           Upload → Stage 1 (Alignment/QC) → Stage 2 (DEG) → Core Hub → Deconvolution → Advanced Spokes -->
+            <div class="rna-plot-container" style="min-height: 280px;">
+                <div style="text-align: center;">
+                    <i class="bi bi-image" style="font-size: 2.5rem; display: block; margin-bottom: .5rem;"></i>
+                    <span class="rna-text-sm rna-text-muted">Workflow diagram placeholder (900 &times; 400px)</span>
+                </div>
+            </div>
+
+            <div class="rna-flex rna-flex-center rna-gap-2 rna-flex-wrap rna-mt-3"
+                style="max-width: 800px; margin-left: auto; margin-right: auto;">
+                <div class="rna-step completed"><i class="bi bi-cloud-arrow-up"></i> Upload</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step completed"><i class="bi bi-cpu"></i> Stage 1: Align &amp; QC</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step completed"><i class="bi bi-graph-up-arrow"></i> Stage 2: DEG</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step active"><i class="bi bi-grid-3x3-gap"></i> Core Hub</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step"><i class="bi bi-layers"></i> Deconvolution</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step"><i class="bi bi-pin-map"></i> Spatial Spokes</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reference Genomes -->
+    <div class="rna-card rna-mb-3">
+        <div class="rna-card-header">
+            <i class="bi bi-database"></i>&ensp;Supported Reference Genomes
+        </div>
+        <div class="rna-card-body">
+            <div class="rna-card" style="overflow-x: auto;">
+                <table class="rna-table">
+                    <thead>
+                        <tr>
+                            <th>Organism</th>
+                            <th>Assembly</th>
+                            <th>Source</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Homo sapiens</td>
+                            <td>GRCh38 (hg38)</td>
+                            <td>Ensembl / UCSC</td>
+                        </tr>
+                        <tr>
+                            <td>Mus musculus</td>
+                            <td>GRCm39 (mm39)</td>
+                            <td>Ensembl / UCSC</td>
+                        </tr>
+                        <tr>
+                            <td>Rattus norvegicus</td>
+                            <td>mRatBN7.2</td>
+                            <td>Ensembl</td>
+                        </tr>
+                        <tr>
+                            <td>Danio rerio</td>
+                            <td>GRCz11</td>
+                            <td>Ensembl</td>
+                        </tr>
+                        <tr>
+                            <td>Drosophila melanogaster</td>
+                            <td>BDGP6</td>
+                            <td>Ensembl</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

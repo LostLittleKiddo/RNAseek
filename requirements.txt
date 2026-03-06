@@ -1,0 +1,52 @@
+# ============================================================
+# RNAseek - Python pip requirements
+# ============================================================
+# NOTE: This file lists only DIRECT pip dependencies.
+# Conda packages (R, bioinformatics CLI tools) are managed
+# via environment.yml. See README.md for full setup.
+# ============================================================
+
+# ── Web Framework & Infrastructure ──
+django>=5.2,<6.0
+djangorestframework>=3.16,<4.0
+celery[redis]>=5.6,<6.0
+redis>=6.0,<7.0
+django-cors-headers>=4.9,<5.0
+gunicorn>=25.0,<26.0
+psycopg2-binary>=2.9,<3.0
+
+# ── Scientific Core ──
+numpy>=2.0
+pandas>=2.3
+scipy>=1.17
+scikit-learn>=1.8
+matplotlib>=3.10
+plotly>=6.0
+h5py>=3.15
+statsmodels>=0.14
+
+# ── Python-R Bridge ──
+rpy2>=3.6,<4.0
+
+# ── Single-Cell / Spatial ──
+anndata>=0.12
+mudata>=0.3
+scanpy>=1.11
+squidpy>=1.8
+scvi-tools>=1.4
+tangram-sc>=1.0
+
+# ── Bioinformatics Analysis ──
+gseapy>=1.1
+lifelines>=0.30
+mofapy2>=0.7
+arboreto>=0.1.6
+pywgcna>=2.2
+multiqc>=1.33
+indra>=1.24
+
+# ── Utilities (pulled by above, pinned for reproducibility) ──
+torch>=2.0
+seaborn>=0.13
+tqdm>=4.67
+requests>=2.32

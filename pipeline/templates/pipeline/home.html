@@ -1,0 +1,249 @@
+{% extends "pipeline/base.html" %}
+{% load static %}
+
+{% block title %}RNAseek – Home{% endblock %}
+
+{% block content %}
+<!-- ═══ Welcome Banner ═══ -->
+<div class="dash-container" style="padding-top: 1.25rem; padding-bottom: .75rem;">
+    <div class="dash-welcome-banner">
+        <div>
+            <p class="dash-greeting">Welcome to</p>
+            <h1 class="dash-tagline">RNAseek &mdash; Bulk transcriptome measurement</h1>
+        </div>
+        <div class="dash-stats-banner">
+            <div class="dash-stats-inner">
+                <span class="dash-stat-number">12</span>
+                <span class="dash-stat-label">analytical modules</span>
+                <span style="color: rgba(255,255,255,.5); margin: 0 .15rem;">&middot;</span>
+                <span class="dash-stat-number">3</span>
+                <span class="dash-stat-label">advanced spokes</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ Hero Banner with Slideshow + Staircase Buttons ═══ -->
+<div class="dash-container" style="padding-bottom: 1.25rem;">
+    <div class="dash-hero-banner">
+        <!-- Background slideshow -->
+        <div class="dash-slideshow">
+            <img src="{% static 'pipeline/images/Home1.png' %}" alt="RNA-seq workflow" class="dash-slide active">
+            <img src="{% static 'pipeline/images/Home2.png' %}" alt="Genomics analysis" class="dash-slide">
+            <img src="{% static 'pipeline/images/Home3.png' %}" alt="Data visualization" class="dash-slide">
+        </div>
+        <!-- Dark overlay for readability -->
+        <div class="dash-hero-overlay"></div>
+        <!-- Logo on left -->
+        <div class="dash-hero-logo">
+            <img src="{% static 'pipeline/images/rnaseek_logo_name.png' %}" alt="RNAseek" class="dash-hero-logo-img">
+        </div>
+        <!-- Stacked action buttons on right -->
+        <div class="dash-hero-actions">
+            <a href="{% url 'new_submission' %}" class="dash-hero-btn dash-hero-btn-1">
+                <div class="dash-btn-content">
+                    <span class="dash-btn-title">Start New Analysis</span>
+                    <span class="dash-btn-desc">Upload FASTQ &amp; configure pipeline</span>
+                </div>
+                <i class="bi bi-chevron-double-right"></i>
+            </a>
+            <a href="{% url 'workspaces' %}" class="dash-hero-btn dash-hero-btn-2">
+                <div class="dash-btn-content">
+                    <span class="dash-btn-title">My Workspaces</span>
+                    <span class="dash-btn-desc">Resume or review past analyses</span>
+                </div>
+                <i class="bi bi-chevron-double-right"></i>
+            </a>
+            <a href="{% url 'tutorials' %}" class="dash-hero-btn dash-hero-btn-3">
+                <div class="dash-btn-content">
+                    <span class="dash-btn-title">Tutorials &amp; Guides</span>
+                    <span class="dash-btn-desc">File formats, metadata, workflows</span>
+                </div>
+                <i class="bi bi-chevron-double-right"></i>
+            </a>
+            <a href="#modules-section" class="dash-hero-btn dash-hero-btn-4">
+                <div class="dash-btn-content">
+                    <span class="dash-btn-title">Explore Modules</span>
+                    <span class="dash-btn-desc">Browse all 12 analytical modules</span>
+                </div>
+                <i class="bi bi-chevron-double-right"></i>
+            </a>
+        </div>
+        <!-- Slideshow dots -->
+        <div class="dash-slideshow-dots">
+            <span class="dash-sdot active" data-slide="0"></span>
+            <span class="dash-sdot" data-slide="1"></span>
+            <span class="dash-sdot" data-slide="2"></span>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ How It Works ═══ -->
+<section class="rna-container rna-mt-3 rna-mb-3">
+    <div class="rna-text-center rna-mb-3">
+        <h2 class="rna-section-title">How It Works</h2>
+        <p class="rna-section-subtitle">Four simple steps from raw data to actionable insights.</p>
+    </div>
+
+    <div class="rna-grid-4 rna-mb-3">
+        <div class="rna-card rna-feature-card">
+            <i class="step-badge">1</i>
+            <h3>Upload</h3>
+            <p>Drag &amp; drop <code>.fq.gz</code> / <code>.fastq.gz</code> reads, select a reference genome, and map
+                each sample to biological conditions, batches, and timepoints.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="step-badge">2</i>
+            <h3>Process</h3>
+            <p>FastQC quality check, Trimmomatic adapter trimming, HISAT2 alignment, featureCounts quantification, batch
+                correction, and DESeq2 differential expression.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="step-badge">3</i>
+            <h3>Explore</h3>
+            <p>Interactive PCA, UMAP, Volcano &amp; MA plots, DEG heatmaps. Download CRAM files, raw &amp; normalized
+                count matrices, DEG tables, and MultiQC reports.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="step-badge">4</i>
+            <h3>Advance</h3>
+            <p>Deconvolve bulk RNA into pseudo-single-cell profiles, then unlock trajectory inference, spatial tissue
+                mapping, and Moran&rsquo;s I autocorrelation.</p>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ Feature Grid ═══ -->
+<section class="rna-container rna-mt-4 rna-mb-4">
+    <div class="rna-text-center rna-mb-3">
+        <h2 class="rna-section-title">Platform Capabilities</h2>
+        <p class="rna-section-subtitle">From raw reads to spatial maps, every analysis module at your fingertips.</p>
+    </div>
+
+    <div class="rna-grid-4 rna-mb-3">
+        <!-- Stage 1 -->
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-cpu"></i>
+            <h3>Alignment &amp; QC</h3>
+            <p>FastQC, Trimmomatic, HISAT2 alignment, featureCounts quantification, and compressed CRAM output.</p>
+        </div>
+        <!-- Stage 2 -->
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-graph-up-arrow"></i>
+            <h3>DEG &amp; Statistics</h3>
+            <p>Batch correction (ComBat-seq), DESeq2 differential expression, PCA, UMAP, and Volcano plots.</p>
+        </div>
+        <!-- Deconv -->
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-layers"></i>
+            <h3>Cell Deconvolution</h3>
+            <p>DestVI / BayesPrism unmixes bulk RNA into pseudo-single-cell profiles for advanced downstream analysis.
+            </p>
+        </div>
+        <!-- Spatial -->
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-pin-map"></i>
+            <h3>Spatial Mapping</h3>
+            <p>Tangram deep learning projects imputed cells onto H&amp;E tissue slides with Moran&rsquo;s I
+                autocorrelation.</p>
+        </div>
+    </div>
+
+    <!-- Standard Modules -->
+    <div id="modules-section" class="rna-text-center rna-mb-3">
+        <h2 class="rna-section-title">12 Standard Analytical Modules</h2>
+        <p class="rna-section-subtitle">Unlocked instantly after the core pipeline finishes.</p>
+    </div>
+
+    <div class="rna-grid-4 rna-mb-4">
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-scissors"></i>
+            <h3>Alternative Splicing</h3>
+            <p>IsoformSwitchAnalyzeR detects transcript structure changes and lost protein domains.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-pencil-square"></i>
+            <h3>RNA Editing &amp; SNPs</h3>
+            <p>REDItools2 scans for A-to-I editing events and high-confidence mutations.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-diagram-3"></i>
+            <h3>WGCNA</h3>
+            <p>Co-expression network analysis correlating gene modules to clinical traits.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-signpost-split"></i>
+            <h3>Pathway Enrichment</h3>
+            <p>GSEA/ORA with PathBank, KEGG, and Reactome pathway diagrams.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-share"></i>
+            <h3>Causal Networks</h3>
+            <p>GRNBoost2 regulatory inference and STRING protein-protein interaction maps.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-journal-text"></i>
+            <h3>Literature Mining</h3>
+            <p>INDRA NLP reconstructs gene regulatory pathways from PubMed abstracts.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-heart-pulse"></i>
+            <h3>Survival Prediction</h3>
+            <p>Kaplan-Meier curves and Log-Rank tests on gene expression cohorts.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-hospital"></i>
+            <h3>TCGA Integration</h3>
+            <p>Compare your data against massive public cancer cohorts for subtype classification.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-bullseye"></i>
+            <h3>Biomarker Discovery</h3>
+            <p>Cross-reference DEGs against FDA-approved diagnostic and predictive biomarkers.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-boxes"></i>
+            <h3>MOFA</h3>
+            <p>Multi-omics factor analysis integrating RNA-seq with secondary omics data.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-circle-half"></i>
+            <h3>DIABLO</h3>
+            <p>Supervised multi-omics integration for predictive modeling with AUROC curves.</p>
+        </div>
+        <div class="rna-card rna-feature-card">
+            <i class="bi bi-bezier2"></i>
+            <h3>Trajectory Inference</h3>
+            <p>PAGA / Pseudotime mapping of pseudo-cell developmental lineages.</p>
+        </div>
+    </div>
+
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function () {
+        var container = document.querySelector('.dash-slideshow');
+        if (!container) return;
+        var slides = container.querySelectorAll('.dash-slide');
+        var dots = document.querySelectorAll('.dash-slideshow-dots .dash-sdot');
+        if (slides.length < 2) return;
+        var current = 0;
+        function goTo(index) {
+            slides[current].classList.remove('active');
+            if (dots[current]) dots[current].classList.remove('active');
+            current = ((index % slides.length) + slides.length) % slides.length;
+            slides[current].classList.add('active');
+            if (dots[current]) dots[current].classList.add('active');
+        }
+        setInterval(function () { goTo(current + 1); }, 5000);
+        dots.forEach(function (dot) {
+            dot.addEventListener('click', function () {
+                var idx = parseInt(dot.dataset.slide);
+                if (!isNaN(idx)) goTo(idx);
+            });
+        });
+    })();
+</script>
+{% endblock %}

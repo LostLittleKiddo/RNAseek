@@ -1,0 +1,93 @@
+{% extends "pipeline/base.html" %}
+{% load static %}
+
+{% block title %}RNAseek – Active Workspaces{% endblock %}
+
+{% block content %}
+<section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
+    <div class="rna-flex rna-flex-between" style="align-items: flex-end; margin-bottom: .5rem;">
+        <div>
+            <h1 class="rna-section-title rna-mb-1">Active Workspaces</h1>
+            <p class="rna-section-subtitle" style="margin-bottom: 0;">All analysis jobs tied to your 14-day session.</p>
+        </div>
+        <a href="{% url 'new_submission' %}" class="btn-rna btn-rna-primary btn-rna-sm">
+            <i class="bi bi-plus-circle"></i> New Analysis
+        </a>
+    </div>
+
+    <!-- 14-day warning -->
+    <div class="rna-banner-warn rna-mb-3">
+        <i class="bi bi-exclamation-triangle"></i>
+        <span>
+            <strong>Data Retention:</strong> All sessions and files are automatically purged 14 days after creation.
+            Download your results before the session expires.
+        </span>
+    </div>
+
+    <!-- Jobs Table -->
+    <div class="rna-card">
+        <div class="rna-card-body" style="padding: 0;">
+            {% if jobs %}
+            <table class="rna-table" id="jobs-table">
+                <thead>
+                    <tr>
+                        <th>Job ID</th>
+                        <th>Module</th>
+                        <th>Created</th>
+                        <th>Status</th>
+                        <th style="text-align: right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs %}
+                    <tr>
+                        <td><code style="font-size: .78rem;">{{ job.job_id|truncatechars:13 }}</code></td>
+                        <td>{{ job.module_name }}</td>
+                        <td>–</td>
+                        <td>
+                            <span class="rna-badge rna-badge-{{ job.status|lower }}">
+                                {% if job.status == "RUNNING" %}
+                                <i class="bi bi-arrow-repeat rna-processing" style="margin-right: .25rem;"></i>
+                                {% elif job.status == "SUCCESS" %}
+                                <i class="bi bi-check-circle" style="margin-right: .25rem;"></i>
+                                {% elif job.status == "FAILED" %}
+                                <i class="bi bi-x-circle" style="margin-right: .25rem;"></i>
+                                {% else %}
+                                <i class="bi bi-clock" style="margin-right: .25rem;"></i>
+                                {% endif %}
+                                {{ job.status }}
+                            </span>
+                        </td>
+                        <td style="text-align: right;">
+                            {% if job.status == "SUCCESS" %}
+                            <a href="{% url 'core_hub' job.job_id %}" class="btn-rna btn-rna-teal btn-rna-sm"
+                                style="min-width: auto; padding: 0 .75rem;">
+                                <i class="bi bi-grid-3x3-gap"></i> View Dashboard
+                            </a>
+                            {% elif job.status == "RUNNING" %}
+                            <a href="{% url 'processing' job.job_id %}" class="btn-rna btn-rna-outline btn-rna-sm"
+                                style="min-width: auto; padding: 0 .75rem;">
+                                <i class="bi bi-eye"></i> Monitor
+                            </a>
+                            {% else %}
+                            <span class="rna-text-xs rna-text-muted">–</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="rna-text-center" style="padding: 3rem 1rem;">
+                <i class="bi bi-inbox"
+                    style="font-size: 2.5rem; color: var(--rna-grey-300); display: block; margin-bottom: .75rem;"></i>
+                <p class="rna-text-sm rna-text-muted rna-mb-2">No analysis jobs found for this session.</p>
+                <a href="{% url 'new_submission' %}" class="btn-rna btn-rna-primary btn-rna-sm">
+                    <i class="bi bi-plus-circle"></i> Start Your First Analysis
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

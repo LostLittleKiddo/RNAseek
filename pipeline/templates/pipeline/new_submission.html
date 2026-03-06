@@ -1,0 +1,173 @@
+{% extends "pipeline/base.html" %}
+{% load static %}
+
+{% block title %}RNAseek – New Analysis{% endblock %}
+
+{% block extra_css %}
+<style>
+    .wizard-step {
+        display: none;
+    }
+
+    .wizard-step.active {
+        display: block;
+    }
+
+    .file-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .3rem .65rem;
+        background: rgba(5, 154, 152, .08);
+        border: 1px solid rgba(5, 154, 152, .2);
+        border-radius: 50px;
+        font-size: .78rem;
+        font-weight: 500;
+        color: var(--rna-navy);
+        margin: .25rem;
+    }
+
+    .file-pill .remove-file {
+        cursor: pointer;
+        color: var(--rna-accent-red);
+        font-size: .7rem;
+        margin-left: .2rem;
+    }
+
+    #metadata-table input,
+    #metadata-table select {
+        padding: .35rem .55rem;
+        font-size: .78rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
+    <h1 class="rna-section-title rna-mb-1">Setup Wizard</h1>
+    <p class="rna-section-subtitle">Configure your RNA-seq analysis in three steps.</p>
+
+    <!-- Wizard Steps Indicator -->
+    <div class="rna-steps rna-mb-3" id="wizard-steps">
+        <div class="rna-step active" data-step="1"><i class="bi bi-cloud-arrow-up"></i> Upload Data</div>
+        <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+        <div class="rna-step" data-step="2"><i class="bi bi-database"></i> Reference Genome</div>
+        <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+        <div class="rna-step" data-step="3"><i class="bi bi-table"></i> Metadata Mapping</div>
+    </div>
+
+    <!-- ═══ Step 1: File Upload ═══ -->
+    <div class="wizard-step active" id="step-1">
+        <div class="rna-card">
+            <div class="rna-card-header">
+                <i class="bi bi-cloud-arrow-up"></i>&ensp;Step 1: Upload Raw FASTQ Files
+            </div>
+            <div class="rna-card-body">
+                <div class="rna-drop-zone" id="drop-zone">
+                    <i class="bi bi-cloud-arrow-up"></i>
+                    <span>Drag &amp; drop <code>.fq.gz</code> / <code>.fastq.gz</code> files here</span>
+                    <span class="rna-text-xs rna-text-muted">or click to browse</span>
+                    <input type="file" id="fastq-input" accept=".fq.gz,.fastq.gz,.gz" multiple style="display: none;">
+                </div>
+
+                <div id="file-list" class="rna-mt-2" style="display: none;">
+                    <p class="rna-label">Selected files:</p>
+                    <div id="file-pills"></div>
+                </div>
+
+                <div id="upload-progress-area" class="rna-mt-2"></div>
+
+                <!-- Paired-end toggle -->
+                <div class="rna-mt-2 rna-flex" style="align-items: center; gap: .75rem;">
+                    <label class="rna-label" style="margin: 0;">Paired-End Reads:</label>
+                    <label
+                        style="display: inline-flex; align-items: center; gap: .35rem; font-size: .82rem; cursor: pointer;">
+                        <input type="checkbox" id="paired-end-toggle"> Auto-detected. Check to force Paired-End mode.
+                    </label>
+                </div>
+
+                <div class="rna-flex rna-mt-3" style="justify-content: flex-end;">
+                    <button class="btn-rna btn-rna-primary btn-rna-sm" id="step1-next" disabled>
+                        Next: Select Reference <i class="bi bi-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Step 2: Reference Genome ═══ -->
+    <div class="wizard-step" id="step-2">
+        <div class="rna-card">
+            <div class="rna-card-header">
+                <i class="bi bi-database"></i>&ensp;Step 2: Select Reference Genome
+            </div>
+            <div class="rna-card-body">
+                <div style="max-width: 450px;">
+                    <label class="rna-label">Reference Genome</label>
+                    <select class="rna-input rna-select" id="genome-select">
+                        <option value="">— Select a reference genome —</option>
+                        <option value="GRCh38">Homo sapiens – GRCh38 (hg38)</option>
+                        <option value="GRCm39">Mus musculus – GRCm39 (mm39)</option>
+                        <option value="mRatBN7.2">Rattus norvegicus – mRatBN7.2</option>
+                        <option value="GRCz11">Danio rerio – GRCz11</option>
+                        <option value="BDGP6">Drosophila melanogaster – BDGP6</option>
+                    </select>
+                </div>
+
+                <div class="rna-flex rna-mt-3 rna-gap-2" style="justify-content: flex-end;">
+                    <button class="btn-rna btn-rna-outline btn-rna-sm" id="step2-back">
+                        <i class="bi bi-arrow-left"></i> Back
+                    </button>
+                    <button class="btn-rna btn-rna-primary btn-rna-sm" id="step2-next" disabled>
+                        Next: Metadata <i class="bi bi-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Step 3: Metadata Mapping ═══ -->
+    <div class="wizard-step" id="step-3">
+        <div class="rna-card">
+            <div class="rna-card-header">
+                <i class="bi bi-table"></i>&ensp;Step 3: Map Experimental Metadata
+            </div>
+            <div class="rna-card-body">
+                <p class="rna-text-sm rna-text-muted rna-mb-2">
+                    Assign each uploaded sample to a biological condition. Optionally add Batch ID and Timepoint
+                    mappings.
+                </p>
+
+                <div style="overflow-x: auto;">
+                    <table class="rna-table" id="metadata-table">
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Condition <span style="color: var(--rna-accent-red);">*</span></th>
+                                <th>Batch ID</th>
+                                <th>Timepoint</th>
+                            </tr>
+                        </thead>
+                        <tbody id="metadata-body">
+                            <!-- Populated dynamically by JS based on uploaded files -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="rna-flex rna-mt-3 rna-gap-2" style="justify-content: flex-end;">
+                    <button class="btn-rna btn-rna-outline btn-rna-sm" id="step3-back">
+                        <i class="bi bi-arrow-left"></i> Back
+                    </button>
+                    <button class="btn-rna btn-rna-primary" id="submit-pipeline" disabled>
+                        <i class="bi bi-rocket-takeoff"></i> Submit &amp; Run Pipeline
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'pipeline/js/setup_wizard.js' %}"></script>
+{% endblock %}
