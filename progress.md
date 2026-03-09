@@ -1,6 +1,6 @@
 # RNAseek -- Project Progress
 
-> Last updated after: **Dynamic Pipeline Entry Points phase**
+> Last updated after: **Frontend Refinement phase 2 (robustness & UX fixes)**
 
 ---
 
@@ -249,6 +249,26 @@ pipeline/static/pipeline/
 - [x] **Shared helpers:** `_resolve_genome()` (pre-indexed + custom, optional HISAT2 build), `_run_featurecounts()` (featureCounts + CSV conversion)
 - [x] **Entry point CSS:** Responsive 3-column card grid, selected state with teal accent, icon circles, pipeline tool tags
 - [x] **Test suite:** 32/32 tests pass — model tests (6), view validation tests (18), upload routing tests (3), task router tests (8)
+
+### Frontend Refinement (UI/UX Overhaul) (NEW)
+
+- [x] **Card alignment (Matrix mode):** 3-card centered grid when Count Matrix entry point is selected (`.setup-grid.matrix-mode` with `repeat(3, 1fr)` and responsive breakpoints)
+- [x] **Threshold summary theming:** Refactored `#threshold-summary` to use global design tokens (`--rna-grey-50`, `--rna-grey-200`) with a left-border accent (`--rna-teal`) matching the site's info-box pattern
+- [x] **Protected condition column:** `condition` is a mandatory default column in the Manual Metadata Builder; delete functionality is disabled for it (`.group-chip.protected` styling, JS guard in `renderColumnChips`)
+- [x] **Condition input section:** Dedicated "Define Conditions" builder adjacent to "Define Metadata Columns" inside a side-by-side `.metadata-builder-top` flex layout; user-defined condition values populate a `<select>` dropdown in the metadata table instead of free-text input
+- [x] **Horizontal roles + contrast layout:** Assign Column Roles and Dynamic Contrast Builder placed on the same row via `.roles-contrast-row` flex container with `align-items: stretch` for equal-height behavior
+- [x] **Equal height + whitespace cleanup:** Both panels stretch to the height of the taller component; excessive vertical margins removed; consistent padding and border styling across panels
+- [x] **Responsive breakpoints:** Matrix-mode grid collapses at 1400px/768px; metadata-builder-top stacks vertically at 768px; roles-contrast-row stacks at 900px
+
+### Frontend Refinement Phase 2 (Robustness & UX Fixes) (NEW)
+
+- [x] **Scrollable file pills:** Selected-files list (`#file-pills`, `#bam-file-pills`) capped at `max-height: 5.6rem` (~3 rows) with `overflow-y: auto` — prevents infinite page growth when many files are selected
+- [x] **Threshold summary fix:** Rewrote `.threshold-summary` flex to `align-items: center; flex-wrap: wrap; gap: .25rem;` and wrapped sentence text in a `<span>` to prevent flex children from splitting into separate columns
+- [x] **Column-agnostic selectable values:** Replaced flat `conditionValues[]` array with `columnSelectableValues{}` object (keyed by column name). New `<select id="condition-target-column">` dropdown lets users choose which column to define selectable values for. Values show as chips with `(column)` labels. Metadata table cells auto-switch between `<select>` and `<input>` per column.
+- [x] **State reset on entry point switch:** New `resetMetadataState()` function wipes manual columns (back to `["condition"]`), selectable values, column mapping, contrasts, parsed CSV data, manual table, and contrast list DOM. Called automatically when the user switches between FASTQ / BAM / Matrix entry points.
+- [x] **Condition target dropdown sync:** `syncConditionTargetDropdown()` keeps the target column `<select>` in sync with `manualColumns` — called on init, column add, column remove, and state reset.
+- [x] **Bulletproof error handling:** Null-guards on condition builder DOM refs, try-catch around pipeline submission fetch, contrast list DOM cleared on reset, network errors surfaced to user via alert.
+- [x] **Production readiness:** All static assets via `{% static %}` tags, no hardcoded URLs, all fetch calls use relative paths, `STATIC_ROOT` configured for `collectstatic`, `backdrop-filter` gracefully degrades on older Firefox.
 
 ---
 

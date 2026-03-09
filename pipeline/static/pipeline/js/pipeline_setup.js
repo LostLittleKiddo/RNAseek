@@ -41,6 +41,7 @@
     // Metadata state (new)
     let parsedCsvData = null;           // { headers: string[], rows: object[] }
     let manualColumns = ["condition"];   // Default column for manual mode
+    let columnSelectableValues = {};      // Per-column predefined values, e.g. { condition: ["Control","Treatment"] }
     let columnMapping = {
         primary_group: null,
         batch_effect: null,
@@ -94,6 +95,15 @@
     const metadataBody = document.getElementById("metadata-body");
     const metadataHeaderRow = document.getElementById("metadata-header-row");
     const noFilesHint = document.getElementById("no-files-hint");
+
+    // Condition builder DOM
+    const conditionValueInput = document.getElementById("condition-value-input");
+    const addConditionValueBtn = document.getElementById("add-condition-btn");
+    const conditionChipsEl = document.getElementById("condition-chips");
+    const conditionTargetSelect = document.getElementById("condition-target-column");
+
+    // Roles + Contrast row
+    const rolesContrastRow = document.getElementById("roles-contrast-row");
 
     const columnMappingSection = document.getElementById("column-mapping-section");
     const primaryGroupSelect = document.getElementById("primary-group-select");
@@ -156,10 +166,55 @@
             inputDataType = radio.value;
             epCards.forEach(function (c) { c.classList.remove("selected"); });
             radio.closest(".entry-point-card").classList.add("selected");
+            resetMetadataState();
             applyEntryPointVisibility();
             validateAll();
         });
     });
+
+    /**
+     * Reset metadata-related state when switching entry points.
+     * Prevents stale data from bleeding across workflows.
+     */
+    function resetMetadataState() {
+        // Reset CSV metadata
+        parsedCsvData = null;
+        csvFile = null;
+        if (csvPreviewArea) csvPreviewArea.style.display = "none";
+        if (csvFileName) { csvFileName.style.display = "none"; csvFileName.innerHTML = ""; }
+        if (csvDropZone) csvDropZone.classList.remove("has-files");
+
+        // Reset manual columns to default
+        manualColumns = ["condition"];
+        columnSelectableValues = {};
+
+        // Reset column mapping & contrasts
+        columnMapping = { primary_group: null, batch_effect: null, additional_covariates: [] };
+        contrasts = [];
+
+        // Reset metadata toggle to upload mode
+        metaToggle.querySelectorAll(".meta-toggle-btn").forEach(function (b) {
+            b.classList.toggle("active", b.dataset.mode === "upload");
+        });
+        metaUploadPanel.style.display = "";
+        metaManualPanel.style.display = "none";
+        if (manualPanel) manualPanel.style.display = "none";
+
+        // Clear manual table
+        if (metadataBody) metadataBody.innerHTML = "";
+        if (noFilesHint) noFilesHint.style.display = "";
+
+        // Hide mapping & contrast panels, clear contrast DOM
+        columnMappingSection.style.display = "none";
+        contrastSection.style.display = "none";
+        rolesContrastRow.style.display = "none";
+        if (contrastList) contrastList.innerHTML = "";
+
+        // Rebuild chips
+        renderColumnChips();
+        renderConditionChips();
+        syncConditionTargetDropdown();
+    }
 
     function applyEntryPointVisibility() {
         // Column visibility
@@ -167,6 +222,9 @@
         colAlignment.style.display = inputDataType === "alignment" ? "" : "none";
         colMatrix.style.display = inputDataType === "matrix" ? "" : "none";
         colGenome.style.display = inputDataType === "matrix" ? "none" : "";
+
+        // Center 3 cards in matrix mode
+        document.querySelector(".setup-grid").classList.toggle("matrix-mode", inputDataType === "matrix");
 
         // Validation summary items
         valLibrary.style.display = inputDataType === "fastq" ? "" : "none";
@@ -749,11 +807,15 @@
 
     customGenomeFasta.addEventListener("change", function () {
         customGenomeFiles.fasta = customGenomeFasta.files[0] || null;
+        var label = document.getElementById("fasta-file-label");
+        if (label) label.textContent = customGenomeFiles.fasta ? customGenomeFiles.fasta.name : "No file chosen";
         validateAll();
     });
 
     customGenomeAnnotation.addEventListener("change", function () {
         customGenomeFiles.annotation = customGenomeAnnotation.files[0] || null;
+        var label = document.getElementById("annotation-file-label");
+        if (label) label.textContent = customGenomeFiles.annotation ? customGenomeFiles.annotation.name : "No file chosen";
         validateAll();
     });
 
@@ -980,6 +1042,7 @@
         manualColumns.push(name);
         columnNameInput.value = "";
         renderColumnChips();
+        syncConditionTargetDropdown();
         rebuildMetadataTable();
         updateColumnMappingOptions();
         validateAll();
@@ -992,14 +1055,120 @@
         }
     });
 
+    // ── Condition Value Management (per-column) ──
+    if (addConditionValueBtn && conditionValueInput && conditionTargetSelect) {
+        addConditionValueBtn.addEventListener("click", function () {
+            var targetCol = conditionTargetSelect.value;
+            if (!targetCol) return;
+            var val = conditionValueInput.value.trim();
+            if (!val) return;
+            if (!columnSelectableValues[targetCol]) columnSelectableValues[targetCol] = [];
+            var existing = columnSelectableValues[targetCol];
+            if (existing.some(function (v) { return v.toLowerCase() === val.toLowerCase(); })) return;
+            existing.push(val);
+            conditionValueInput.value = "";
+            renderConditionChips();
+            rebuildMetadataTable();
+            validateAll();
+        });
+
+        conditionValueInput.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                addConditionValueBtn.click();
+            }
+        });
+    }
+
+    /**
+     * Sync the condition target column dropdown with manualColumns.
+     */
+    function syncConditionTargetDropdown() {
+        if (!conditionTargetSelect) return;
+        var prev = conditionTargetSelect.value;
+        conditionTargetSelect.innerHTML = "";
+        manualColumns.forEach(function (c) {
+            var opt = document.createElement("option");
+            opt.value = c;
+            opt.textContent = c;
+            conditionTargetSelect.appendChild(opt);
+        });
+        if (manualColumns.includes(prev)) {
+            conditionTargetSelect.value = prev;
+        }
+        // Re-render chips to match the new selection
+        renderConditionChips();
+    }
+
+    // Update chips when user switches the target column dropdown
+    if (conditionTargetSelect) {
+        conditionTargetSelect.addEventListener("change", function () {
+            renderConditionChips();
+        });
+    }
+
+    function renderConditionChips() {
+        conditionChipsEl.innerHTML = "";
+        var selectedCol = conditionTargetSelect ? conditionTargetSelect.value : null;
+        var allEntries = [];
+
+        if (selectedCol) {
+            // Show only chips for the currently selected target column
+            var vals = columnSelectableValues[selectedCol] || [];
+            vals.forEach(function (val, idx) {
+                allEntries.push({ col: selectedCol, val: val, idx: idx });
+            });
+        } else {
+            // Fallback: show all if no column is selected
+            Object.keys(columnSelectableValues).forEach(function (col) {
+                columnSelectableValues[col].forEach(function (val, idx) {
+                    allEntries.push({ col: col, val: val, idx: idx });
+                });
+            });
+        }
+
+        allEntries.forEach(function (entry) {
+            var chip = document.createElement("span");
+            chip.className = "group-chip condition-chip";
+            chip.innerHTML =
+                escapeHtml(entry.val) +
+                ' <span class="chip-col-label">(' + escapeHtml(entry.col) + ')</span>' +
+                ' <span class="remove-group" data-col="' + escapeHtml(entry.col) +
+                '" data-idx="' + entry.idx + '">&times;</span>';
+            conditionChipsEl.appendChild(chip);
+        });
+
+        conditionChipsEl.querySelectorAll(".remove-group").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var col = btn.dataset.col;
+                var removedIdx = parseInt(btn.dataset.idx, 10);
+                if (columnSelectableValues[col]) {
+                    columnSelectableValues[col].splice(removedIdx, 1);
+                    if (columnSelectableValues[col].length === 0) {
+                        delete columnSelectableValues[col];
+                    }
+                }
+                renderConditionChips();
+                rebuildMetadataTable();
+                validateAll();
+            });
+        });
+    }
+
     function renderColumnChips() {
         columnChips.innerHTML = "";
         manualColumns.forEach(function (name, idx) {
             var chip = document.createElement("span");
             chip.className = "group-chip";
-            chip.innerHTML =
-                escapeHtml(name) +
-                ' <span class="remove-group" data-idx="' + idx + '">&times;</span>';
+            var isProtected = name.toLowerCase() === "condition";
+            if (isProtected) {
+                chip.classList.add("protected");
+                chip.innerHTML = escapeHtml(name);
+            } else {
+                chip.innerHTML =
+                    escapeHtml(name) +
+                    ' <span class="remove-group" data-idx="' + idx + '">&times;</span>';
+            }
             columnChips.appendChild(chip);
         });
 
@@ -1013,7 +1182,11 @@
                 if (columnMapping.batch_effect === removed) columnMapping.batch_effect = null;
                 columnMapping.additional_covariates = columnMapping.additional_covariates
                     .filter(function (c) { return c !== removed; });
+                // Also remove selectable values for the removed column
+                delete columnSelectableValues[removed];
                 renderColumnChips();
+                syncConditionTargetDropdown();
+                renderConditionChips();
                 rebuildMetadataTable();
                 updateColumnMappingOptions();
                 validateAll();
@@ -1110,21 +1283,48 @@
             // Dynamic column cells
             cols.forEach(function (col) {
                 var td = document.createElement("td");
-                var input = document.createElement("input");
-                input.type = "text";
-                input.className = "rna-input meta-cell-input";
-                input.placeholder = col;
-                input.dataset.sample = name;
-                input.dataset.column = col;
-                // Restore previous value if it exists
-                if (prevValues[name] && prevValues[name][col] !== undefined) {
-                    input.value = prevValues[name][col];
+                var selectableVals = columnSelectableValues[col];
+                var hasSelectable = selectableVals && selectableVals.length > 0;
+
+                if (hasSelectable) {
+                    var select = document.createElement("select");
+                    select.className = "rna-input rna-select meta-cell-input";
+                    select.dataset.sample = name;
+                    select.dataset.column = col;
+                    var emptyOpt = document.createElement("option");
+                    emptyOpt.value = "";
+                    emptyOpt.textContent = "-- Select --";
+                    select.appendChild(emptyOpt);
+                    selectableVals.forEach(function (v) {
+                        var opt = document.createElement("option");
+                        opt.value = v;
+                        opt.textContent = v;
+                        select.appendChild(opt);
+                    });
+                    if (prevValues[name] && prevValues[name][col] !== undefined) {
+                        select.value = prevValues[name][col];
+                    }
+                    select.addEventListener("change", function () {
+                        updateColumnMappingOptions();
+                        validateAll();
+                    });
+                    td.appendChild(select);
+                } else {
+                    var input = document.createElement("input");
+                    input.type = "text";
+                    input.className = "rna-input meta-cell-input";
+                    input.placeholder = col;
+                    input.dataset.sample = name;
+                    input.dataset.column = col;
+                    if (prevValues[name] && prevValues[name][col] !== undefined) {
+                        input.value = prevValues[name][col];
+                    }
+                    input.addEventListener("input", function () {
+                        updateColumnMappingOptions();
+                        validateAll();
+                    });
+                    td.appendChild(input);
                 }
-                input.addEventListener("input", function () {
-                    updateColumnMappingOptions();
-                    validateAll();
-                });
-                td.appendChild(input);
                 tr.appendChild(td);
             });
 
@@ -1188,9 +1388,11 @@
         if (cols.length === 0) {
             columnMappingSection.style.display = "none";
             contrastSection.style.display = "none";
+            rolesContrastRow.style.display = "none";
             return;
         }
         columnMappingSection.style.display = "";
+        rolesContrastRow.style.display = "";
 
         // ── Primary Group dropdown ──
         var prevPrimary = columnMapping.primary_group;
@@ -1632,83 +1834,88 @@
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Uploading files...';
 
-        // 1. Upload data files based on entry point
-        if (inputDataType === "fastq") {
-            var fastqOk = await uploadFastqFiles();
-            if (!fastqOk) { resetSubmitBtn(); return; }
-        } else if (inputDataType === "alignment") {
-            var bamOk = await uploadBamFiles();
-            if (!bamOk) { resetSubmitBtn(); return; }
-        } else if (inputDataType === "matrix") {
-            var matrixOk = await uploadMatrixFile();
-            if (!matrixOk) { resetSubmitBtn(); return; }
-        }
-
-        // 2. Upload custom genome if needed (fastq & alignment only)
-        if (inputDataType !== "matrix" && genomeSelect.value === "custom") {
-            submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Uploading genome...';
-            var genomeOk = await uploadCustomGenome();
-            if (!genomeOk) { resetSubmitBtn(); return; }
-        }
-
-        // 3. Upload CSV metadata if applicable
-        if (getMetadataMode() === "upload" && csvFile) {
-            submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Uploading metadata...';
-            var csvOk = await uploadCsvFile();
-            if (!csvOk) { resetSubmitBtn(); return; }
-        }
-
-        // 4. Build and send the pipeline payload
-        submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Starting pipeline...';
-
-        var payload = {
-            submission_id: submissionId,
-            input_data_type: inputDataType,
-            metadata_mode: getMetadataMode(),
-            adjusted_pvalue: parseFloat(adjPvalue.value) || 0.05,
-            min_log2fc: parseFloat(minLog2fc.value) || -1.0,
-            max_log2fc: parseFloat(maxLog2fc.value) || 1.0,
-            metadata_payload: buildMetadataPayload(),
-        };
-
-        // Add fields specific to entry points
-        if (inputDataType === "fastq") {
-            payload.library_type = getLibraryType();
-            payload.strandedness = document.getElementById("strandedness").value;
-            payload.reference_genome = genomeSelect.value;
-            payload.quant_level = quantLevel.value;
-            if (genomeSelect.value === "custom") {
-                payload.custom_genome_name = customGenomeName.value.trim();
+        try {
+            // 1. Upload data files based on entry point
+            if (inputDataType === "fastq") {
+                var fastqOk = await uploadFastqFiles();
+                if (!fastqOk) { resetSubmitBtn(); return; }
+            } else if (inputDataType === "alignment") {
+                var bamOk = await uploadBamFiles();
+                if (!bamOk) { resetSubmitBtn(); return; }
+            } else if (inputDataType === "matrix") {
+                var matrixOk = await uploadMatrixFile();
+                if (!matrixOk) { resetSubmitBtn(); return; }
             }
-        } else if (inputDataType === "alignment") {
-            var alignLibChecked = document.querySelector('input[name="library_type_alignment"]:checked');
-            payload.library_type = alignLibChecked ? alignLibChecked.value : "single";
-            payload.strandedness = strandednessAlignment.value;
-            payload.reference_genome = genomeSelect.value;
-            payload.quant_level = quantLevel.value;
-            if (genomeSelect.value === "custom") {
-                payload.custom_genome_name = customGenomeName.value.trim();
+
+            // 2. Upload custom genome if needed (fastq & alignment only)
+            if (inputDataType !== "matrix" && genomeSelect.value === "custom") {
+                submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Uploading genome...';
+                var genomeOk = await uploadCustomGenome();
+                if (!genomeOk) { resetSubmitBtn(); return; }
             }
-        }
-        // matrix entry: no library_type, strandedness, genome needed
 
-        var res = await fetch("/api/pipeline/core", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRFToken": CSRF,
-            },
-            body: JSON.stringify(payload),
-        });
+            // 3. Upload CSV metadata if applicable
+            if (getMetadataMode() === "upload" && csvFile) {
+                submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Uploading metadata...';
+                var csvOk = await uploadCsvFile();
+                if (!csvOk) { resetSubmitBtn(); return; }
+            }
 
-        if (res.ok) {
-            var data = await res.json();
-            window.location.href = "/processing/" + data.job_id + "/";
-        } else {
-            var errData = null;
-            try { errData = await res.json(); } catch (e) { /* ignore */ }
-            var errMsg = (errData && errData.error) ? errData.error : "Pipeline submission failed.";
-            alert(errMsg);
+            // 4. Build and send the pipeline payload
+            submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Starting pipeline...';
+
+            var payload = {
+                submission_id: submissionId,
+                input_data_type: inputDataType,
+                metadata_mode: getMetadataMode(),
+                adjusted_pvalue: parseFloat(adjPvalue.value) || 0.05,
+                min_log2fc: parseFloat(minLog2fc.value) || -1.0,
+                max_log2fc: parseFloat(maxLog2fc.value) || 1.0,
+                metadata_payload: buildMetadataPayload(),
+            };
+
+            // Add fields specific to entry points
+            if (inputDataType === "fastq") {
+                payload.library_type = getLibraryType();
+                payload.strandedness = document.getElementById("strandedness").value;
+                payload.reference_genome = genomeSelect.value;
+                payload.quant_level = quantLevel.value;
+                if (genomeSelect.value === "custom") {
+                    payload.custom_genome_name = customGenomeName.value.trim();
+                }
+            } else if (inputDataType === "alignment") {
+                var alignLibChecked = document.querySelector('input[name="library_type_alignment"]:checked');
+                payload.library_type = alignLibChecked ? alignLibChecked.value : "single";
+                payload.strandedness = strandednessAlignment.value;
+                payload.reference_genome = genomeSelect.value;
+                payload.quant_level = quantLevel.value;
+                if (genomeSelect.value === "custom") {
+                    payload.custom_genome_name = customGenomeName.value.trim();
+                }
+            }
+            // matrix entry: no library_type, strandedness, genome needed
+
+            var res = await fetch("/api/pipeline/core", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": CSRF,
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (res.ok) {
+                var data = await res.json();
+                window.location.href = "/processing/" + data.job_id + "/";
+            } else {
+                var errData = null;
+                try { errData = await res.json(); } catch (e) { /* ignore */ }
+                var errMsg = (errData && errData.error) ? errData.error : "Pipeline submission failed.";
+                alert(errMsg);
+                resetSubmitBtn();
+            }
+        } catch (err) {
+            alert("Network error: " + err.message);
             resetSubmitBtn();
         }
     });
@@ -1756,5 +1963,7 @@
     // ── Initialize ──
     updateThresholdPreview();
     renderColumnChips();
+    syncConditionTargetDropdown();
+    renderConditionChips();
     applyEntryPointVisibility();
 })();

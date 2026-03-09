@@ -395,6 +395,54 @@
     margin-bottom: 0;
 }
 
+/* Styled file input for genome uploads */
+.genome-file-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+
+.genome-file-input-wrap input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.genome-file-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .45rem .85rem;
+    font-size: .76rem;
+    font-weight: 600;
+    font-family: var(--rna-font-body);
+    color: var(--rna-teal);
+    background: rgba(5, 154, 152, .08);
+    border: 1.5px solid rgba(5, 154, 152, .25);
+    border-radius: var(--rna-radius-md);
+    cursor: pointer;
+    transition: all .2s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.genome-file-input-wrap:hover .genome-file-btn {
+    background: rgba(5, 154, 152, .14);
+    border-color: var(--rna-teal);
+}
+
+.genome-file-name {
+    font-size: .72rem;
+    color: var(--rna-grey-500);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
 /* ── Metadata Toggle ── */
 .meta-toggle-group {
     display: flex;
@@ -544,19 +592,41 @@
 
 .threshold-summary {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: .5rem;
-    padding: .75rem .85rem;
-    background: rgba(5, 154, 152, .06);
-    border-radius: var(--rna-radius-sm);
+    padding: .75rem 1rem;
+    background: linear-gradient(135deg, rgba(5, 154, 152, .04), rgba(2, 66, 110, .04));
+    border: 1px solid rgba(5, 154, 152, .18);
+    border-left: 3px solid var(--rna-teal);
+    border-radius: 0 var(--rna-radius-md) var(--rna-radius-md) 0;
     font-size: .78rem;
     color: var(--rna-grey-700);
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
-.threshold-summary i {
+.threshold-summary .threshold-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(5, 154, 152, .12);
     color: var(--rna-teal);
-    margin-top: .1rem;
+    font-size: .85rem;
+    flex-shrink: 0;
+}
+
+.threshold-summary span {
+    flex: 1;
+}
+
+.threshold-summary strong {
+    color: var(--rna-teal);
+    font-weight: 700;
+    background: rgba(5, 154, 152, .08);
+    padding: .1rem .35rem;
+    border-radius: .2rem;
 }
 
 /* ── Manual Metadata Panel ── */
@@ -565,7 +635,7 @@
 }
 
 .group-builder {
-    max-width: 500px;
+    max-width: none;
 }
 
 .group-input-row {
@@ -602,6 +672,21 @@
     color: var(--rna-accent-red);
     font-size: .65rem;
     margin-left: .15rem;
+}
+
+/* ── File Pills Container (scrollable) ── */
+#file-pills,
+#bam-file-pills {
+    max-height: 5.6rem;
+    overflow-y: auto;
+    padding-right: .25rem;
+}
+
+/* Scrollable chips area */
+.group-chips-scroll {
+    max-height: 4.8rem;
+    overflow-y: auto;
+    padding-right: .15rem;
 }
 
 /* ── File Pills (reused from setup wizard) ── */
@@ -688,14 +773,88 @@
 }
 
 /* ── Metadata table within manual panel ── */
+#metadata-table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+#metadata-table thead th {
+    background: var(--rna-navy);
+    color: #fff;
+    padding: .6rem .85rem;
+    font-size: .72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    white-space: nowrap;
+    text-align: left;
+    border-bottom: none;
+}
+
+#metadata-table thead th:first-child {
+    text-align: center;
+    border-radius: var(--rna-radius-sm) 0 0 0;
+}
+
+#metadata-table thead th:last-child {
+    border-radius: 0 var(--rna-radius-sm) 0 0;
+}
+
+#metadata-table tbody td {
+    padding: .45rem .65rem;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--rna-grey-100);
+    background: #fff;
+}
+
+#metadata-table tbody tr:hover td {
+    background: rgba(5, 154, 152, .02);
+}
+
+#metadata-table tbody td:first-child {
+    text-align: center;
+    vertical-align: middle;
+    font-size: .75rem;
+    background: var(--rna-grey-50);
+    border-right: 1px solid var(--rna-grey-100);
+    white-space: nowrap;
+    min-width: 140px;
+}
+
+#metadata-table tbody td:first-child code {
+    font-size: .72rem;
+    color: var(--rna-navy);
+    font-weight: 500;
+    background: none;
+    padding: 0;
+}
+
 #metadata-table input,
 #metadata-table select {
-    padding: .3rem .5rem;
+    padding: .35rem .55rem;
     font-size: .75rem;
+    border: 1.5px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-sm);
+    transition: border-color .2s, box-shadow .2s;
+    width: 100%;
+    min-width: 100px;
+}
+
+#metadata-table input:focus,
+#metadata-table select:focus {
+    border-color: var(--rna-teal);
+    box-shadow: 0 0 0 2px rgba(5, 154, 152, .1);
+    outline: none;
 }
 
 #metadata-table select {
-    min-width: 120px;
+    cursor: pointer;
+    background-color: #fff;
+}
+
+#metadata-table input::placeholder {
+    color: var(--rna-grey-400);
+    font-style: italic;
 }
 
 /* ── Responsive: collapse to 2 then 1 column ── */
@@ -735,9 +894,10 @@
 
 .column-mapping-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 1rem;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1.15rem;
     margin-bottom: 1rem;
+    align-items: start;
 }
 
 .mapping-field {
@@ -748,6 +908,14 @@
 
 .mapping-field .rna-label {
     margin-bottom: 0;
+}
+
+/* Covariates list alignment */
+#covariates-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    margin-top: 0;
 }
 
 /* ── Covariate Checkboxes ── */
@@ -865,10 +1033,144 @@
 
 .meta-cell-input {
     width: 100%;
-    padding: .3rem .5rem !important;
+    padding: .35rem .55rem !important;
     font-size: .75rem !important;
 }
 
-#metadata-table th {
-    white-space: nowrap;
+/* Scrollable metadata table wrapper */
+.metadata-table-wrap {
+    max-height: 360px;
+    overflow-y: auto;
+    overflow-x: auto;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .04);
+}
+
+.metadata-table-wrap .rna-table {
+    margin: 0;
+}
+
+.metadata-table-wrap .rna-table thead th,
+.metadata-table-wrap #metadata-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Matrix Mode – Center 3 cards
+   ═══════════════════════════════════════════════════════════════════ */
+
+.setup-grid.matrix-mode {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 1400px) {
+    .setup-grid.matrix-mode {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .setup-grid.matrix-mode {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Metadata Builder – Side-by-side Column + Condition Builders
+   ═══════════════════════════════════════════════════════════════════ */
+
+.metadata-builder-top {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+}
+
+.metadata-builder-top .group-builder {
+    flex: 1;
+    max-width: none;
+}
+
+.condition-builder {
+    flex: 1;
+}
+
+.condition-builder .group-input-row {
+    display: flex;
+    gap: .65rem;
+    align-items: center;
+}
+
+.condition-builder .group-input-row .rna-input {
+    flex: 1;
+}
+
+.condition-builder .rna-select.column-target-select {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 130px;
+}
+
+.condition-chip {
+    background: rgba(245, 158, 11, .1) !important;
+    border-color: rgba(245, 158, 11, .25) !important;
+}
+
+.condition-chip .chip-col-label {
+    font-size: .62rem;
+    font-weight: 400;
+    color: var(--rna-grey-500);
+    margin-left: .1rem;
+}
+
+/* Contrast list scrollable */
+#contrast-list {
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+    .metadata-builder-top {
+        flex-direction: column;
+    }
+}
+
+/* ── Protected Column Chip (no delete) ── */
+
+.group-chip.protected {
+    background: rgba(2, 66, 110, .1);
+    border-color: rgba(2, 66, 110, .25);
+    cursor: default;
+    padding-right: .65rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Roles + Contrast – Horizontal Equal-Height Row
+   ═══════════════════════════════════════════════════════════════════ */
+
+.roles-contrast-row {
+    display: flex;
+    gap: 1.15rem;
+    align-items: stretch;
+}
+
+.roles-contrast-row>.column-mapping-panel,
+.roles-contrast-row>.contrast-builder-panel {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.roles-contrast-row>.column-mapping-panel>.rna-card-body,
+.roles-contrast-row>.contrast-builder-panel>.rna-card-body {
+    flex: 1;
+}
+
+@media (max-width: 900px) {
+    .roles-contrast-row {
+        flex-direction: column;
+    }
 }
