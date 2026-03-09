@@ -1,173 +1,693 @@
 {% extends "pipeline/base.html" %}
 {% load static %}
 
-{% block title %}RNAseek – New Analysis{% endblock %}
+{% block title %}RNAseek – Core Pipeline Setup{% endblock %}
 
 {% block extra_css %}
-<style>
-    .wizard-step {
-        display: none;
-    }
-
-    .wizard-step.active {
-        display: block;
-    }
-
-    .file-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: .35rem;
-        padding: .3rem .65rem;
-        background: rgba(5, 154, 152, .08);
-        border: 1px solid rgba(5, 154, 152, .2);
-        border-radius: 50px;
-        font-size: .78rem;
-        font-weight: 500;
-        color: var(--rna-navy);
-        margin: .25rem;
-    }
-
-    .file-pill .remove-file {
-        cursor: pointer;
-        color: var(--rna-accent-red);
-        font-size: .7rem;
-        margin-left: .2rem;
-    }
-
-    #metadata-table input,
-    #metadata-table select {
-        padding: .35rem .55rem;
-        font-size: .78rem;
-    }
-</style>
+<link rel="stylesheet" href="{% static 'pipeline/css/pipeline_setup.css' %}">
 {% endblock %}
 
 {% block content %}
-<section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
-    <h1 class="rna-section-title rna-mb-1">Setup Wizard</h1>
-    <p class="rna-section-subtitle">Configure your RNA-seq analysis in three steps.</p>
-
-    <!-- Wizard Steps Indicator -->
-    <div class="rna-steps rna-mb-3" id="wizard-steps">
-        <div class="rna-step active" data-step="1"><i class="bi bi-cloud-arrow-up"></i> Upload Data</div>
-        <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
-        <div class="rna-step" data-step="2"><i class="bi bi-database"></i> Reference Genome</div>
-        <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
-        <div class="rna-step" data-step="3"><i class="bi bi-table"></i> Metadata Mapping</div>
+<!-- ═══ Hero Banner ═══ -->
+<section class="setup-hero">
+    <div class="setup-hero-inner rna-container">
+        <div>
+            <h1 class="setup-hero-title">Core Pipeline Setup</h1>
+            <p class="setup-hero-desc">
+                Configure your RNA-Seq analysis in one page. Choose your starting point,
+                define your experimental design, and set significance thresholds.
+            </p>
+        </div>
+        <div class="setup-hero-tools">
+            <span class="tool-chip">FastQC</span>
+            <span class="tool-chip">Trimmomatic</span>
+            <span class="tool-chip">HISAT2</span>
+            <span class="tool-chip">featureCounts</span>
+            <span class="tool-chip">DESeq2</span>
+            <span class="tool-chip">MultiQC</span>
+        </div>
     </div>
+</section>
 
-    <!-- ═══ Step 1: File Upload ═══ -->
-    <div class="wizard-step active" id="step-1">
-        <div class="rna-card">
+<!-- ═══ Entry Point Selector ═══ -->
+<section class="rna-container rna-mt-3">
+    <div class="rna-card">
+        <div class="rna-card-header">
+            <i class="bi bi-signpost-split"></i>&ensp;Choose Your Starting Point
+        </div>
+        <div class="rna-card-body">
+            <div class="entry-point-group" id="entry-point-group">
+                <label class="entry-point-card selected" id="ep-fastq">
+                    <input type="radio" name="input_data_type" value="fastq" checked>
+                    <div class="ep-icon"><i class="bi bi-file-earmark-zip"></i></div>
+                    <div class="ep-content">
+                        <div class="ep-title">FASTQ Files</div>
+                        <div class="ep-desc">Start from raw reads. Full pipeline: QC, trimming,
+                            alignment, quantification, and statistics.</div>
+                        <div class="ep-tags">
+                            <span class="ep-tag">FastQC</span>
+                            <span class="ep-tag">Trimmomatic</span>
+                            <span class="ep-tag">HISAT2</span>
+                            <span class="ep-tag">featureCounts</span>
+                            <span class="ep-tag">DESeq2</span>
+                        </div>
+                    </div>
+                </label>
+                <label class="entry-point-card" id="ep-alignment">
+                    <input type="radio" name="input_data_type" value="alignment">
+                    <div class="ep-icon"><i class="bi bi-body-text"></i></div>
+                    <div class="ep-content">
+                        <div class="ep-title">BAM/CRAM Alignment</div>
+                        <div class="ep-desc">Start from aligned reads. Skip QC and alignment;
+                            go straight to quantification and statistics.</div>
+                        <div class="ep-tags">
+                            <span class="ep-tag">featureCounts</span>
+                            <span class="ep-tag">DESeq2</span>
+                        </div>
+                    </div>
+                </label>
+                <label class="entry-point-card" id="ep-matrix">
+                    <input type="radio" name="input_data_type" value="matrix">
+                    <div class="ep-icon"><i class="bi bi-grid-3x3"></i></div>
+                    <div class="ep-content">
+                        <div class="ep-title">Count Matrix (CSV/TSV)</div>
+                        <div class="ep-desc">Start from a pre-computed raw count matrix. Skip
+                            directly to differential expression statistics.</div>
+                        <div class="ep-tags">
+                            <span class="ep-tag">DESeq2</span>
+                        </div>
+                    </div>
+                </label>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ Main 4-Column Grid ═══ -->
+<section class="rna-container rna-mt-3 rna-mb-4">
+    <div class="setup-grid">
+
+        <!-- ── Column 1: Upload FASTQ ── -->
+        <div class="rna-card setup-col" id="col-fastq">
             <div class="rna-card-header">
-                <i class="bi bi-cloud-arrow-up"></i>&ensp;Step 1: Upload Raw FASTQ Files
+                <i class="bi bi-cloud-arrow-up"></i>&ensp;Upload FASTQ
+                <span class="header-tag">FastQC &middot; Trimmomatic</span>
             </div>
             <div class="rna-card-body">
-                <div class="rna-drop-zone" id="drop-zone">
-                    <i class="bi bi-cloud-arrow-up"></i>
-                    <span>Drag &amp; drop <code>.fq.gz</code> / <code>.fastq.gz</code> files here</span>
-                    <span class="rna-text-xs rna-text-muted">or click to browse</span>
-                    <input type="file" id="fastq-input" accept=".fq.gz,.fastq.gz,.gz" multiple style="display: none;">
+
+                <!-- Library Type -->
+                <label class="rna-label">Library Type <span class="required">*</span>
+                    <span class="input-tip"><i class="bi bi-question-circle"></i>
+                        <span class="tip-text">Choose Single-End if each sample has one FASTQ file, or Paired-End if
+                            each sample has two (R1 + R2) files from paired-end sequencing.</span>
+                    </span>
+                </label>
+                <div class="library-type-group">
+                    <label class="library-type-card" id="lt-single">
+                        <div class="lt-title">
+                            <input type="radio" name="library_type" value="single" id="lib-single">
+                            Single-End
+                        </div>
+                        <div class="lt-desc">One FASTQ per sample.</div>
+                    </label>
+                    <label class="library-type-card" id="lt-paired">
+                        <div class="lt-title">
+                            <input type="radio" name="library_type" value="paired" id="lib-paired">
+                            Paired-End
+                        </div>
+                        <div class="lt-desc">Two FASTQs per sample (R1 + R2).</div>
+                    </label>
                 </div>
 
-                <div id="file-list" class="rna-mt-2" style="display: none;">
+                <div class="naming-tip" id="paired-end-tip">
+                    <strong><i class="bi bi-info-circle"></i> Paired-end naming:</strong><br>
+                    Files must share a prefix with <code>_R1</code>/<code>_R2</code> or <code>_1</code>/<code>_2</code>
+                    suffixes.<br>
+                    e.g. <code>SampleA_R1.fastq.gz</code> / <code>SampleA_R2.fastq.gz</code>
+                </div>
+
+                <!-- Strandedness (Pro-tip: critical for HISAT2 & featureCounts) -->
+                <div class="rna-mt-2">
+                    <label class="rna-label">
+                        Strandedness
+                        <span class="pro-tip">
+                            <i class="bi bi-lightbulb"></i> Pro-tip
+                            <span class="tip-text">Required by HISAT2 (<code>--rna-strandness</code>) and featureCounts
+                                (<code>-s</code>). If unsure, leave Unstranded – most modern kits are unstranded.</span>
+                        </span>
+                    </label>
+                    <select class="rna-input rna-select" id="strandedness">
+                        <option value="unstranded" selected>Unstranded (default)</option>
+                        <option value="fr-firststrand">Forward-Reverse (fr-firststrand / dUTP)</option>
+                        <option value="fr-secondstrand">Forward-Reverse (fr-secondstrand)</option>
+                    </select>
+                </div>
+
+                <!-- Drop Zone -->
+                <div class="rna-mt-2">
+                    <label class="rna-label">FASTQ Files <span class="required">*</span>
+                        <span class="input-tip"><i class="bi bi-question-circle"></i>
+                            <span class="tip-text">Upload compressed FASTQ files (<code>.fq.gz</code> or
+                                <code>.fastq.gz</code>). Files are uploaded in 5 MB chunks – large files are
+                                supported.</span>
+                        </span>
+                    </label>
+                    <div class="rna-drop-zone" id="drop-zone">
+                        <i class="bi bi-cloud-arrow-up"></i>
+                        <span>Drag &amp; drop <code>.fq.gz</code> / <code>.fastq.gz</code> files</span>
+                        <span class="rna-text-xs rna-text-muted">or click to browse</span>
+                        <input type="file" id="fastq-input" accept=".fq.gz,.fastq.gz,.gz" multiple
+                            style="display:none;">
+                    </div>
+                </div>
+
+                <div id="file-list" class="rna-mt-1" style="display:none;">
                     <p class="rna-label">Selected files:</p>
                     <div id="file-pills"></div>
                 </div>
 
-                <div id="upload-progress-area" class="rna-mt-2"></div>
+                <div id="upload-progress-area" class="rna-mt-1"></div>
 
-                <!-- Paired-end toggle -->
-                <div class="rna-mt-2 rna-flex" style="align-items: center; gap: .75rem;">
-                    <label class="rna-label" style="margin: 0;">Paired-End Reads:</label>
-                    <label
-                        style="display: inline-flex; align-items: center; gap: .35rem; font-size: .82rem; cursor: pointer;">
-                        <input type="checkbox" id="paired-end-toggle"> Auto-detected. Check to force Paired-End mode.
-                    </label>
-                </div>
-
-                <div class="rna-flex rna-mt-3" style="justify-content: flex-end;">
-                    <button class="btn-rna btn-rna-primary btn-rna-sm" id="step1-next" disabled>
-                        Next: Select Reference <i class="bi bi-arrow-right"></i>
-                    </button>
-                </div>
+                <!-- Pair validation message -->
+                <div id="pair-validation" class="validation-msg" style="display:none;"></div>
             </div>
         </div>
-    </div>
 
-    <!-- ═══ Step 2: Reference Genome ═══ -->
-    <div class="wizard-step" id="step-2">
-        <div class="rna-card">
+        <!-- ── Column 1b: Upload BAM/CRAM (alignment entry) ── -->
+        <div class="rna-card setup-col" id="col-alignment" style="display:none;">
             <div class="rna-card-header">
-                <i class="bi bi-database"></i>&ensp;Step 2: Select Reference Genome
+                <i class="bi bi-cloud-arrow-up"></i>&ensp;Upload BAM/CRAM
+                <span class="header-tag">featureCounts</span>
             </div>
             <div class="rna-card-body">
-                <div style="max-width: 450px;">
-                    <label class="rna-label">Reference Genome</label>
-                    <select class="rna-input rna-select" id="genome-select">
-                        <option value="">— Select a reference genome —</option>
-                        <option value="GRCh38">Homo sapiens – GRCh38 (hg38)</option>
-                        <option value="GRCm39">Mus musculus – GRCm39 (mm39)</option>
-                        <option value="mRatBN7.2">Rattus norvegicus – mRatBN7.2</option>
-                        <option value="GRCz11">Danio rerio – GRCz11</option>
-                        <option value="BDGP6">Drosophila melanogaster – BDGP6</option>
+                <!-- Strandedness for featureCounts -->
+                <div>
+                    <label class="rna-label">
+                        Strandedness
+                        <span class="pro-tip">
+                            <i class="bi bi-lightbulb"></i> Pro-tip
+                            <span class="tip-text">Required by featureCounts (<code>-s</code>).
+                                If unsure, leave Unstranded.</span>
+                        </span>
+                    </label>
+                    <select class="rna-input rna-select" id="strandedness-alignment">
+                        <option value="unstranded" selected>Unstranded (default)</option>
+                        <option value="fr-firststrand">Forward-Reverse (fr-firststrand / dUTP)</option>
+                        <option value="fr-secondstrand">Forward-Reverse (fr-secondstrand)</option>
                     </select>
                 </div>
 
-                <div class="rna-flex rna-mt-3 rna-gap-2" style="justify-content: flex-end;">
-                    <button class="btn-rna btn-rna-outline btn-rna-sm" id="step2-back">
-                        <i class="bi bi-arrow-left"></i> Back
+                <!-- Library type for featureCounts paired flag -->
+                <div class="rna-mt-2">
+                    <label class="rna-label">Library Type
+                        <span class="input-tip"><i class="bi bi-question-circle"></i>
+                            <span class="tip-text">Controls the <code>-p --countReadPairs</code> flag
+                                in featureCounts. Select Paired-End if your BAMs are from paired-end
+                                sequencing.</span>
+                        </span>
+                    </label>
+                    <div class="library-type-group">
+                        <label class="library-type-card" id="lt-single-align">
+                            <div class="lt-title">
+                                <input type="radio" name="library_type_alignment" value="single" id="lib-single-align"
+                                    checked>
+                                Single-End
+                            </div>
+                            <div class="lt-desc">Single-end aligned reads.</div>
+                        </label>
+                        <label class="library-type-card selected" id="lt-paired-align">
+                            <div class="lt-title">
+                                <input type="radio" name="library_type_alignment" value="paired" id="lib-paired-align">
+                                Paired-End
+                            </div>
+                            <div class="lt-desc">Paired-end aligned reads.</div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Drop Zone for BAM/CRAM -->
+                <div class="rna-mt-2">
+                    <label class="rna-label">BAM/CRAM Files <span class="required">*</span>
+                        <span class="input-tip"><i class="bi bi-question-circle"></i>
+                            <span class="tip-text">Upload coordinate-sorted BAM or CRAM alignment
+                                files. CRAM files will be converted to BAM automatically.</span>
+                        </span>
+                    </label>
+                    <div class="rna-drop-zone" id="bam-drop-zone">
+                        <i class="bi bi-cloud-arrow-up"></i>
+                        <span>Drag &amp; drop <code>.bam</code> / <code>.cram</code> files</span>
+                        <span class="rna-text-xs rna-text-muted">or click to browse</span>
+                        <input type="file" id="bam-input" accept=".bam,.cram" multiple style="display:none;">
+                    </div>
+                </div>
+
+                <div id="bam-file-list" class="rna-mt-1" style="display:none;">
+                    <p class="rna-label">Selected files:</p>
+                    <div id="bam-file-pills"></div>
+                </div>
+                <div id="bam-upload-progress-area" class="rna-mt-1"></div>
+            </div>
+        </div>
+
+        <!-- ── Column 1c: Upload Count Matrix (matrix entry) ── -->
+        <div class="rna-card setup-col" id="col-matrix" style="display:none;">
+            <div class="rna-card-header">
+                <i class="bi bi-cloud-arrow-up"></i>&ensp;Upload Count Matrix
+                <span class="header-tag">DESeq2</span>
+            </div>
+            <div class="rna-card-body">
+                <label class="rna-label">Raw Count Matrix <span class="required">*</span>
+                    <span class="input-tip"><i class="bi bi-question-circle"></i>
+                        <span class="tip-text">Upload a CSV or TSV with gene IDs as the first column
+                            and raw integer counts for each sample. Do <strong>not</strong> upload
+                            normalized counts (TPM, FPKM, etc.).</span>
+                    </span>
+                </label>
+                <div class="rna-drop-zone" id="matrix-drop-zone">
+                    <i class="bi bi-grid-3x3"></i>
+                    <span>Drag &amp; drop a <code>.csv</code> / <code>.tsv</code> count matrix</span>
+                    <span class="rna-text-xs rna-text-muted">or click to browse</span>
+                    <input type="file" id="matrix-input" accept=".csv,.tsv,.txt" style="display:none;">
+                </div>
+                <div id="matrix-file-name" class="rna-mt-1 rna-text-xs" style="display:none;"></div>
+                <div id="matrix-preview-area" class="rna-mt-1" style="display:none;"></div>
+                <div id="matrix-validation" class="validation-msg rna-mt-1" style="display:none;"></div>
+
+                <div class="rna-mt-2 csv-format-hint">
+                    <strong>Expected format:</strong> First column = gene/feature ID.
+                    Remaining columns = raw integer counts per sample. Column headers must
+                    match sample names in your metadata.
+                </div>
+
+                <div class="csv-example">
+                    <div class="csv-example-header">
+                        <span><i class="bi bi-grid-3x3"></i> raw_counts.csv</span>
+                        <span>Example</span>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>gene_id</th>
+                                <th>SampleA</th>
+                                <th>SampleB</th>
+                                <th>SampleC</th>
+                                <th>SampleD</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>ENSG00000141510</td>
+                                <td>1024</td>
+                                <td>987</td>
+                                <td>2301</td>
+                                <td>2156</td>
+                            </tr>
+                            <tr>
+                                <td>ENSG00000171862</td>
+                                <td>512</td>
+                                <td>498</td>
+                                <td>1105</td>
+                                <td>1089</td>
+                            </tr>
+                            <tr>
+                                <td>ENSG00000157764</td>
+                                <td>78</td>
+                                <td>82</td>
+                                <td>210</td>
+                                <td>195</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Column 2: Reference Genome ── -->
+        <div class="rna-card setup-col" id="col-genome">
+            <div class="rna-card-header">
+                <i class="bi bi-database"></i>&ensp;Reference Genome
+                <span class="header-tag">HISAT2 &middot; featureCounts</span>
+            </div>
+            <div class="rna-card-body">
+                <label class="rna-label">Pre-indexed Genome <span class="required">*</span>
+                    <span class="input-tip"><i class="bi bi-question-circle"></i>
+                        <span class="tip-text">Select the reference genome matching your organism. HISAT2 uses pre-built
+                            indices for fast splice-aware alignment. Choose "Custom" to upload your own.</span>
+                    </span>
+                </label>
+                <select class="rna-input rna-select" id="genome-select">
+                    <option value="">-- Select a reference genome --</option>
+                    {% for group in genome_choices %}
+                    <optgroup label="{{ group.group }}">
+                        {% for opt in group.options %}
+                        <option value="{{ opt.value }}">{{ opt.label }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                    <optgroup label="Custom">
+                        <option value="custom">Custom Genome...</option>
+                    </optgroup>
+                </select>
+
+                <!-- Custom Genome Section -->
+                <div class="custom-genome-section" id="custom-genome-section">
+                    <h4 class="custom-genome-heading">
+                        <i class="bi bi-gear"></i> Custom Genome Configuration
+                    </h4>
+
+                    <div class="custom-genome-field">
+                        <label class="rna-label">Genome Name <span class="required">*</span></label>
+                        <input type="text" class="rna-input" id="custom-genome-name" placeholder="e.g. MyOrganism_v1">
+                    </div>
+
+                    <div class="custom-genome-field">
+                        <label class="rna-label">Reference FASTA <span class="required">*</span></label>
+                        <p class="rna-text-xs rna-text-muted">Upload <code>.fa</code>, <code>.fasta</code>, or
+                            <code>.fa.gz</code>
+                        </p>
+                        <input type="file" class="rna-input" id="custom-genome-fasta"
+                            accept=".fa,.fasta,.fa.gz,.fasta.gz,.fna,.fna.gz">
+                    </div>
+
+                    <div class="custom-genome-field">
+                        <label class="rna-label">Annotation GTF/GFF <span class="required">*</span></label>
+                        <p class="rna-text-xs rna-text-muted">
+                            Required for featureCounts quantification.
+                        </p>
+                        <input type="file" class="rna-input" id="custom-genome-annotation"
+                            accept=".gtf,.gff,.gff3,.gtf.gz,.gff.gz,.gff3.gz">
+                    </div>
+                </div>
+
+                <!-- Gene-level vs Transcript-level (Pro-tip for featureCounts) -->
+                <div class="rna-mt-2">
+                    <label class="rna-label">
+                        Quantification Level
+                        <span class="pro-tip">
+                            <i class="bi bi-lightbulb"></i> Pro-tip
+                            <span class="tip-text">Controls the featureCounts <code>-t</code> flag. Gene-level counts
+                                exons per gene (default for most DE analyses). Transcript-level provides
+                                isoform-resolution counts for splicing analyses.</span>
+                        </span>
+                    </label>
+                    <select class="rna-input rna-select" id="quant-level">
+                        <option value="gene" selected>Gene-level (default)</option>
+                        <option value="transcript">Transcript-level</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Column 3: Metadata / Experimental Design ── -->
+        <div class="rna-card setup-col">
+            <div class="rna-card-header">
+                <i class="bi bi-table"></i>&ensp;Experimental Design
+                <span class="header-tag">DESeq2</span>
+            </div>
+            <div class="rna-card-body">
+                <label class="rna-label">Metadata Input Method <span class="required">*</span>
+                    <span class="input-tip"><i class="bi bi-question-circle"></i>
+                        <span class="tip-text">Upload a CSV file with sample-to-condition mappings, or manually assign
+                            samples to groups below. DESeq2 requires at least two conditions.</span>
+                    </span>
+                </label>
+                <div class="meta-toggle-group" id="meta-toggle">
+                    <button type="button" class="meta-toggle-btn active" data-mode="upload">
+                        <i class="bi bi-file-earmark-spreadsheet"></i> Upload CSV
                     </button>
-                    <button class="btn-rna btn-rna-primary btn-rna-sm" id="step2-next" disabled>
-                        Next: Metadata <i class="bi bi-arrow-right"></i>
+                    <button type="button" class="meta-toggle-btn" data-mode="manual">
+                        <i class="bi bi-pencil-square"></i> Manual Assignment
                     </button>
+                </div>
+
+                <!-- CSV Upload -->
+                <div class="meta-panel" id="meta-upload-panel">
+                    <div class="rna-mt-2">
+                        <label class="rna-label">Metadata CSV</label>
+                        <div class="rna-drop-zone rna-drop-zone-sm" id="csv-drop-zone">
+                            <i class="bi bi-filetype-csv"></i>
+                            <span>Drop your metadata <code>.csv</code> here</span>
+                            <input type="file" id="csv-input" accept=".csv,.tsv,.txt" style="display:none;">
+                        </div>
+                    </div>
+                    <div id="csv-file-name" class="rna-mt-1 rna-text-xs" style="display:none;"></div>
+
+                    <!-- Parsed CSV preview (populated by PapaParse) -->
+                    <div id="csv-preview-area" style="display:none;"></div>
+
+                    <div class="rna-mt-2 csv-format-hint">
+                        <strong>Expected format:</strong> First column = sample filename. Additional columns
+                        can be any metadata (condition, batch, age, sex, etc.). Columns are auto-detected.
+                    </div>
+
+                    <!-- CSV example mini-table -->
+                    <div class="csv-example">
+                        <div class="csv-example-header">
+                            <span><i class="bi bi-file-earmark-spreadsheet"></i> metadata.csv</span>
+                            <span>Example template</span>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>sample</th>
+                                    <th>condition</th>
+                                    <th>batch</th>
+                                    <th>age</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>SampleA_R1.fq.gz</td>
+                                    <td>Control</td>
+                                    <td class="col-optional">batch_1</td>
+                                    <td class="col-optional">25</td>
+                                </tr>
+                                <tr>
+                                    <td>SampleB_R1.fq.gz</td>
+                                    <td>Control</td>
+                                    <td class="col-optional">batch_2</td>
+                                    <td class="col-optional">30</td>
+                                </tr>
+                                <tr>
+                                    <td>SampleC_R1.fq.gz</td>
+                                    <td>Treatment</td>
+                                    <td class="col-optional">batch_1</td>
+                                    <td class="col-optional">28</td>
+                                </tr>
+                                <tr>
+                                    <td>SampleD_R1.fq.gz</td>
+                                    <td>Treatment</td>
+                                    <td class="col-optional">batch_2</td>
+                                    <td class="col-optional">32</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Manual Assignment (teaser, expanded in bottom panel) -->
+                <div class="meta-panel" id="meta-manual-panel" style="display:none;">
+                    <div class="rna-mt-2 manual-teaser">
+                        <i class="bi bi-arrow-down-circle"></i>
+                        <span>Use the <strong>Manual Metadata Builder</strong> panel below to define columns
+                            and assign values per sample.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Column 4: Significance Thresholds ── -->
+        <div class="rna-card setup-col">
+            <div class="rna-card-header">
+                <i class="bi bi-sliders2"></i>&ensp;Significance Thresholds
+                <span class="header-tag">DESeq2 &middot; Plots</span>
+            </div>
+            <div class="rna-card-body">
+                <div class="threshold-field">
+                    <label class="rna-label">Adjusted P-value Cutoff
+                        <span class="input-tip"><i class="bi bi-question-circle"></i>
+                            <span class="tip-text">Benjamini-Hochberg false discovery rate threshold. Genes with
+                                adjusted p-value below this cutoff are considered significant. Default: 0.05.</span>
+                        </span>
+                    </label>
+                    <input type="number" class="rna-input" id="adj-pvalue" value="0.05" min="0" max="1" step="0.01">
+                    <span class="rna-text-xs rna-text-muted">Benjamini-Hochberg FDR threshold</span>
+                </div>
+
+                <div class="threshold-field">
+                    <label class="rna-label">Min log2 Fold Change
+                        <span class="input-tip"><i class="bi bi-question-circle"></i>
+                            <span class="tip-text">Down-regulation cutoff. Genes with log2FC below this value (more
+                                negative) are flagged as significantly down-regulated on the volcano plot.</span>
+                        </span>
+                    </label>
+                    <input type="number" class="rna-input" id="min-log2fc" value="-1.0" step="0.1">
+                    <span class="rna-text-xs rna-text-muted">Down-regulation cutoff for volcano plot</span>
+                </div>
+
+                <div class="threshold-field">
+                    <label class="rna-label">Max log2 Fold Change
+                        <span class="input-tip"><i class="bi bi-question-circle"></i>
+                            <span class="tip-text">Up-regulation cutoff. Genes with log2FC above this value are flagged
+                                as significantly up-regulated on the volcano plot.</span>
+                        </span>
+                    </label>
+                    <input type="number" class="rna-input" id="max-log2fc" value="1.0" step="0.1">
+                    <span class="rna-text-xs rna-text-muted">Up-regulation cutoff for volcano plot</span>
+                </div>
+
+                <div class="threshold-summary rna-mt-2">
+                    <i class="bi bi-info-circle"></i>
+                    Genes with |log2FC| &ge; <strong id="fc-preview">1.0</strong>
+                    and padj &le; <strong id="pval-preview">0.05</strong> will be flagged as significant.
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ═══ Step 3: Metadata Mapping ═══ -->
-    <div class="wizard-step" id="step-3">
-        <div class="rna-card">
-            <div class="rna-card-header">
-                <i class="bi bi-table"></i>&ensp;Step 3: Map Experimental Metadata
+    <!-- ═══ Conditional Bottom Panel: Manual Metadata Builder ═══ -->
+    <div class="manual-metadata-panel rna-card rna-mt-3" id="manual-metadata-panel" style="display:none;">
+        <div class="rna-card-header">
+            <i class="bi bi-diagram-3"></i>&ensp;Manual Metadata Builder
+            <span class="header-tag">Dynamic Columns</span>
+        </div>
+        <div class="rna-card-body">
+
+            <!-- Column Creation (replaces old Group Creation) -->
+            <div class="group-builder">
+                <label class="rna-label">Define Metadata Columns
+                    <span class="input-tip"><i class="bi bi-question-circle"></i>
+                        <span class="tip-text">Add columns for your experimental variables (e.g. condition,
+                            batch, age, sex). "condition" is pre-created. Each column becomes a factor you
+                            can assign to a role below.</span>
+                    </span>
+                </label>
+                <div class="group-input-row">
+                    <input type="text" class="rna-input" id="column-name-input"
+                        placeholder="e.g. batch, age, sex, genotype">
+                    <button type="button" class="btn-rna btn-rna-teal btn-rna-sm" id="add-column-btn">
+                        <i class="bi bi-plus-lg"></i> Add Column
+                    </button>
+                </div>
+                <div id="column-chips" class="group-chips rna-mt-1"></div>
             </div>
-            <div class="rna-card-body">
-                <p class="rna-text-sm rna-text-muted rna-mb-2">
-                    Assign each uploaded sample to a biological condition. Optionally add Batch ID and Timepoint
-                    mappings.
+
+            <!-- Sample Assignment Table (dynamic columns) -->
+            <div class="rna-mt-3" style="overflow-x:auto;">
+                <table class="rna-table" id="metadata-table">
+                    <thead>
+                        <tr id="metadata-header-row">
+                            <th>Sample Name</th>
+                            <!-- Dynamic column headers populated by JS -->
+                        </tr>
+                    </thead>
+                    <tbody id="metadata-body">
+                        <!-- Populated dynamically by JS from uploaded files -->
+                    </tbody>
+                </table>
+                <p class="rna-text-xs rna-text-muted rna-mt-1" id="no-files-hint">
+                    <i class="bi bi-arrow-up"></i> Upload FASTQ files above to populate this table.
                 </p>
-
-                <div style="overflow-x: auto;">
-                    <table class="rna-table" id="metadata-table">
-                        <thead>
-                            <tr>
-                                <th>Filename</th>
-                                <th>Condition <span style="color: var(--rna-accent-red);">*</span></th>
-                                <th>Batch ID</th>
-                                <th>Timepoint</th>
-                            </tr>
-                        </thead>
-                        <tbody id="metadata-body">
-                            <!-- Populated dynamically by JS based on uploaded files -->
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="rna-flex rna-mt-3 rna-gap-2" style="justify-content: flex-end;">
-                    <button class="btn-rna btn-rna-outline btn-rna-sm" id="step3-back">
-                        <i class="bi bi-arrow-left"></i> Back
-                    </button>
-                    <button class="btn-rna btn-rna-primary" id="submit-pipeline" disabled>
-                        <i class="bi bi-rocket-takeoff"></i> Submit &amp; Run Pipeline
-                    </button>
-                </div>
             </div>
         </div>
+    </div>
+
+    <!-- ═══ Column Role Assignment Panel ═══ -->
+    <div class="column-mapping-panel rna-card rna-mt-3" id="column-mapping-section" style="display:none;">
+        <div class="rna-card-header">
+            <i class="bi bi-diagram-2"></i>&ensp;Assign Column Roles
+            <span class="header-tag">DESeq2 Design Formula</span>
+        </div>
+        <div class="rna-card-body">
+            <div class="column-mapping-grid">
+                <!-- Primary Group (mandatory) -->
+                <div class="mapping-field">
+                    <label class="rna-label">Primary Group <span class="required">*</span>
+                        <span class="input-tip"><i class="bi bi-question-circle"></i>
+                            <span class="tip-text">The main biological variable of interest (e.g. condition,
+                                treatment). This column defines the groups DESeq2 will compare. It is placed
+                                last in the design formula.</span>
+                        </span>
+                    </label>
+                    <select class="rna-input rna-select" id="primary-group-select">
+                        <option value="">-- Select primary group column --</option>
+                    </select>
+                </div>
+
+                <!-- Batch Effect (optional) -->
+                <div class="mapping-field">
+                    <label class="rna-label">Batch Effect
+                        <span class="input-tip"><i class="bi bi-question-circle"></i>
+                            <span class="tip-text">Optional. A technical variable representing experimental
+                                batches. Used by ComBat-seq for batch correction before DESeq2.</span>
+                        </span>
+                    </label>
+                    <select class="rna-input rna-select" id="batch-effect-select">
+                        <option value="">None</option>
+                    </select>
+                </div>
+
+                <!-- Additional Covariates (optional) -->
+                <div class="mapping-field">
+                    <label class="rna-label">Additional Covariates
+                        <span class="input-tip"><i class="bi bi-question-circle"></i>
+                            <span class="tip-text">Optional. Extra variables to include in the DESeq2 design
+                                formula (e.g. age, sex). These are placed before the primary group in the
+                                formula to control for confounding.</span>
+                        </span>
+                    </label>
+                    <div id="covariates-list" class="rna-mt-1">
+                        <!-- Populated by JS with checkboxes -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Column validation messages -->
+            <div id="column-validation-msg" class="validation-msg rna-mt-2" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- ═══ Dynamic Contrast Builder Panel ═══ -->
+    <div class="contrast-builder-panel rna-card rna-mt-3" id="contrast-section" style="display:none;">
+        <div class="rna-card-header">
+            <i class="bi bi-arrow-left-right"></i>&ensp;Define Comparisons (Contrasts)
+            <span class="header-tag">Multi-group DESeq2</span>
+        </div>
+        <div class="rna-card-body">
+            <div class="contrast-hint rna-mb-2">
+                <i class="bi bi-info-circle"></i>
+                <span>Your primary group has <strong>more than 2 levels</strong>. Define which pairwise
+                    comparisons DESeq2 should test. Each contrast produces a separate set of
+                    differentially expressed genes.</span>
+            </div>
+
+            <div id="contrast-list">
+                <!-- Populated by JS with contrast rows -->
+            </div>
+
+            <button type="button" class="btn-rna btn-rna-teal btn-rna-sm rna-mt-2" id="add-contrast-btn">
+                <i class="bi bi-plus-lg"></i> Add Comparison
+            </button>
+        </div>
+    </div>
+
+    <!-- ═══ Form Validation Summary + Submit ═══ -->
+    <div class="submit-bar rna-mt-3" id="submit-bar">
+        <div class="validation-summary" id="validation-summary">
+            <div class="val-item" id="val-library"><i class="bi bi-circle"></i> Library type</div>
+            <div class="val-item" id="val-files"><i class="bi bi-circle"></i> Files uploaded</div>
+            <div class="val-item" id="val-genome"><i class="bi bi-circle"></i> Reference genome</div>
+            <div class="val-item" id="val-metadata"><i class="bi bi-circle"></i> Metadata configured</div>
+            <div class="val-item" id="val-mapping"><i class="bi bi-circle"></i> Column roles assigned</div>
+        </div>
+        <button type="button" class="btn-rna btn-rna-primary" id="submit-pipeline" disabled>
+            <i class="bi bi-rocket-takeoff"></i> Start Pipeline
+        </button>
     </div>
 </section>
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'pipeline/js/setup_wizard.js' %}"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="{% static 'pipeline/js/pipeline_setup.js' %}"></script>
 {% endblock %}

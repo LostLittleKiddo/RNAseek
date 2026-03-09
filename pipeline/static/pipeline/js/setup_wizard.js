@@ -1,6 +1,7 @@
 /**
  * RNAseek – Setup Wizard (Step 1/2/3)
- * Handles file selection, chunked upload, genome selection, metadata mapping,
+ * Handles library type selection, file selection, chunked upload,
+ * genome selection (incl. custom genome), metadata mapping,
  * and pipeline submission.
  */
 (function () {
@@ -22,9 +23,37 @@
     const submitBtn = document.getElementById("submit-pipeline");
     const genomeSelect = document.getElementById("genome-select");
     const metadataBody = document.getElementById("metadata-body");
+    const pairedEndTip = document.getElementById("paired-end-tip");
+    const customGenomeSection = document.getElementById("custom-genome-section");
+    const customGenomeName = document.getElementById("custom-genome-name");
+    const customGenomeFasta = document.getElementById("custom-genome-fasta");
+    const customGenomeAnnotation = document.getElementById("custom-genome-annotation");
 
     let selectedFiles = [];
     let uploadedFiles = [];
+    let customGenomeFiles = { fasta: null, annotation: null };
+
+    // ── Library Type Selection ──
+    const libRadios = document.querySelectorAll('input[name="library_type"]');
+    const ltCards = document.querySelectorAll(".library-type-card");
+
+    libRadios.forEach(radio => {
+        radio.addEventListener("change", () => {
+            ltCards.forEach(c => c.classList.remove("selected"));
+            radio.closest(".library-type-card").classList.add("selected");
+            if (radio.value === "paired") {
+                pairedEndTip.classList.add("visible");
+            } else {
+                pairedEndTip.classList.remove("visible");
+            }
+            validateStep1();
+        });
+    });
+
+    function getLibraryType() {
+        const checked = document.querySelector('input[name="library_type"]:checked');
+        return checked ? checked.value : null;
+    }
 
     // ── Wizard Navigation ──
     function showStep(n) {
@@ -36,6 +65,12 @@
             if (s < n) el.classList.add("completed");
             else if (s === n) el.classList.add("active");
         });
+    }
+
+    function validateStep1() {
+        const hasLibType = getLibraryType() !== null;
+        const hasFiles = selectedFiles.length > 0;
+        step1Next.disabled = !(hasLibType && hasFiles);
     }
 
     // ── Drop Zone ──
@@ -70,7 +105,7 @@
         if (selectedFiles.length === 0) {
             fileList.style.display = "none";
             dropZone.classList.remove("has-files");
-            step1Next.disabled = true;
+            validateStep1();
             return;
         }
         fileList.style.display = "block";
@@ -94,7 +129,7 @@
             });
         });
 
-        step1Next.disabled = false;
+        validateStep1();
     }
 
     // ── Step navigation handlers ──
@@ -153,11 +188,85 @@
 
     step2Back.addEventListener("click", () => showStep(1));
 
+    // ── Genome Selection + Custom Genome ──
     genomeSelect.addEventListener("change", () => {
-        step2Next.disabled = !genomeSelect.value;
+        const isCustom = genomeSelect.value === "custom";
+        if (isCustom) {
+            customGenomeSection.classList.add("visible");
+        } else {
+            customGenomeSection.classList.remove("visible");
+        }
+        validateStep2();
     });
 
-    step2Next.addEventListener("click", () => {
+    customGenomeName.addEventListener("input", validateStep2);
+    customGenomeFasta.addEventListener("change", () => {
+        customGenomeFiles.fasta = customGenomeFasta.files[0] || null;
+        validateStep2();
+    });
+    customGenomeAnnotation.addEventListener("change", () => {
+        customGenomeFiles.annotation = customGenomeAnnotation.files[0] || null;
+        validateStep2();
+    });
+
+    function validateStep2() {
+        if (!genomeSelect.value) {
+            step2Next.disabled = true;
+            return;
+        }
+        if (genomeSelect.value === "custom") {
+            const nameOk = customGenomeName.value.trim().length > 0;
+            const fastaOk = customGenomeFiles.fasta !== null;
+            const annotOk = customGenomeFiles.annotation !== null;
+            step2Next.disabled = !(nameOk && fastaOk && annotOk);
+        } else {
+            step2Next.disabled = false;
+        }
+    }
+
+    step2Next.addEventListener("click", async () => {
+        // If custom genome, upload the files first
+        if (genomeSelect.value === "custom") {
+            step2Next.disabled = true;
+            step2Next.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Uploading genome...';
+
+            const filesToUpload = [
+                { file: customGenomeFiles.fasta, role: "CUSTOM_GENOME_FASTA" },
+                { file: customGenomeFiles.annotation, role: "CUSTOM_GENOME_ANNOTATION" },
+            ];
+
+            for (const item of filesToUpload) {
+                const totalChunks = Math.ceil(item.file.size / CHUNK_SIZE);
+                for (let i = 0; i < totalChunks; i++) {
+                    const start = i * CHUNK_SIZE;
+                    const end = Math.min(start + CHUNK_SIZE, item.file.size);
+                    const chunk = item.file.slice(start, end);
+
+                    const fd = new FormData();
+                    fd.append("file", chunk);
+                    fd.append("filename", item.file.name);
+                    fd.append("chunk_index", i);
+                    fd.append("total_chunks", totalChunks);
+                    fd.append("file_role", item.role);
+
+                    const res = await fetch("/api/upload/chunk", {
+                        method: "POST",
+                        headers: { "X-CSRFToken": CSRF },
+                        body: fd,
+                    });
+
+                    if (!res.ok) {
+                        step2Next.innerHTML = 'Next: Metadata <i class="bi bi-arrow-right"></i>';
+                        step2Next.disabled = false;
+                        return;
+                    }
+                }
+            }
+
+            step2Next.innerHTML = 'Next: Metadata <i class="bi bi-arrow-right"></i>';
+            step2Next.disabled = false;
+        }
+
         buildMetadataTable();
         showStep(3);
     });
@@ -208,8 +317,12 @@
         const payload = {
             metadata_mapping: mapping,
             reference_genome: genomeSelect.value,
-            paired_end: document.getElementById("paired-end-toggle").checked,
+            library_type: getLibraryType(),
         };
+
+        if (genomeSelect.value === "custom") {
+            payload.custom_genome_name = customGenomeName.value.trim();
+        }
 
         const res = await fetch("/api/pipeline/core", {
             method: "POST",

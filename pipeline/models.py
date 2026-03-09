@@ -1,6 +1,8 @@
+import os
 import uuid
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -25,17 +27,99 @@ class Session(models.Model):
         return timezone.now() >= self.expires_at
 
 
+class AnalysisSubmission(models.Model):
+    class InputDataType(models.TextChoices):
+        FASTQ = "fastq", "FASTQ Files"
+        ALIGNMENT = "alignment", "BAM/CRAM Alignment"
+        MATRIX = "matrix", "Count Matrix"
+
+    class LibraryType(models.TextChoices):
+        SINGLE = "single", "Single-End"
+        PAIRED = "paired", "Paired-End"
+
+    class Strandedness(models.TextChoices):
+        UNSTRANDED = "unstranded", "Unstranded"
+        FR_FIRSTSTRAND = "fr-firststrand", "Forward-Reverse (fr-firststrand)"
+        FR_SECONDSTRAND = "fr-secondstrand", "Forward-Reverse (fr-secondstrand)"
+
+    class MetadataMode(models.TextChoices):
+        UPLOAD = "upload", "Upload CSV"
+        MANUAL = "manual", "Manual Assignment"
+
+    submission_id = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False
+    )
+    session = models.ForeignKey(
+        Session, on_delete=models.CASCADE, related_name="submissions"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    input_data_type = models.CharField(
+        max_length=10,
+        choices=InputDataType.choices,
+        default=InputDataType.FASTQ,
+    )
+
+    library_type = models.CharField(
+        max_length=10, choices=LibraryType.choices, blank=True
+    )
+    strandedness = models.CharField(
+        max_length=20,
+        choices=Strandedness.choices,
+        default=Strandedness.UNSTRANDED,
+    )
+    reference_genome = models.CharField(max_length=100, blank=True)
+    custom_genome_name = models.CharField(max_length=200, blank=True)
+    metadata_mode = models.CharField(
+        max_length=10, choices=MetadataMode.choices, blank=True
+    )
+
+    adjusted_pvalue = models.FloatField(default=0.05)
+    min_log2fc = models.FloatField(default=-1.0)
+    max_log2fc = models.FloatField(default=1.0)
+
+    metadata_payload = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "analysis_submission"
+
+    def __str__(self):
+        return f"Submission {self.submission_id}"
+
+    @property
+    def upload_dir(self):
+        return os.path.join(
+            str(settings.MEDIA_ROOT),
+            "sessions",
+            str(self.session_id),
+            "submissions",
+            str(self.submission_id),
+        )
+
+
 class FileAsset(models.Model):
     class FileRole(models.TextChoices):
         RAW_FASTQ = "RAW_FASTQ", "Raw FASTQ"
+        ALIGNMENT_BAM = "ALIGNMENT_BAM", "Alignment BAM/CRAM"
+        USER_COUNT_MATRIX = "USER_COUNT_MATRIX", "User Count Matrix"
         COUNT_MATRIX = "COUNT_MATRIX", "Count Matrix"
         H5AD_PSEUDO = "H5AD_PSEUDO", "H5AD Pseudo-scRNA"
         HE_IMAGE_USER = "HE_IMAGE_USER", "H&E Image (User)"
         HE_IMAGE_GENERIC = "HE_IMAGE_GENERIC", "H&E Image (Generic)"
+        CUSTOM_GENOME_FASTA = "CUSTOM_GENOME_FASTA", "Custom Genome FASTA"
+        CUSTOM_GENOME_ANNOTATION = "CUSTOM_GENOME_ANNOTATION", "Custom Genome Annotation"
+        METADATA_CSV = "METADATA_CSV", "Metadata CSV"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     session = models.ForeignKey(
         Session, on_delete=models.CASCADE, related_name="file_assets"
+    )
+    submission = models.ForeignKey(
+        AnalysisSubmission,
+        on_delete=models.CASCADE,
+        related_name="file_assets",
+        null=True,
+        blank=True,
     )
     file_role = models.CharField(max_length=30, choices=FileRole.choices)
     local_path = models.CharField(max_length=500)

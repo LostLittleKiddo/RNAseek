@@ -1,0 +1,874 @@
+/* ═══════════════════════════════════════════════════════════════════
+   RNAseek – Core Pipeline Setup Page
+   Single-page 4-column layout for the mandatory pipeline hub
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Hero Banner ── */
+.setup-hero {
+    background: var(--rna-brand-gradient);
+    padding: 1.75rem 0 1.5rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.setup-hero::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--rna-grey-200);
+}
+
+.setup-hero-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.setup-hero-title {
+    font-family: var(--rna-font-heading);
+    font-size: 1.5rem;
+    font-weight: 900;
+    color: #fff;
+    margin: 0 0 .35rem;
+}
+
+.setup-hero-desc {
+    font-size: .85rem;
+    color: rgba(255, 255, 255, .85);
+    margin: 0;
+    max-width: 600px;
+    line-height: 1.55;
+}
+
+.setup-hero-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+}
+
+.tool-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: .25rem .65rem;
+    border-radius: 50px;
+    font-size: .7rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, .18);
+    color: #fff;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, .25);
+}
+
+/* ── 4-Column Grid ── */
+.setup-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.15rem;
+    align-items: stretch;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Entry Point Selector
+   ═══════════════════════════════════════════════════════════════════ */
+
+.entry-point-group {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+.entry-point-card {
+    display: flex;
+    gap: .85rem;
+    padding: 1rem 1.15rem;
+    border: 2px solid var(--rna-grey-300);
+    border-radius: var(--rna-radius-md);
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s, background .2s;
+    align-items: flex-start;
+}
+
+.entry-point-card input[type="radio"] {
+    display: none;
+}
+
+.entry-point-card:hover {
+    border-color: var(--rna-teal);
+    background: rgba(5, 154, 152, .02);
+}
+
+.entry-point-card.selected {
+    border-color: var(--rna-teal);
+    box-shadow: 0 0 0 3px rgba(5, 154, 152, .15);
+    background: rgba(5, 154, 152, .04);
+}
+
+.ep-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: .5rem;
+    background: rgba(5, 154, 152, .1);
+    color: var(--rna-teal);
+    font-size: 1.3rem;
+    flex-shrink: 0;
+}
+
+.entry-point-card.selected .ep-icon {
+    background: var(--rna-teal);
+    color: #fff;
+}
+
+.ep-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.ep-title {
+    font-weight: 700;
+    font-size: .88rem;
+    color: var(--rna-navy);
+    margin-bottom: .25rem;
+}
+
+.ep-desc {
+    font-size: .73rem;
+    color: var(--rna-grey-600);
+    line-height: 1.5;
+    margin-bottom: .5rem;
+}
+
+.ep-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+}
+
+.ep-tag {
+    display: inline-flex;
+    padding: .15rem .45rem;
+    background: var(--rna-grey-100);
+    border: 1px solid var(--rna-grey-200);
+    border-radius: 50px;
+    font-size: .62rem;
+    font-weight: 600;
+    color: var(--rna-grey-600);
+}
+
+.entry-point-card.selected .ep-tag {
+    background: rgba(5, 154, 152, .08);
+    border-color: rgba(5, 154, 152, .2);
+    color: var(--rna-teal);
+}
+
+@media (max-width: 1000px) {
+    .entry-point-group {
+        grid-template-columns: 1fr;
+    }
+}
+
+.setup-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.setup-col .rna-card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.setup-col .rna-card-body {
+    padding: 1rem 1.1rem;
+}
+
+/* ── Card header pill tags ── */
+.header-tag {
+    float: right;
+    font-size: .65rem;
+    font-weight: 500;
+    background: rgba(255, 255, 255, .2);
+    padding: .15rem .5rem;
+    border-radius: 50px;
+    margin-top: .1rem;
+}
+
+/* ── Library Type Cards ── */
+.library-type-group {
+    display: flex;
+    gap: .65rem;
+    margin-top: .5rem;
+}
+
+.library-type-card {
+    flex: 1;
+    border: 2px solid var(--rna-grey-300);
+    border-radius: .5rem;
+    padding: .65rem .75rem;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+}
+
+.library-type-card:hover {
+    border-color: var(--rna-teal);
+}
+
+.library-type-card.selected {
+    border-color: var(--rna-teal);
+    box-shadow: 0 0 0 3px rgba(5, 154, 152, .15);
+}
+
+.library-type-card input[type="radio"] {
+    margin-right: .3rem;
+}
+
+.lt-title {
+    font-weight: 600;
+    font-size: .82rem;
+    color: var(--rna-navy);
+}
+
+.lt-desc {
+    font-size: .72rem;
+    color: #666;
+    margin-top: .2rem;
+    line-height: 1.4;
+}
+
+/* ── Paired-end naming tip ── */
+.naming-tip {
+    display: none;
+    margin-top: .65rem;
+    padding: .6rem .85rem;
+    background: rgba(5, 154, 152, .06);
+    border-left: 3px solid var(--rna-teal);
+    border-radius: 0 .35rem .35rem 0;
+    font-size: .72rem;
+    line-height: 1.5;
+    color: #444;
+}
+
+.naming-tip.visible {
+    display: block;
+}
+
+.naming-tip code {
+    background: rgba(2, 66, 110, .08);
+    padding: .1rem .3rem;
+    border-radius: .2rem;
+    font-size: .7rem;
+}
+
+/* ── Pro-tip badge + custom tooltip ── */
+.pro-tip {
+    display: inline-flex;
+    align-items: center;
+    gap: .2rem;
+    font-size: .68rem;
+    font-weight: 500;
+    color: var(--rna-accent-amber);
+    cursor: help;
+    margin-left: .35rem;
+    position: relative;
+}
+
+.pro-tip .tip-text {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 280px;
+    padding: .65rem .85rem;
+    background: var(--rna-navy-dark);
+    color: #fff;
+    font-size: .72rem;
+    font-weight: 400;
+    line-height: 1.55;
+    border-radius: var(--rna-radius-md);
+    box-shadow: var(--rna-shadow-lg);
+    z-index: 100;
+    pointer-events: none;
+    text-align: left;
+}
+
+.pro-tip .tip-text::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--rna-navy-dark);
+}
+
+.pro-tip:hover .tip-text {
+    display: block;
+}
+
+/* ── Input-level tooltip ── */
+.input-tip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-left: .3rem;
+    cursor: help;
+    color: var(--rna-grey-400);
+    font-size: .72rem;
+}
+
+.input-tip:hover {
+    color: var(--rna-teal);
+}
+
+.input-tip .tip-text {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 260px;
+    padding: .55rem .75rem;
+    background: var(--rna-navy-dark);
+    color: #fff;
+    font-size: .72rem;
+    font-weight: 400;
+    line-height: 1.5;
+    border-radius: var(--rna-radius-md);
+    box-shadow: var(--rna-shadow-lg);
+    z-index: 100;
+    pointer-events: none;
+    text-align: left;
+}
+
+.input-tip .tip-text::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--rna-navy-dark);
+}
+
+.input-tip:hover .tip-text {
+    display: block;
+}
+
+/* ── Required asterisk ── */
+.required {
+    color: var(--rna-accent-red);
+}
+
+/* ── Custom Genome Section ── */
+.custom-genome-section {
+    display: none;
+    margin-top: 1rem;
+    padding: 1rem;
+    border: 1px dashed var(--rna-teal);
+    border-radius: .5rem;
+    background: rgba(5, 154, 152, .03);
+}
+
+.custom-genome-section.visible {
+    display: block;
+}
+
+.custom-genome-heading {
+    margin: 0 0 .75rem;
+    font-size: .85rem;
+    color: var(--rna-navy);
+}
+
+.custom-genome-field {
+    margin-bottom: .85rem;
+}
+
+.custom-genome-field:last-child {
+    margin-bottom: 0;
+}
+
+/* ── Metadata Toggle ── */
+.meta-toggle-group {
+    display: flex;
+    gap: 0;
+    margin-top: .5rem;
+    border: 1.5px solid var(--rna-grey-300);
+    border-radius: var(--rna-radius-md);
+    overflow: hidden;
+}
+
+.meta-toggle-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .3rem;
+    padding: .55rem .5rem;
+    font-size: .78rem;
+    font-weight: 600;
+    border: none;
+    background: var(--rna-grey-50);
+    color: var(--rna-grey-600);
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.meta-toggle-btn:first-child {
+    border-right: 1.5px solid var(--rna-grey-300);
+}
+
+.meta-toggle-btn.active {
+    background: rgba(5, 154, 152, .1);
+    color: var(--rna-teal);
+}
+
+.meta-toggle-btn:hover:not(.active) {
+    background: var(--rna-grey-100);
+}
+
+/* ── Small drop zone (CSV) – same size as FASTQ zone ── */
+.rna-drop-zone-sm {
+    min-height: 140px;
+    font-size: .8rem;
+}
+
+.rna-drop-zone-sm i {
+    font-size: 1.6rem;
+}
+
+/* ── CSV format hint ── */
+.csv-format-hint {
+    font-size: .72rem;
+    color: var(--rna-grey-600);
+    padding: .65rem .85rem;
+    background: var(--rna-grey-50);
+    border-radius: var(--rna-radius-sm);
+    line-height: 1.5;
+}
+
+/* ── Metadata CSV example mini-table ── */
+.csv-example {
+    margin-top: .65rem;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-sm);
+    overflow: hidden;
+}
+
+.csv-example-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .4rem .7rem;
+    background: var(--rna-grey-100);
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--rna-grey-700);
+}
+
+.csv-example-header i {
+    color: var(--rna-accent-green);
+}
+
+.csv-example table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .68rem;
+    font-family: 'Roboto Mono', monospace, var(--rna-font-body);
+}
+
+.csv-example th {
+    background: var(--rna-navy);
+    color: #fff;
+    padding: .3rem .5rem;
+    font-weight: 600;
+    text-align: left;
+    font-size: .65rem;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+}
+
+.csv-example td {
+    padding: .3rem .5rem;
+    border-bottom: 1px solid var(--rna-grey-100);
+    color: var(--rna-grey-700);
+}
+
+.csv-example tr:last-child td {
+    border-bottom: none;
+}
+
+.csv-example .col-optional {
+    color: var(--rna-grey-400);
+    font-style: italic;
+}
+
+/* ── Manual teaser ── */
+.manual-teaser {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    padding: 1rem;
+    background: rgba(5, 154, 152, .05);
+    border: 1px solid rgba(5, 154, 152, .15);
+    border-radius: var(--rna-radius-md);
+    font-size: .82rem;
+    color: var(--rna-navy);
+}
+
+.manual-teaser i {
+    font-size: 1.3rem;
+    color: var(--rna-teal);
+}
+
+/* ── Threshold Fields ── */
+.threshold-field {
+    margin-bottom: 1rem;
+}
+
+.threshold-field:last-of-type {
+    margin-bottom: 0;
+}
+
+.threshold-field .rna-text-xs {
+    display: block;
+    margin-top: .2rem;
+}
+
+.threshold-summary {
+    display: flex;
+    align-items: flex-start;
+    gap: .5rem;
+    padding: .75rem .85rem;
+    background: rgba(5, 154, 152, .06);
+    border-radius: var(--rna-radius-sm);
+    font-size: .78rem;
+    color: var(--rna-grey-700);
+    line-height: 1.5;
+}
+
+.threshold-summary i {
+    color: var(--rna-teal);
+    margin-top: .1rem;
+}
+
+/* ── Manual Metadata Panel ── */
+.manual-metadata-panel .rna-card-body {
+    padding: 1.25rem;
+}
+
+.group-builder {
+    max-width: 500px;
+}
+
+.group-input-row {
+    display: flex;
+    gap: .65rem;
+    align-items: center;
+}
+
+.group-input-row .rna-input {
+    flex: 1;
+}
+
+.group-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+}
+
+.group-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .3rem .65rem;
+    background: rgba(5, 154, 152, .1);
+    border: 1px solid rgba(5, 154, 152, .25);
+    border-radius: 50px;
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--rna-navy);
+}
+
+.group-chip .remove-group {
+    cursor: pointer;
+    color: var(--rna-accent-red);
+    font-size: .65rem;
+    margin-left: .15rem;
+}
+
+/* ── File Pills (reused from setup wizard) ── */
+.file-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .25rem .55rem;
+    background: rgba(5, 154, 152, .08);
+    border: 1px solid rgba(5, 154, 152, .2);
+    border-radius: 50px;
+    font-size: .72rem;
+    font-weight: 500;
+    color: var(--rna-navy);
+    margin: .2rem;
+}
+
+.file-pill .remove-file {
+    cursor: pointer;
+    color: var(--rna-accent-red);
+    font-size: .65rem;
+    margin-left: .15rem;
+}
+
+/* ── Validation Message ── */
+.validation-msg {
+    padding: .5rem .75rem;
+    border-radius: var(--rna-radius-sm);
+    font-size: .75rem;
+    line-height: 1.45;
+}
+
+.validation-msg.error {
+    background: rgba(239, 68, 68, .08);
+    border: 1px solid rgba(239, 68, 68, .2);
+    color: #b91c1c;
+}
+
+.validation-msg.success {
+    background: rgba(22, 163, 74, .08);
+    border: 1px solid rgba(22, 163, 74, .2);
+    color: #15803d;
+}
+
+/* ── Submit Bar ── */
+.submit-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    background: #fff;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-lg);
+    box-shadow: var(--rna-shadow-sm);
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.validation-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+}
+
+.val-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .75rem;
+    font-weight: 500;
+    color: var(--rna-grey-500);
+}
+
+.val-item.valid {
+    color: var(--rna-accent-green);
+}
+
+.val-item.valid i::before {
+    content: "\F26B";
+}
+
+.val-item.invalid {
+    color: var(--rna-accent-red);
+}
+
+/* ── Metadata table within manual panel ── */
+#metadata-table input,
+#metadata-table select {
+    padding: .3rem .5rem;
+    font-size: .75rem;
+}
+
+#metadata-table select {
+    min-width: 120px;
+}
+
+/* ── Responsive: collapse to 2 then 1 column ── */
+@media (max-width: 1400px) {
+    .setup-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .setup-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .setup-hero-inner {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .submit-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .library-type-group {
+        flex-direction: column;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Column Mapping Panel
+   ═══════════════════════════════════════════════════════════════════ */
+
+.column-mapping-panel .rna-card-body {
+    padding: 1.25rem;
+}
+
+.column-mapping-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.mapping-field {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+}
+
+.mapping-field .rna-label {
+    margin-bottom: 0;
+}
+
+/* ── Covariate Checkboxes ── */
+.covariate-check-label {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .3rem .65rem;
+    margin: .2rem;
+    background: var(--rna-grey-50);
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-sm);
+    font-size: .78rem;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+}
+
+.covariate-check-label:hover {
+    border-color: var(--rna-teal);
+    background: rgba(5, 154, 152, .04);
+}
+
+.covariate-check-label input[type="checkbox"] {
+    accent-color: var(--rna-teal);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Contrast Builder Panel
+   ═══════════════════════════════════════════════════════════════════ */
+
+.contrast-builder-panel .rna-card-body {
+    padding: 1.25rem;
+}
+
+.contrast-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .65rem .85rem;
+    margin-bottom: .5rem;
+    background: var(--rna-grey-50);
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+    flex-wrap: wrap;
+}
+
+.contrast-label {
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--rna-grey-600);
+    min-width: 40px;
+}
+
+.contrast-vs {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--rna-navy);
+    color: #fff;
+    font-size: .7rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.contrast-select {
+    flex: 1;
+    min-width: 120px;
+    max-width: 200px;
+}
+
+.contrast-remove {
+    min-width: unset !important;
+    width: 32px;
+    height: 32px;
+    padding: 0 !important;
+    flex-shrink: 0;
+}
+
+.contrast-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: .5rem;
+    padding: .65rem .85rem;
+    background: rgba(245, 158, 11, .06);
+    border: 1px solid rgba(245, 158, 11, .2);
+    border-radius: var(--rna-radius-sm);
+    font-size: .75rem;
+    color: var(--rna-grey-700);
+    line-height: 1.5;
+}
+
+.contrast-hint i {
+    color: var(--rna-accent-amber);
+    margin-top: .1rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CSV Preview Area (in-browser parsed result)
+   ═══════════════════════════════════════════════════════════════════ */
+
+#csv-preview-area {
+    margin-top: .75rem;
+}
+
+#csv-preview-area .csv-example {
+    margin-top: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Manual Metadata – Dynamic Column Cells
+   ═══════════════════════════════════════════════════════════════════ */
+
+.meta-cell-input {
+    width: 100%;
+    padding: .3rem .5rem !important;
+    font-size: .75rem !important;
+}
+
+#metadata-table th {
+    white-space: nowrap;
+}
