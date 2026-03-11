@@ -15,7 +15,7 @@ build/
 # ── Environment & Secrets ──
 .env
 .env.local
-!.env.prod
+.env.prod
 *.pem
 *.key
 
