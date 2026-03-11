@@ -103,6 +103,9 @@ class FileAsset(models.Model):
         ALIGNMENT_BAM = "ALIGNMENT_BAM", "Alignment BAM/CRAM"
         USER_COUNT_MATRIX = "USER_COUNT_MATRIX", "User Count Matrix"
         COUNT_MATRIX = "COUNT_MATRIX", "Count Matrix"
+        NORMALIZED_COUNTS = "NORMALIZED_COUNTS", "Normalized Counts"
+        DEG_TABLE = "DEG_TABLE", "Differential Expression Table"
+        MULTIQC_REPORT = "MULTIQC_REPORT", "MultiQC Report"
         H5AD_PSEUDO = "H5AD_PSEUDO", "H5AD Pseudo-scRNA"
         HE_IMAGE_USER = "HE_IMAGE_USER", "H&E Image (User)"
         HE_IMAGE_GENERIC = "HE_IMAGE_GENERIC", "H&E Image (Generic)"
@@ -148,6 +151,9 @@ class AnalysisJob(models.Model):
         max_length=10, choices=Status.choices, default=Status.PENDING
     )
     result_payload = models.JSONField(default=dict, blank=True)
+    step_progress = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "analysis_job"

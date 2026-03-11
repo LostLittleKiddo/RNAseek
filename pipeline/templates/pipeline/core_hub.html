@@ -32,8 +32,8 @@
                         <div class="file-desc">Aligned reads against the reference genome</div>
                     </div>
                 </div>
-                <button class="rna-icon-btn rna-icon-btn-download" title="Download"><i
-                        class="bi bi-download"></i></button>
+                <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="ALIGNMENT_BAM"
+                    title="Download"><i class="bi bi-download"></i></button>
             </div>
             <div class="rna-download-item">
                 <div class="file-info">
@@ -43,8 +43,8 @@
                         <div class="file-desc">Genes &times; Samples raw read counts</div>
                     </div>
                 </div>
-                <button class="rna-icon-btn rna-icon-btn-download" title="Download"><i
-                        class="bi bi-download"></i></button>
+                <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="COUNT_MATRIX"
+                    title="Download"><i class="bi bi-download"></i></button>
             </div>
             <div class="rna-download-item">
                 <div class="file-info">
@@ -54,8 +54,8 @@
                         <div class="file-desc">Library-size normalized &amp; batch-corrected matrix</div>
                     </div>
                 </div>
-                <button class="rna-icon-btn rna-icon-btn-download" title="Download"><i
-                        class="bi bi-download"></i></button>
+                <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="NORMALIZED_COUNTS"
+                    title="Download"><i class="bi bi-download"></i></button>
             </div>
             <div class="rna-download-item">
                 <div class="file-info">
@@ -65,8 +65,8 @@
                         <div class="file-desc">Log2FC, p-values, FDR, and gene descriptions</div>
                     </div>
                 </div>
-                <button class="rna-icon-btn rna-icon-btn-download" title="Download"><i
-                        class="bi bi-download"></i></button>
+                <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="DEG_TABLE"
+                    title="Download"><i class="bi bi-download"></i></button>
             </div>
             <div class="rna-download-item">
                 <div class="file-info">
@@ -76,8 +76,8 @@
                         <div class="file-desc">Aggregated FastQC, HISAT2, featureCounts logs</div>
                     </div>
                 </div>
-                <button class="rna-icon-btn rna-icon-btn-download" title="Download"><i
-                        class="bi bi-download"></i></button>
+                <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="MULTIQC_REPORT"
+                    title="Download"><i class="bi bi-download"></i></button>
             </div>
         </div>
     </div>
@@ -280,15 +280,15 @@
 <div class="rna-modal-backdrop" id="module-modal">
     <div class="rna-modal">
         <div class="rna-modal-header">
-            <h3 id="modal-title">Module Configuration</h3>
-            <button class="rna-modal-close" id="modal-close">&times;</button>
+            <h3 id="modal-module-title">Module Configuration</h3>
+            <button class="rna-modal-close modal-close-btn">&times;</button>
         </div>
-        <div class="rna-modal-body" id="modal-body">
+        <div class="rna-modal-body" id="modal-module-body">
             <!-- Dynamic module inputs here -->
         </div>
         <div class="rna-modal-footer">
-            <button class="btn-rna btn-rna-outline btn-rna-sm" id="modal-cancel">Cancel</button>
-            <button class="btn-rna btn-rna-primary btn-rna-sm" id="modal-run">
+            <button class="btn-rna btn-rna-outline btn-rna-sm modal-close-btn">Cancel</button>
+            <button class="btn-rna btn-rna-primary btn-rna-sm" id="modal-submit">
                 <i class="bi bi-play-circle"></i> Run Module
             </button>
         </div>
@@ -297,5 +297,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<div id="core-hub-data" data-job-id="{{ job_id }}" style="display:none;"></div>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <script src="{% static 'pipeline/js/core_hub.js' %}"></script>
 {% endblock %}

@@ -41,17 +41,20 @@ ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").sp
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'pipeline',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -80,6 +83,17 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
+
+# ── Django Channels / WebSocket ──
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")],
+        },
+    },
+}
 
 
 # Database
@@ -140,7 +154,14 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles' if IS_PRODUCTION else None
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# WhiteNoise: serve static files in production without a separate web server
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Media (user uploads / pipeline outputs on NFS)
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", str(BASE_DIR / "media")))
@@ -157,6 +178,18 @@ CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", CELERY_BROKER_UR
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
+
+# In development, run Celery tasks asynchronously by default so the HTTP
+# response returns immediately and the browser can redirect to the processing
+# page.  Set CELERY_EAGER=1 to run tasks synchronously (no worker needed)
+# for quick local debugging of task logic — but note this blocks the request.
+if not IS_PRODUCTION:
+    _eager = os.environ.get("CELERY_EAGER", "0") == "1"
+    CELERY_TASK_ALWAYS_EAGER = _eager
+    CELERY_TASK_EAGER_PROPAGATES = _eager
+
+# Celery worker concurrency (matches CPU count)
+CELERY_WORKER_CONCURRENCY = os.cpu_count() or 4
 
 # ── Production Security Hardening ──
 if IS_PRODUCTION:

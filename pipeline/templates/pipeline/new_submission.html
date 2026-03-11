@@ -355,6 +355,17 @@
                         <i class="bi bi-gear"></i> Custom Genome Configuration
                     </h4>
 
+                    <div
+                        style="background: rgba(255, 193, 7, 0.10); border: 1px solid rgba(255, 193, 7, 0.35); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem;">
+                        <p style="margin: 0; font-size: .82rem; color: var(--rna-navy); line-height: 1.55;">
+                            <i class="bi bi-exclamation-triangle" style="color: #d97706; margin-right: .35rem;"></i>
+                            <strong>Attention:</strong> Building a HISAT2 index from a custom FASTA genome can take
+                            <strong>30 minutes to several hours</strong> depending on genome size. Large genomes
+                            (e.g. human ~3 GB) require significant memory and time. Make sure you provide the correct
+                            FASTA and GTF/GFF annotation files before submitting.
+                        </p>
+                    </div>
+
                     <div class="custom-genome-field">
                         <label class="rna-label">Genome Name <span class="required">*</span></label>
                         <input type="text" class="rna-input" id="custom-genome-name" placeholder="e.g. MyOrganism_v1">
@@ -365,8 +376,12 @@
                         <p class="rna-text-xs rna-text-muted">Upload <code>.fa</code>, <code>.fasta</code>, or
                             <code>.fa.gz</code>
                         </p>
-                        <input type="file" class="rna-input" id="custom-genome-fasta"
-                            accept=".fa,.fasta,.fa.gz,.fasta.gz,.fna,.fna.gz">
+                        <div class="genome-file-input-wrap">
+                            <span class="genome-file-btn"><i class="bi bi-folder2-open"></i> Browse</span>
+                            <span class="genome-file-name" id="fasta-file-label">No file chosen</span>
+                            <input type="file" id="custom-genome-fasta"
+                                accept=".fa,.fasta,.fa.gz,.fasta.gz,.fna,.fna.gz">
+                        </div>
                     </div>
 
                     <div class="custom-genome-field">
@@ -374,8 +389,12 @@
                         <p class="rna-text-xs rna-text-muted">
                             Required for featureCounts quantification.
                         </p>
-                        <input type="file" class="rna-input" id="custom-genome-annotation"
-                            accept=".gtf,.gff,.gff3,.gtf.gz,.gff.gz,.gff3.gz">
+                        <div class="genome-file-input-wrap">
+                            <span class="genome-file-btn"><i class="bi bi-folder2-open"></i> Browse</span>
+                            <span class="genome-file-name" id="annotation-file-label">No file chosen</span>
+                            <input type="file" id="custom-genome-annotation"
+                                accept=".gtf,.gff,.gff3,.gtf.gz,.gff.gz,.gff3.gz">
+                        </div>
                     </div>
                 </div>
 
@@ -436,15 +455,19 @@
                     <div id="csv-preview-area" style="display:none;"></div>
 
                     <div class="rna-mt-2 csv-format-hint">
-                        <strong>Expected format:</strong> First column = sample filename. Additional columns
-                        can be any metadata (condition, batch, age, sex, etc.). Columns are auto-detected.
+                        <strong>Expected format:</strong> First column must be named <code>sample</code>.
+                        Values must match your uploaded filenames <strong>without the file extension</strong>
+                        (e.g. <code>SampleA</code> for <code>SampleA.fastq.gz</code>).
+                        For <strong>paired-end</strong>, use the shared prefix before <code>_R1</code>/<code>_R2</code>
+                        (e.g. <code>SampleA</code> for
+                        <code>SampleA_R1.fastq.gz</code>/<code>SampleA_R2.fastq.gz</code>).
                     </div>
 
                     <!-- CSV example mini-table -->
                     <div class="csv-example">
                         <div class="csv-example-header">
                             <span><i class="bi bi-file-earmark-spreadsheet"></i> metadata.csv</span>
-                            <span>Example template</span>
+                            <span>Example (single-end)</span>
                         </div>
                         <table>
                             <thead>
@@ -452,33 +475,28 @@
                                     <th>sample</th>
                                     <th>condition</th>
                                     <th>batch</th>
-                                    <th>age</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td>SampleA_R1.fq.gz</td>
+                                    <td>SampleA</td>
                                     <td>Control</td>
                                     <td class="col-optional">batch_1</td>
-                                    <td class="col-optional">25</td>
                                 </tr>
                                 <tr>
-                                    <td>SampleB_R1.fq.gz</td>
+                                    <td>SampleB</td>
                                     <td>Control</td>
                                     <td class="col-optional">batch_2</td>
-                                    <td class="col-optional">30</td>
                                 </tr>
                                 <tr>
-                                    <td>SampleC_R1.fq.gz</td>
+                                    <td>SampleC</td>
                                     <td>Treatment</td>
                                     <td class="col-optional">batch_1</td>
-                                    <td class="col-optional">28</td>
                                 </tr>
                                 <tr>
-                                    <td>SampleD_R1.fq.gz</td>
+                                    <td>SampleD</td>
                                     <td>Treatment</td>
                                     <td class="col-optional">batch_2</td>
-                                    <td class="col-optional">32</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -537,11 +555,23 @@
                 </div>
 
                 <div class="threshold-summary rna-mt-2">
-                    <i class="bi bi-info-circle"></i>
-                    Genes with |log2FC| &ge; <strong id="fc-preview">1.0</strong>
-                    and padj &le; <strong id="pval-preview">0.05</strong> will be flagged as significant.
+                    <div class="threshold-icon"><i class="bi bi-info-circle"></i></div>
+                    <span>Genes with |log2FC| &ge; <strong id="fc-preview">1.0</strong> and
+                        padj &le; <strong id="pval-preview">0.05</strong> will be flagged as significant.</span>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ═══ Metadata CSV Viewer (full-width, populated after CSV upload + file matching) ═══ -->
+    <div class="csv-viewer-section rna-card rna-mt-3" id="csv-viewer-section" style="display:none;">
+        <div class="rna-card-header">
+            <i class="bi bi-table"></i>&ensp;Metadata Preview
+            <span class="header-tag">Matched Samples</span>
+        </div>
+        <div class="rna-card-body">
+            <div id="csv-viewer-info" class="csv-viewer-info"></div>
+            <div id="csv-viewer-table" class="csv-viewer-table-wrap"></div>
         </div>
     </div>
 
@@ -553,27 +583,50 @@
         </div>
         <div class="rna-card-body">
 
-            <!-- Column Creation (replaces old Group Creation) -->
-            <div class="group-builder">
-                <label class="rna-label">Define Metadata Columns
-                    <span class="input-tip"><i class="bi bi-question-circle"></i>
-                        <span class="tip-text">Add columns for your experimental variables (e.g. condition,
-                            batch, age, sex). "condition" is pre-created. Each column becomes a factor you
-                            can assign to a role below.</span>
-                    </span>
-                </label>
-                <div class="group-input-row">
-                    <input type="text" class="rna-input" id="column-name-input"
-                        placeholder="e.g. batch, age, sex, genotype">
-                    <button type="button" class="btn-rna btn-rna-teal btn-rna-sm" id="add-column-btn">
-                        <i class="bi bi-plus-lg"></i> Add Column
-                    </button>
+            <!-- Column Creation + Condition Definition (side by side) -->
+            <div class="metadata-builder-top">
+                <div class="group-builder">
+                    <label class="rna-label">Define Metadata Columns
+                        <span class="input-tip"><i class="bi bi-question-circle"></i>
+                            <span class="tip-text">Add columns for your experimental variables (e.g. condition,
+                                batch, age, sex). "condition" is pre-created and mandatory. Each column becomes
+                                a factor you can assign to a role below.</span>
+                        </span>
+                    </label>
+                    <div class="group-input-row">
+                        <input type="text" class="rna-input" id="column-name-input"
+                            placeholder="e.g. batch, age, sex, genotype">
+                        <button type="button" class="btn-rna btn-rna-teal btn-rna-sm" id="add-column-btn">
+                            <i class="bi bi-plus-lg"></i> Add Column
+                        </button>
+                    </div>
+                    <div id="column-chips" class="group-chips rna-mt-1"></div>
                 </div>
-                <div id="column-chips" class="group-chips rna-mt-1"></div>
+
+                <div class="condition-builder" id="condition-builder">
+                    <label class="rna-label">Define Selectable Values
+                        <span class="input-tip"><i class="bi bi-question-circle"></i>
+                            <span class="tip-text">Add predefined values for any metadata column.
+                                Choose the target column, then type and add values. These become
+                                selectable options in the metadata table below.</span>
+                        </span>
+                    </label>
+                    <div class="group-input-row">
+                        <select class="rna-input rna-select column-target-select" id="condition-target-column">
+                            <!-- Populated by JS from manualColumns -->
+                        </select>
+                        <input type="text" class="rna-input" id="condition-value-input"
+                            placeholder="e.g. Control, Treatment">
+                        <button type="button" class="btn-rna btn-rna-teal btn-rna-sm" id="add-condition-btn">
+                            <i class="bi bi-plus-lg"></i> Add
+                        </button>
+                    </div>
+                    <div id="condition-chips" class="group-chips group-chips-scroll rna-mt-1"></div>
+                </div>
             </div>
 
             <!-- Sample Assignment Table (dynamic columns) -->
-            <div class="rna-mt-3" style="overflow-x:auto;">
+            <div class="rna-mt-3 metadata-table-wrap">
                 <table class="rna-table" id="metadata-table">
                     <thead>
                         <tr id="metadata-header-row">
@@ -592,84 +645,89 @@
         </div>
     </div>
 
-    <!-- ═══ Column Role Assignment Panel ═══ -->
-    <div class="column-mapping-panel rna-card rna-mt-3" id="column-mapping-section" style="display:none;">
-        <div class="rna-card-header">
-            <i class="bi bi-diagram-2"></i>&ensp;Assign Column Roles
-            <span class="header-tag">DESeq2 Design Formula</span>
-        </div>
-        <div class="rna-card-body">
-            <div class="column-mapping-grid">
-                <!-- Primary Group (mandatory) -->
-                <div class="mapping-field">
-                    <label class="rna-label">Primary Group <span class="required">*</span>
-                        <span class="input-tip"><i class="bi bi-question-circle"></i>
-                            <span class="tip-text">The main biological variable of interest (e.g. condition,
-                                treatment). This column defines the groups DESeq2 will compare. It is placed
-                                last in the design formula.</span>
-                        </span>
-                    </label>
-                    <select class="rna-input rna-select" id="primary-group-select">
-                        <option value="">-- Select primary group column --</option>
-                    </select>
-                </div>
+    <!-- ═══ Column Roles + Contrast Builder (Horizontal Row) ═══ -->
+    <div class="roles-contrast-row rna-mt-3" id="roles-contrast-row" style="display:none;">
 
-                <!-- Batch Effect (optional) -->
-                <div class="mapping-field">
-                    <label class="rna-label">Batch Effect
-                        <span class="input-tip"><i class="bi bi-question-circle"></i>
-                            <span class="tip-text">Optional. A technical variable representing experimental
-                                batches. Used by ComBat-seq for batch correction before DESeq2.</span>
-                        </span>
-                    </label>
-                    <select class="rna-input rna-select" id="batch-effect-select">
-                        <option value="">None</option>
-                    </select>
-                </div>
+        <!-- Column Role Assignment -->
+        <div class="column-mapping-panel rna-card" id="column-mapping-section" style="display:none;">
+            <div class="rna-card-header">
+                <i class="bi bi-diagram-2"></i>&ensp;Assign Column Roles
+                <span class="header-tag">DESeq2 Design Formula</span>
+            </div>
+            <div class="rna-card-body">
+                <div class="column-mapping-grid">
+                    <!-- Primary Group (mandatory) -->
+                    <div class="mapping-field">
+                        <label class="rna-label">Primary Group <span class="required">*</span>
+                            <span class="input-tip"><i class="bi bi-question-circle"></i>
+                                <span class="tip-text">The main biological variable of interest (e.g. condition,
+                                    treatment). This column defines the groups DESeq2 will compare. It is placed
+                                    last in the design formula.</span>
+                            </span>
+                        </label>
+                        <select class="rna-input rna-select" id="primary-group-select">
+                            <option value="">-- Select primary group column --</option>
+                        </select>
+                    </div>
 
-                <!-- Additional Covariates (optional) -->
-                <div class="mapping-field">
-                    <label class="rna-label">Additional Covariates
-                        <span class="input-tip"><i class="bi bi-question-circle"></i>
-                            <span class="tip-text">Optional. Extra variables to include in the DESeq2 design
-                                formula (e.g. age, sex). These are placed before the primary group in the
-                                formula to control for confounding.</span>
-                        </span>
-                    </label>
-                    <div id="covariates-list" class="rna-mt-1">
-                        <!-- Populated by JS with checkboxes -->
+                    <!-- Batch Effect (optional) -->
+                    <div class="mapping-field">
+                        <label class="rna-label">Batch Effect
+                            <span class="input-tip"><i class="bi bi-question-circle"></i>
+                                <span class="tip-text">Optional. A technical variable representing experimental
+                                    batches. Used by ComBat-seq for batch correction before DESeq2.</span>
+                            </span>
+                        </label>
+                        <select class="rna-input rna-select" id="batch-effect-select">
+                            <option value="">None</option>
+                        </select>
+                    </div>
+
+                    <!-- Additional Covariates (optional) -->
+                    <div class="mapping-field">
+                        <label class="rna-label">Additional Covariates
+                            <span class="input-tip"><i class="bi bi-question-circle"></i>
+                                <span class="tip-text">Optional. Extra variables to include in the DESeq2 design
+                                    formula (e.g. age, sex). These are placed before the primary group in the
+                                    formula to control for confounding.</span>
+                            </span>
+                        </label>
+                        <div id="covariates-list" class="rna-mt-1">
+                            <!-- Populated by JS with checkboxes -->
+                        </div>
                     </div>
                 </div>
+
+                <!-- Column validation messages -->
+                <div id="column-validation-msg" class="validation-msg rna-mt-2" style="display:none;"></div>
             </div>
-
-            <!-- Column validation messages -->
-            <div id="column-validation-msg" class="validation-msg rna-mt-2" style="display:none;"></div>
         </div>
-    </div>
 
-    <!-- ═══ Dynamic Contrast Builder Panel ═══ -->
-    <div class="contrast-builder-panel rna-card rna-mt-3" id="contrast-section" style="display:none;">
-        <div class="rna-card-header">
-            <i class="bi bi-arrow-left-right"></i>&ensp;Define Comparisons (Contrasts)
-            <span class="header-tag">Multi-group DESeq2</span>
-        </div>
-        <div class="rna-card-body">
-            <div class="contrast-hint rna-mb-2">
-                <i class="bi bi-info-circle"></i>
-                <span>Your primary group has <strong>more than 2 levels</strong>. Define which pairwise
-                    comparisons DESeq2 should test. Each contrast produces a separate set of
-                    differentially expressed genes.</span>
+        <!-- ═══ Dynamic Contrast Builder Panel ═══ -->
+        <div class="contrast-builder-panel rna-card" id="contrast-section" style="display:none;">
+            <div class="rna-card-header">
+                <i class="bi bi-arrow-left-right"></i>&ensp;Define Comparisons (Contrasts)
+                <span class="header-tag">Multi-group DESeq2</span>
             </div>
+            <div class="rna-card-body">
+                <div class="contrast-hint rna-mb-2">
+                    <i class="bi bi-info-circle"></i>
+                    <span>Your primary group has <strong>more than 2 levels</strong>. Define which pairwise
+                        comparisons DESeq2 should test. Each contrast produces a separate set of
+                        differentially expressed genes.</span>
+                </div>
 
-            <div id="contrast-list">
-                <!-- Populated by JS with contrast rows -->
+                <div id="contrast-list">
+                    <!-- Populated by JS with contrast rows -->
+                </div>
+
+                <button type="button" class="btn-rna btn-rna-teal btn-rna-sm rna-mt-2" id="add-contrast-btn">
+                    <i class="bi bi-plus-lg"></i> Add Comparison
+                </button>
             </div>
-
-            <button type="button" class="btn-rna btn-rna-teal btn-rna-sm rna-mt-2" id="add-contrast-btn">
-                <i class="bi bi-plus-lg"></i> Add Comparison
-            </button>
         </div>
-    </div>
+
+    </div><!-- /roles-contrast-row -->
 
     <!-- ═══ Form Validation Summary + Submit ═══ -->
     <div class="submit-bar rna-mt-3" id="submit-bar">
