@@ -1,0 +1,1390 @@
+/* ═══════════════════════════════════════════════════════════════════
+   RNAseek – Global Theme
+   Modern Scientific UI inspired by LC-AutoFit (blue-teal spectrum)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Reset & Base ── */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--rna-font-body);
+    background: var(--rna-page-bg);
+    color: var(--rna-grey-800);
+    -webkit-font-smoothing: antialiased;
+}
+
+main {
+    flex: 1 0 auto;
+}
+
+a {
+    color: var(--rna-teal);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--rna-navy);
+    text-decoration: underline;
+}
+
+/* ── Navbar ── */
+.rna-navbar {
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 52px;
+    padding: 0.35rem 1.5rem;
+    background: #fff;
+    border-bottom: 1px solid var(--rna-grey-200);
+    box-shadow: var(--rna-shadow-sm);
+    gap: 0.75rem;
+    overflow: visible;
+}
+
+.rna-navbar-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.rna-navbar-brand {
+    display: flex;
+    align-items: center;
+    gap: .625rem;
+    text-decoration: none;
+    overflow: visible;
+}
+
+.rna-navbar-brand img {
+    height: 88px;
+    width: auto;
+    margin-top: -18px;
+    margin-bottom: -18px;
+}
+
+.rna-navbar-brand span {
+    font-family: var(--rna-font-heading);
+    font-weight: 700;
+    font-size: 1.15rem;
+    color: var(--rna-navy);
+}
+
+.rna-nav-links {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.rna-nav-links a {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .4rem .85rem;
+    font-size: .82rem;
+    font-weight: 500;
+    color: var(--rna-grey-700);
+    border-radius: var(--rna-radius-md);
+    transition: all .2s ease;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.rna-nav-links a:hover,
+.rna-nav-links a.active {
+    background: rgba(5, 154, 152, .08);
+    color: var(--rna-teal);
+}
+
+.rna-nav-links a.active {
+    font-weight: 600;
+    background: rgba(5, 154, 152, .12);
+    color: var(--rna-navy);
+}
+
+/* Session badge in navbar */
+.rna-session-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .25rem .65rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--rna-grey-500);
+    background: var(--rna-grey-100);
+    border-radius: 50px;
+}
+
+/* ── Footer ── */
+.rna-footer {
+    padding: .65rem 1.5rem;
+    text-align: right;
+    font-size: .72rem;
+    color: var(--rna-grey-500);
+    background: #fff;
+    border-top: 1px solid var(--rna-grey-200);
+}
+
+/* ── Buttons ── */
+.btn-rna {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .4rem;
+    height: 44px;
+    padding: 0 1.5rem;
+    min-width: 160px;
+    font-family: var(--rna-font-body);
+    font-size: .88rem;
+    font-weight: 600;
+    border: none;
+    border-radius: var(--rna-radius-md);
+    cursor: pointer;
+    transition: all .2s ease;
+    box-shadow: var(--rna-shadow-sm);
+    text-decoration: none;
+}
+
+.btn-rna:hover {
+    box-shadow: var(--rna-shadow-hover);
+    transform: translateY(-1px);
+}
+
+.btn-rna:disabled {
+    opacity: .35;
+    pointer-events: none;
+    transform: none;
+    box-shadow: none;
+}
+
+.btn-rna-primary {
+    background: var(--rna-brand-gradient);
+    color: #fff;
+}
+
+.btn-rna-primary:hover {
+    color: #fff;
+    filter: brightness(1.1);
+}
+
+.btn-rna-teal {
+    background: var(--rna-teal);
+    color: #fff;
+}
+
+.btn-rna-teal:hover {
+    color: #fff;
+    background: var(--rna-blue-teal);
+}
+
+.btn-rna-outline {
+    background: transparent;
+    color: var(--rna-navy);
+    border: 1.5px solid var(--rna-grey-300);
+    box-shadow: none;
+}
+
+.btn-rna-outline:hover {
+    border-color: var(--rna-teal);
+    color: var(--rna-teal);
+    background: rgba(5, 154, 152, .04);
+}
+
+.btn-rna-sm {
+    height: 34px;
+    padding: 0 .9rem;
+    min-width: 100px;
+    font-size: .8rem;
+}
+
+.btn-rna-danger {
+    background: var(--rna-accent-red);
+    color: #fff;
+}
+
+/* ── Cards ── */
+.rna-card {
+    background: #fff;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-lg);
+    box-shadow: var(--rna-shadow-sm);
+    transition: box-shadow .2s ease, transform .2s ease;
+}
+
+.rna-card:hover {
+    box-shadow: var(--rna-shadow-md);
+}
+
+.rna-card-header {
+    padding: 1rem 1.25rem;
+    font-family: var(--rna-font-heading);
+    font-weight: 600;
+    font-size: .88rem;
+    color: #fff;
+    background: var(--rna-card-gradient);
+    border-radius: var(--rna-radius-lg) var(--rna-radius-lg) 0 0;
+}
+
+.rna-card-body {
+    padding: 1.25rem;
+}
+
+/* ── Module Cards (grid items) ── */
+.rna-module-card {
+    background: #fff;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-lg);
+    padding: 1.25rem;
+    transition: all .25s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.rna-module-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--rna-teal);
+    opacity: 0;
+    transition: opacity .25s ease;
+}
+
+.rna-module-card:hover {
+    border-color: var(--rna-teal-light);
+    box-shadow: var(--rna-shadow-md);
+    transform: translateY(-2px);
+}
+
+.rna-module-card:hover::before {
+    opacity: 1;
+}
+
+.rna-module-card.locked {
+    opacity: .45;
+    pointer-events: none;
+}
+
+.rna-module-card.locked::before {
+    display: none;
+}
+
+.rna-module-card .module-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    font-size: 1.15rem;
+    margin-bottom: .75rem;
+}
+
+.rna-module-card .module-icon.cat-transcriptome {
+    background: rgba(5, 154, 152, .1);
+    color: var(--rna-teal);
+}
+
+.rna-module-card .module-icon.cat-systems {
+    background: rgba(2, 66, 110, .1);
+    color: var(--rna-navy);
+}
+
+.rna-module-card .module-icon.cat-clinical {
+    background: rgba(22, 163, 74, .1);
+    color: var(--rna-accent-green);
+}
+
+.rna-module-card .module-icon.cat-multiomics {
+    background: rgba(245, 158, 11, .1);
+    color: var(--rna-accent-amber);
+}
+
+.rna-module-card .module-icon.cat-advanced {
+    background: rgba(127, 207, 193, .15);
+    color: var(--rna-teal);
+}
+
+.rna-module-card h3 {
+    font-family: var(--rna-font-heading);
+    font-size: .88rem;
+    font-weight: 600;
+    color: var(--rna-grey-900);
+    margin: 0 0 .35rem;
+}
+
+.rna-module-card p {
+    font-size: .78rem;
+    color: var(--rna-grey-600);
+    margin: 0;
+    line-height: 1.45;
+}
+
+/* ── Tables ── */
+.rna-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.rna-table-fixed {
+    table-layout: fixed;
+    word-wrap: break-word;
+}
+
+.rna-table thead th {
+    background: var(--rna-navy);
+    color: #fff;
+    padding: .75rem 1rem;
+    font-size: .78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.rna-table thead th:first-child {
+    border-radius: var(--rna-radius-md) 0 0 0;
+}
+
+.rna-table thead th:last-child {
+    border-radius: 0 var(--rna-radius-md) 0 0;
+}
+
+.rna-table tbody td {
+    padding: .75rem 1rem;
+    font-size: .84rem;
+    color: var(--rna-grey-800);
+    border-bottom: 1px solid var(--rna-grey-100);
+    vertical-align: middle;
+}
+
+.rna-table tbody td:last-child {
+    text-align: right;
+}
+
+.rna-table-fixed tbody td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rna-table tbody tr:hover {
+    background: rgba(59, 173, 174, .04);
+}
+
+/* ── Status Badges ── */
+.rna-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: .25rem .7rem;
+    border-radius: 50px;
+    font-size: .72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.rna-badge-pending {
+    background: rgba(245, 158, 11, .12);
+    color: #b45309;
+}
+
+.rna-badge-running {
+    background: rgba(5, 154, 152, .12);
+    color: var(--rna-navy);
+}
+
+.rna-badge-success {
+    background: rgba(22, 163, 74, .12);
+    color: #15803d;
+}
+
+.rna-badge-failed {
+    background: rgba(239, 68, 68, .12);
+    color: #b91c1c;
+}
+
+/* ── Forms ── */
+.rna-input {
+    width: 100%;
+    padding: .55rem .85rem;
+    font-size: .84rem;
+    font-family: var(--rna-font-body);
+    background: var(--rna-grey-50);
+    border: 1.5px solid var(--rna-grey-300);
+    border-radius: var(--rna-radius-md);
+    transition: all .2s ease;
+    color: var(--rna-grey-800);
+}
+
+.rna-input:focus {
+    outline: none;
+    border-color: var(--rna-teal);
+    box-shadow: 0 0 0 3px rgba(5, 154, 152, .12);
+    background: #fff;
+}
+
+.rna-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23757575' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right .75rem center;
+    padding-right: 2.2rem;
+}
+
+.rna-label {
+    display: block;
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--rna-grey-700);
+    margin-bottom: .35rem;
+}
+
+/* ── File Drop Zone ── */
+.rna-drop-zone {
+    min-height: 160px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    background: var(--rna-grey-50);
+    border: 2px dashed var(--rna-grey-400);
+    border-radius: var(--rna-radius-md);
+    color: var(--rna-grey-600);
+    font-weight: 600;
+    font-size: .88rem;
+    cursor: pointer;
+    transition: all .25s ease;
+}
+
+.rna-drop-zone:hover,
+.rna-drop-zone.drag-over {
+    border-color: var(--rna-teal);
+    background: rgba(5, 154, 152, .04);
+    color: var(--rna-teal);
+}
+
+.rna-drop-zone.has-files {
+    border-style: solid;
+    border-color: var(--rna-accent-emerald);
+    background: rgba(127, 207, 193, .06);
+}
+
+.rna-drop-zone i {
+    font-size: 2rem;
+    opacity: .5;
+}
+
+/* ── Section Headers ── */
+.rna-section-title {
+    font-family: var(--rna-font-heading);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--rna-navy);
+    margin: 0 0 .35rem;
+}
+
+.rna-section-subtitle {
+    font-size: .82rem;
+    color: var(--rna-grey-500);
+    margin: 0 0 1.5rem;
+}
+
+/* ── Progress Steps ── */
+.rna-steps {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+
+.rna-step {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .35rem .75rem;
+    font-size: .75rem;
+    font-weight: 600;
+    border-radius: var(--rna-radius-md);
+    background: var(--rna-grey-100);
+    color: var(--rna-grey-600);
+    transition: all .2s ease;
+}
+
+.rna-step.active {
+    background: rgba(5, 154, 152, .12);
+    color: var(--rna-teal);
+    border: 1px solid rgba(5, 154, 152, .25);
+}
+
+.rna-step.completed {
+    background: rgba(22, 163, 74, .1);
+    color: var(--rna-accent-green);
+}
+
+.rna-step-arrow {
+    color: var(--rna-grey-400);
+    font-size: .6rem;
+}
+
+/* ── Warning Banner ── */
+.rna-banner-warn {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    padding: .75rem 1.15rem;
+    background: rgba(245, 158, 11, .08);
+    border: 1px solid rgba(245, 158, 11, .25);
+    border-radius: var(--rna-radius-md);
+    font-size: .82rem;
+    color: #92400e;
+}
+
+.rna-banner-warn i {
+    font-size: 1.1rem;
+}
+
+/* ── Download list ── */
+.rna-download-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .65rem 1rem;
+    border-bottom: 1px solid var(--rna-grey-100);
+}
+
+.rna-download-item:last-child {
+    border-bottom: none;
+}
+
+.rna-download-item .file-info {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+
+.rna-download-item .file-info i {
+    color: var(--rna-teal);
+}
+
+.rna-download-item .file-name {
+    font-size: .84rem;
+    font-weight: 500;
+    color: var(--rna-grey-800);
+}
+
+.rna-download-item .file-desc {
+    font-size: .72rem;
+    color: var(--rna-grey-500);
+}
+
+.rna-icon-btn {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--rna-radius-sm);
+    border: none;
+    cursor: pointer;
+    transition: all .2s ease;
+    font-size: .9rem;
+}
+
+.rna-icon-btn-download {
+    background: rgba(5, 154, 152, .1);
+    color: var(--rna-teal);
+}
+
+.rna-icon-btn-download:hover {
+    background: var(--rna-teal);
+    color: #fff;
+}
+
+/* ── Viz Plot Container ── */
+.rna-plot-container {
+    width: 100%;
+    height: 420px;
+    background: #fff;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-lg);
+    overflow: hidden;
+    position: relative;
+    color: var(--rna-grey-400);
+    font-size: .82rem;
+}
+
+.rna-plot-container .js-plotly-plot,
+.rna-plot-container .plot-container,
+.rna-plot-container .svg-container {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* placeholder text centered until plot loads */
+.rna-plot-container>span {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* ── Container Widths ── */
+.rna-container {
+    width: 100%;
+    max-width: 98%;
+    margin: 0 auto;
+    padding: 0 0.5rem;
+}
+
+.rna-container-wide {
+    max-width: 99%;
+}
+
+/* ── Utility ── */
+.rna-mt-1 {
+    margin-top: .5rem;
+}
+
+.rna-mt-2 {
+    margin-top: 1rem;
+}
+
+.rna-mt-3 {
+    margin-top: 1.5rem;
+}
+
+.rna-mt-4 {
+    margin-top: 2rem;
+}
+
+.rna-mb-1 {
+    margin-bottom: .5rem;
+}
+
+.rna-mb-2 {
+    margin-bottom: 1rem;
+}
+
+.rna-mb-3 {
+    margin-bottom: 1.5rem;
+}
+
+.rna-mb-4 {
+    margin-bottom: 2rem;
+}
+
+.rna-gap-2 {
+    gap: 1rem;
+}
+
+.rna-gap-3 {
+    gap: 1.5rem;
+}
+
+.rna-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+}
+
+.rna-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+}
+
+.rna-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.25rem;
+}
+
+.rna-flex {
+    display: flex;
+}
+
+.rna-flex-col {
+    flex-direction: column;
+}
+
+.rna-flex-center {
+    align-items: center;
+    justify-content: center;
+}
+
+.rna-flex-between {
+    justify-content: space-between;
+}
+
+.rna-flex-wrap {
+    flex-wrap: wrap;
+}
+
+.rna-text-sm {
+    font-size: .82rem;
+}
+
+.rna-text-xs {
+    font-size: .72rem;
+}
+
+.rna-text-muted {
+    color: var(--rna-grey-500);
+}
+
+.rna-text-center {
+    text-align: center;
+}
+
+.rna-hidden {
+    display: none !important;
+}
+
+/* ── Modal ── */
+.rna-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .45);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+}
+
+.rna-modal-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.rna-modal {
+    background: #fff;
+    border-radius: var(--rna-radius-lg);
+    box-shadow: var(--rna-shadow-lg);
+    max-width: 560px;
+    width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.rna-modal-header {
+    padding: 1rem 1.25rem;
+    background: var(--rna-card-gradient);
+    color: #fff;
+    border-radius: var(--rna-radius-lg) var(--rna-radius-lg) 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.rna-modal-header h3 {
+    font-family: var(--rna-font-heading);
+    font-size: .95rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.rna-modal-close {
+    background: rgba(255, 255, 255, .2);
+    border: none;
+    color: #fff;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--rna-radius-sm);
+    cursor: pointer;
+    font-size: .85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.rna-modal-body {
+    padding: 1.25rem;
+}
+
+.rna-modal-footer {
+    padding: .85rem 1.25rem;
+    border-top: 1px solid var(--rna-grey-200);
+    background: var(--rna-grey-50);
+    border-radius: 0 0 var(--rna-radius-lg) var(--rna-radius-lg);
+    display: flex;
+    justify-content: flex-end;
+    gap: .5rem;
+}
+
+/* ── Progress bar ── */
+.rna-progress {
+    width: 100%;
+    height: 8px;
+    background: var(--rna-grey-200);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.rna-progress-bar {
+    height: 100%;
+    background: var(--rna-brand-gradient);
+    border-radius: 4px;
+    transition: width .3s ease;
+}
+
+.rna-progress-bar.animated {
+    background-size: 30px 30px;
+    background-image: linear-gradient(135deg,
+            rgba(255, 255, 255, .15) 25%, transparent 25%,
+            transparent 50%, rgba(255, 255, 255, .15) 50%,
+            rgba(255, 255, 255, .15) 75%, transparent 75%, transparent);
+    animation: rna-progress-stripe 1s linear infinite;
+}
+
+@keyframes rna-progress-stripe {
+    from {
+        background-position: 30px 0;
+    }
+
+    to {
+        background-position: 0 0;
+    }
+}
+
+/* ── Hero Section (old centered style, kept for inner pages) ── */
+.rna-hero-simple {
+    position: relative;
+    padding: 4rem 0 3rem;
+    text-align: center;
+    background: var(--rna-brand-gradient);
+    color: #fff;
+    overflow: hidden;
+}
+
+.rna-hero-simple::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: var(--rna-page-bg);
+    clip-path: ellipse(55% 100% at 50% 100%);
+}
+
+.rna-hero-simple h1 {
+    font-family: var(--rna-font-heading);
+    font-size: 2.2rem;
+    font-weight: 900;
+    margin: 0 0 .5rem;
+}
+
+.rna-hero-simple p {
+    font-size: 1rem;
+    opacity: .85;
+    max-width: 650px;
+    margin: 0 auto 2rem;
+    line-height: 1.6;
+}
+
+/* ── Dashboard Hero Banner (LC-AutoFit style) ── */
+@keyframes heroSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(80px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.dash-container {
+    width: 100%;
+    max-width: 98%;
+    margin: 0 auto;
+    padding: 0 0.5rem;
+}
+
+.dash-welcome-banner {
+    background: var(--rna-brand-gradient);
+    border-radius: var(--rna-radius-lg);
+    padding: 1.25rem 1.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.dash-greeting {
+    font-size: .88rem;
+    color: rgba(255, 255, 255, .85);
+    margin: 0 0 .1rem;
+}
+
+.dash-tagline {
+    font-family: var(--rna-font-heading);
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+}
+
+.dash-stats-banner {
+    background: rgba(255, 255, 255, .15);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, .25);
+    border-radius: var(--rna-radius-lg);
+    padding: .55rem 1.25rem;
+}
+
+.dash-stats-inner {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: .35rem;
+    flex-wrap: wrap;
+}
+
+.dash-stat-number {
+    display: inline-block;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.2;
+}
+
+.dash-stat-label {
+    font-size: .85rem;
+    color: rgba(255, 255, 255, .85);
+    font-weight: 500;
+}
+
+/* Hero banner with slideshow */
+.dash-hero-banner {
+    position: relative;
+    border-radius: var(--rna-radius-lg);
+    overflow: hidden;
+    min-height: 420px;
+    display: flex;
+    align-items: center;
+}
+
+.dash-slideshow {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+}
+
+.dash-slide {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 1.2s ease-in-out;
+}
+
+.dash-slide.active {
+    opacity: 1;
+}
+
+.dash-hero-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right,
+            rgba(10, 22, 40, .30) 0%,
+            rgba(10, 22, 40, .12) 40%,
+            rgba(10, 22, 40, .04) 100%);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.dash-hero-logo {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+    padding: 2rem 2.5rem;
+}
+
+.dash-hero-logo-img {
+    height: 22.5rem;
+    width: auto;
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, .3)) brightness(0) invert(1);
+}
+
+/* Staircase Action Buttons */
+.dash-hero-actions {
+    position: relative;
+    z-index: 2;
+    margin-left: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: .65rem;
+    padding: 2rem 0 2rem 2rem;
+}
+
+.dash-hero-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .85rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 10px;
+    border: none;
+    transition: filter .2s ease, box-shadow .2s ease, padding-right .2s ease;
+    opacity: 0;
+    transform: translateX(80px);
+    animation: heroSlideIn .6s ease forwards;
+}
+
+.dash-hero-btn:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .25);
+    padding-right: 1.2rem;
+    color: #fff;
+    text-decoration: none;
+}
+
+.dash-hero-btn:hover i {
+    transform: translateX(4px);
+}
+
+.dash-hero-btn i {
+    font-size: .9rem;
+    transition: transform .2s ease;
+}
+
+.dash-btn-content {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+}
+
+.dash-btn-title {
+    font-size: 1rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.dash-btn-desc {
+    font-size: .75rem;
+    font-weight: 400;
+    color: rgba(255, 255, 255, .85);
+    margin-top: .15rem;
+    white-space: nowrap;
+}
+
+/* Staircase widths + gradient colors + staggered delays */
+.dash-hero-btn-1 {
+    background: linear-gradient(135deg, var(--rna-navy) 0%, var(--rna-blue-mid) 100%);
+    animation-delay: .1s;
+    width: 520px;
+}
+
+.dash-hero-btn-2 {
+    background: linear-gradient(135deg, var(--rna-blue-mid) 0%, var(--rna-blue-teal) 100%);
+    animation-delay: .25s;
+    width: 470px;
+}
+
+.dash-hero-btn-3 {
+    background: linear-gradient(135deg, var(--rna-blue-teal) 0%, var(--rna-teal) 100%);
+    animation-delay: .4s;
+    width: 420px;
+}
+
+.dash-hero-btn-4 {
+    background: linear-gradient(135deg, var(--rna-teal) 0%, var(--rna-teal-light) 100%);
+    animation-delay: .55s;
+    width: 370px;
+}
+
+/* Slideshow dots */
+.dash-hero-banner .dash-slideshow-dots {
+    position: absolute;
+    bottom: .75rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+}
+
+.dash-slideshow-dots {
+    display: flex;
+    gap: .4rem;
+}
+
+.dash-sdot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .4);
+    cursor: pointer;
+    transition: background .2s ease, width .2s ease, border-radius .2s ease;
+}
+
+.dash-sdot.active {
+    background: #fff;
+    width: 22px;
+    border-radius: 4px;
+}
+
+.dash-sdot:hover:not(.active) {
+    background: rgba(255, 255, 255, .7);
+}
+
+/* ── Navbar Step Progress Bar ── */
+.rna-navbar-steps {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.rna-step-bar {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    flex-wrap: nowrap;
+}
+
+.rna-nav-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    border-radius: var(--rna-radius-md);
+    font-size: .75rem;
+    font-weight: 600;
+    padding: 0 .7rem;
+    line-height: 1;
+    white-space: nowrap;
+    transition: all .25s ease;
+}
+
+.rna-nav-step.step-active {
+    background: rgba(2, 66, 110, .12);
+    color: var(--rna-navy);
+    border: 1px solid rgba(2, 66, 110, .25);
+    box-shadow: 0 0 8px rgba(5, 154, 152, .3);
+}
+
+.rna-nav-step.step-inactive {
+    background: var(--rna-grey-100);
+    color: var(--rna-grey-600);
+    border: 1px solid transparent;
+}
+
+.rna-step-arrow-icon {
+    color: var(--rna-grey-400);
+    font-size: .65rem;
+}
+
+/* ── Feature Grid (Home) ── */
+.rna-feature-card {
+    text-align: center;
+    padding: 1.5rem 1.25rem;
+}
+
+.rna-feature-card i:not(.step-badge) {
+    font-size: 1.8rem;
+    color: var(--rna-teal);
+    margin-bottom: .75rem;
+    display: block;
+}
+
+/* Step badge used in 'How It Works' to match feature-card visuals */
+.rna-feature-card .step-badge {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--rna-brand-gradient);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin-bottom: .75rem;
+    line-height: 1;
+    font-style: normal;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.rna-feature-card h3 {
+    font-family: var(--rna-font-heading);
+    font-size: .88rem;
+    font-weight: 600;
+    color: var(--rna-grey-900);
+    margin: 0 0 .4rem;
+}
+
+.rna-feature-card p {
+    font-size: .78rem;
+    color: var(--rna-grey-600);
+    margin: 0;
+    line-height: 1.45;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1200px) {
+    .dash-hero-btn-1 {
+        width: 420px;
+    }
+
+    .dash-hero-btn-2 {
+        width: 380px;
+    }
+
+    .dash-hero-btn-3 {
+        width: 340px;
+    }
+
+    .dash-hero-btn-4 {
+        width: 300px;
+    }
+
+    .rna-navbar-steps {
+        display: none;
+    }
+}
+
+@media (max-width: 991px) {
+    .rna-grid-3 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .rna-grid-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .rna-hero-simple h1 {
+        font-size: 1.75rem;
+    }
+
+    .dash-hero-banner {
+        flex-direction: column;
+        min-height: auto;
+    }
+
+    .dash-hero-actions {
+        align-items: stretch;
+        padding: 1rem 1.5rem 1.5rem;
+        margin-left: 0;
+    }
+
+    .dash-hero-btn-1,
+    .dash-hero-btn-2,
+    .dash-hero-btn-3,
+    .dash-hero-btn-4 {
+        width: 100%;
+    }
+
+    .dash-hero-logo {
+        padding: 1.5rem 1.5rem .5rem;
+    }
+
+    .dash-hero-logo-img {
+        height: 12rem;
+    }
+}
+
+@media (max-width: 575px) {
+
+    .rna-grid-2,
+    .rna-grid-3,
+    .rna-grid-4 {
+        grid-template-columns: 1fr;
+    }
+
+    .rna-plot-container {
+        height: 300px;
+    }
+
+    .rna-navbar {
+        padding: 0 .75rem;
+    }
+
+    .rna-nav-links {
+        display: none;
+    }
+
+    .rna-container {
+        padding: 0 0.35rem;
+    }
+
+    .rna-hero-simple {
+        padding: 2.5rem 0 2rem;
+    }
+
+    .rna-hero-simple h1 {
+        font-size: 1.5rem;
+    }
+
+    .dash-hero-logo-img {
+        height: 8rem;
+    }
+}
+
+/* ── Animated pulse for processing ── */
+@keyframes rna-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: .5;
+    }
+}
+
+.rna-processing {
+    animation: rna-pulse 2s ease-in-out infinite;
+}
+
+/* ── Deconvolution gateway card special styling ── */
+.rna-gateway-card {
+    background: linear-gradient(135deg, rgba(2, 66, 110, .03) 0%, rgba(5, 154, 152, .05) 100%);
+    border: 2px solid var(--rna-teal-light);
+}
+
+.rna-gateway-card:hover {
+    border-color: var(--rna-teal);
+    box-shadow: 0 6px 24px rgba(5, 154, 152, .15);
+}

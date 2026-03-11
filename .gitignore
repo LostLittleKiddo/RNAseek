@@ -22,7 +22,6 @@ build/
 # ── Django ──
 db.sqlite3
 db.sqlite3-journal
-staticfiles/
 media/
 
 # ── Reference Genomes (44 GB+ of pre-built indexes & sequences) ──
