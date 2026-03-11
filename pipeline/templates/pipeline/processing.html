@@ -117,9 +117,11 @@
             align-items: center;
             justify-content: center;
         }
+
         .pipeline-overlay.rna-hidden {
             display: none;
         }
+
         .pipeline-overlay-backdrop {
             position: absolute;
             top: 0;
@@ -129,6 +131,7 @@
             background: rgba(0, 0, 0, 0.55);
             backdrop-filter: blur(4px);
         }
+
         .pipeline-overlay-card {
             position: relative;
             max-width: 520px;
@@ -140,13 +143,29 @@
             box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
             animation: overlaySlideIn 0.35s ease;
         }
+
         @keyframes overlaySlideIn {
-            from { opacity: 0; transform: translateY(-30px) scale(0.95); }
-            to   { opacity: 1; transform: translateY(0) scale(1); }
+            from {
+                opacity: 0;
+                transform: translateY(-30px) scale(0.95);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
         }
+
         @keyframes toastSlideIn {
-            from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
-            to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
         }
     </style>
 </section>
