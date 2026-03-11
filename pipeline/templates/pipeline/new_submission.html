@@ -355,6 +355,17 @@
                         <i class="bi bi-gear"></i> Custom Genome Configuration
                     </h4>
 
+                    <div
+                        style="background: rgba(255, 193, 7, 0.10); border: 1px solid rgba(255, 193, 7, 0.35); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem;">
+                        <p style="margin: 0; font-size: .82rem; color: var(--rna-navy); line-height: 1.55;">
+                            <i class="bi bi-exclamation-triangle" style="color: #d97706; margin-right: .35rem;"></i>
+                            <strong>Attention:</strong> Building a HISAT2 index from a custom FASTA genome can take
+                            <strong>30 minutes to several hours</strong> depending on genome size. Large genomes
+                            (e.g. human ~3 GB) require significant memory and time. Make sure you provide the correct
+                            FASTA and GTF/GFF annotation files before submitting.
+                        </p>
+                    </div>
+
                     <div class="custom-genome-field">
                         <label class="rna-label">Genome Name <span class="required">*</span></label>
                         <input type="text" class="rna-input" id="custom-genome-name" placeholder="e.g. MyOrganism_v1">
@@ -444,15 +455,18 @@
                     <div id="csv-preview-area" style="display:none;"></div>
 
                     <div class="rna-mt-2 csv-format-hint">
-                        <strong>Expected format:</strong> First column = sample filename. Additional columns
-                        can be any metadata (condition, batch, age, sex, etc.). Columns are auto-detected.
+                        <strong>Expected format:</strong> First column must be named <code>sample</code>.
+                        Values must match your uploaded filenames <strong>without the file extension</strong>
+                        (e.g. <code>SampleA</code> for <code>SampleA.fastq.gz</code>).
+                        For <strong>paired-end</strong>, use the shared prefix before <code>_R1</code>/<code>_R2</code>
+                        (e.g. <code>SampleA</code> for <code>SampleA_R1.fastq.gz</code>/<code>SampleA_R2.fastq.gz</code>).
                     </div>
 
                     <!-- CSV example mini-table -->
                     <div class="csv-example">
                         <div class="csv-example-header">
                             <span><i class="bi bi-file-earmark-spreadsheet"></i> metadata.csv</span>
-                            <span>Example template</span>
+                            <span>Example (single-end)</span>
                         </div>
                         <table>
                             <thead>
@@ -460,33 +474,28 @@
                                     <th>sample</th>
                                     <th>condition</th>
                                     <th>batch</th>
-                                    <th>age</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td>SampleA_R1.fq.gz</td>
+                                    <td>SampleA</td>
                                     <td>Control</td>
                                     <td class="col-optional">batch_1</td>
-                                    <td class="col-optional">25</td>
                                 </tr>
                                 <tr>
-                                    <td>SampleB_R1.fq.gz</td>
+                                    <td>SampleB</td>
                                     <td>Control</td>
                                     <td class="col-optional">batch_2</td>
-                                    <td class="col-optional">30</td>
                                 </tr>
                                 <tr>
-                                    <td>SampleC_R1.fq.gz</td>
+                                    <td>SampleC</td>
                                     <td>Treatment</td>
                                     <td class="col-optional">batch_1</td>
-                                    <td class="col-optional">28</td>
                                 </tr>
                                 <tr>
-                                    <td>SampleD_R1.fq.gz</td>
+                                    <td>SampleD</td>
                                     <td>Treatment</td>
                                     <td class="col-optional">batch_2</td>
-                                    <td class="col-optional">32</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -550,6 +559,18 @@
                         padj &le; <strong id="pval-preview">0.05</strong> will be flagged as significant.</span>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ═══ Metadata CSV Viewer (full-width, populated after CSV upload + file matching) ═══ -->
+    <div class="csv-viewer-section rna-card rna-mt-3" id="csv-viewer-section" style="display:none;">
+        <div class="rna-card-header">
+            <i class="bi bi-table"></i>&ensp;Metadata Preview
+            <span class="header-tag">Matched Samples</span>
+        </div>
+        <div class="rna-card-body">
+            <div id="csv-viewer-info" class="csv-viewer-info"></div>
+            <div id="csv-viewer-table" class="csv-viewer-table-wrap"></div>
         </div>
     </div>
 

@@ -55,3 +55,5 @@ Thumbs.db
 doc/*
 media/*
 test/*
+pipeline/reference_genomes/*
+rnaseek_dev_dataset/*

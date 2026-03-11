@@ -17,105 +17,27 @@
         </div>
         <div class="rna-card-body">
             <div id="pipeline-steps" style="display: flex; flex-direction: column; gap: 1rem;">
-                <div class="pipeline-step" data-step="fastqc">
+                {% for step in pipeline_steps %}
+                <div class="pipeline-step" data-step="{{ step.key }}">
                     <div class="rna-flex" style="align-items: center; gap: .65rem;">
                         <div class="step-indicator"
                             style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
-                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
-                            <i class="bi bi-arrow-repeat rna-processing"
+                            <i class="bi bi-check-lg step-icon-done"
+                                style="display: none; color: var(--rna-accent-green);"></i>
+                            <i class="bi bi-arrow-repeat rna-processing step-icon-run"
                                 style="display: none; color: var(--rna-teal);"></i>
-                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
+                            <i class="bi bi-x-lg step-icon-fail"
+                                style="display: none; color: var(--rna-accent-red);"></i>
+                            <i class="bi bi-circle step-icon-idle"
+                                style="color: var(--rna-grey-400); font-size: .6rem;"></i>
                         </div>
                         <div>
-                            <strong style="font-size: .85rem;">FastQC</strong>
-                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Quality control on raw reads</p>
+                            <strong style="font-size: .85rem;">{{ step.title }}</strong>
+                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">{{ step.desc }}</p>
                         </div>
                     </div>
                 </div>
-
-                <div class="pipeline-step" data-step="trimmomatic">
-                    <div class="rna-flex" style="align-items: center; gap: .65rem;">
-                        <div class="step-indicator"
-                            style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
-                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
-                            <i class="bi bi-arrow-repeat rna-processing"
-                                style="display: none; color: var(--rna-teal);"></i>
-                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
-                        </div>
-                        <div>
-                            <strong style="font-size: .85rem;">Trimmomatic</strong>
-                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Adapter trimming &amp; quality
-                                filtering</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="pipeline-step" data-step="hisat2">
-                    <div class="rna-flex" style="align-items: center; gap: .65rem;">
-                        <div class="step-indicator"
-                            style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
-                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
-                            <i class="bi bi-arrow-repeat rna-processing"
-                                style="display: none; color: var(--rna-teal);"></i>
-                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
-                        </div>
-                        <div>
-                            <strong style="font-size: .85rem;">HISAT2 Alignment</strong>
-                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Splice-aware alignment to reference
-                                genome &amp; CRAM compression</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="pipeline-step" data-step="featurecounts">
-                    <div class="rna-flex" style="align-items: center; gap: .65rem;">
-                        <div class="step-indicator"
-                            style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
-                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
-                            <i class="bi bi-arrow-repeat rna-processing"
-                                style="display: none; color: var(--rna-teal);"></i>
-                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
-                        </div>
-                        <div>
-                            <strong style="font-size: .85rem;">featureCounts</strong>
-                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Gene-level read quantification</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="pipeline-step" data-step="deseq2">
-                    <div class="rna-flex" style="align-items: center; gap: .65rem;">
-                        <div class="step-indicator"
-                            style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
-                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
-                            <i class="bi bi-arrow-repeat rna-processing"
-                                style="display: none; color: var(--rna-teal);"></i>
-                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
-                        </div>
-                        <div>
-                            <strong style="font-size: .85rem;">Batch Correction &amp; DESeq2</strong>
-                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Combat-seq normalization &amp;
-                                differential expression testing</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="pipeline-step" data-step="multiqc">
-                    <div class="rna-flex" style="align-items: center; gap: .65rem;">
-                        <div class="step-indicator"
-                            style="width: 32px; height: 32px; border-radius: 50%; background: var(--rna-grey-200); display: flex; align-items: center; justify-content: center;">
-                            <i class="bi bi-check-lg" style="display: none; color: var(--rna-accent-green);"></i>
-                            <i class="bi bi-arrow-repeat rna-processing"
-                                style="display: none; color: var(--rna-teal);"></i>
-                            <i class="bi bi-circle" style="color: var(--rna-grey-400); font-size: .6rem;"></i>
-                        </div>
-                        <div>
-                            <strong style="font-size: .85rem;">MultiQC Report</strong>
-                            <p class="rna-text-xs rna-text-muted" style="margin: 0;">Aggregate all QC logs into a single
-                                report</p>
-                        </div>
-                    </div>
-                </div>
+                {% endfor %}
             </div>
 
             <!-- Overall progress -->
@@ -131,9 +53,25 @@
         </div>
     </div>
 
-    <!-- Result area -->
-    <div id="result-area" class="rna-hidden rna-text-center">
-        <div class="rna-card" style="max-width: 500px; margin: 0 auto; padding: 2rem;">
+    <!-- Error overlay -->
+    <div id="error-area" class="rna-hidden pipeline-overlay">
+        <div class="pipeline-overlay-backdrop"></div>
+        <div class="pipeline-overlay-card">
+            <i class="bi bi-exclamation-triangle"
+                style="font-size: 3rem; color: var(--rna-accent-red); display: block; margin-bottom: .75rem;"></i>
+            <h2 class="rna-section-title rna-mb-1">Pipeline Failed</h2>
+            <p class="rna-text-sm rna-text-muted rna-mb-1" id="error-message"></p>
+            <p class="rna-text-sm rna-mb-2" id="error-suggestion" style="color: var(--rna-grey-600);"></p>
+            <a href="{% url 'new_submission' %}" class="btn-rna btn-rna-primary">
+                <i class="bi bi-arrow-counterclockwise"></i> Try Again
+            </a>
+        </div>
+    </div>
+
+    <!-- Result overlay -->
+    <div id="result-area" class="rna-hidden pipeline-overlay">
+        <div class="pipeline-overlay-backdrop"></div>
+        <div class="pipeline-overlay-card">
             <i class="bi bi-check-circle"
                 style="font-size: 3rem; color: var(--rna-accent-green); display: block; margin-bottom: .75rem;"></i>
             <h2 class="rna-section-title rna-mb-1">Pipeline Complete!</h2>
@@ -144,6 +82,73 @@
             </a>
         </div>
     </div>
+
+    <!-- Toast notification -->
+    <div id="toast-notification" style="
+        display: none;
+        position: fixed;
+        top: 1.5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999;
+        min-width: 320px;
+        max-width: 500px;
+        padding: 1rem 1.5rem;
+        border-radius: var(--rna-radius-lg);
+        box-shadow: 0 8px 32px rgba(0,0,0,.18);
+        font-size: .88rem;
+        font-weight: 600;
+        text-align: center;
+        animation: toastSlideIn .4s ease;
+    ">
+        <i id="toast-icon" style="margin-right: .5rem;"></i>
+        <span id="toast-text"></span>
+    </div>
+
+    <style>
+        .pipeline-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .pipeline-overlay.rna-hidden {
+            display: none;
+        }
+        .pipeline-overlay-backdrop {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(4px);
+        }
+        .pipeline-overlay-card {
+            position: relative;
+            max-width: 520px;
+            width: 90%;
+            background: var(--rna-white, #fff);
+            border-radius: var(--rna-radius-lg, 12px);
+            padding: 2.5rem 2rem;
+            text-align: center;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+            animation: overlaySlideIn 0.35s ease;
+        }
+        @keyframes overlaySlideIn {
+            from { opacity: 0; transform: translateY(-30px) scale(0.95); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes toastSlideIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+            to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+    </style>
 </section>
 {% endblock %}
 
@@ -151,46 +156,222 @@
 <script>
     (function () {
         "use strict";
-        const JOB_ID = "{{ job_id }}";
-        const CSRF = document.querySelector('meta[name="csrf-token"]').content;
-        const POLL_MS = 3000;
+        var JOB_ID = "{{ job_id }}";
+        var CSRF = document.querySelector('meta[name="csrf-token"]').content;
+        var POLL_MS = 3000;
 
-        const progressBar = document.getElementById("overall-progress");
-        const statusLabel = document.getElementById("status-label");
-        const progressPct = document.getElementById("progress-pct");
-        const resultArea = document.getElementById("result-area");
+        var progressBar = document.getElementById("overall-progress");
+        var statusLabel = document.getElementById("status-label");
+        var progressPct = document.getElementById("progress-pct");
+        var resultArea = document.getElementById("result-area");
+        var errorArea = document.getElementById("error-area");
+        var errorMessage = document.getElementById("error-message");
+        var allStepEls = document.querySelectorAll(".pipeline-step");
+        var terminated = false;
+        var toastEl = document.getElementById("toast-notification");
+        var toastIcon = document.getElementById("toast-icon");
+        var toastText = document.getElementById("toast-text");
+        var errorSuggestion = document.getElementById("error-suggestion");
 
+        function setStepState(stepEl, state) {
+            var done = stepEl.querySelector(".step-icon-done");
+            var run = stepEl.querySelector(".step-icon-run");
+            var fail = stepEl.querySelector(".step-icon-fail");
+            var idle = stepEl.querySelector(".step-icon-idle");
+            var indicator = stepEl.querySelector(".step-indicator");
+            done.style.display = "none";
+            run.style.display = "none";
+            fail.style.display = "none";
+            idle.style.display = "none";
+            if (state === "done") {
+                done.style.display = "inline";
+                indicator.style.background = "rgba(22, 163, 74, .12)";
+            } else if (state === "running") {
+                run.style.display = "inline";
+                indicator.style.background = "rgba(5, 154, 152, .15)";
+            } else if (state === "failed") {
+                fail.style.display = "inline";
+                indicator.style.background = "rgba(239, 68, 68, .12)";
+            } else {
+                idle.style.display = "inline";
+                indicator.style.background = "var(--rna-grey-200)";
+            }
+        }
+
+        function updateSteps(progress) {
+            if (!progress || !progress.pipeline_steps) return;
+            var pipelineSteps = progress.pipeline_steps || [];
+            var completedSteps = progress.completed_steps || [];
+            var currentStep = progress.current_step || null;
+            var failedStep = progress.failed_step || null;
+
+            allStepEls.forEach(function (el) {
+                var key = el.getAttribute("data-step");
+                if (pipelineSteps.indexOf(key) === -1) return;
+                if (key === failedStep) {
+                    setStepState(el, "failed");
+                } else if (completedSteps.indexOf(key) !== -1) {
+                    setStepState(el, "done");
+                } else if (key === currentStep) {
+                    setStepState(el, "running");
+                } else {
+                    setStepState(el, "idle");
+                }
+            });
+
+            var total = pipelineSteps.length;
+            if (total === 0) return;
+            var done = completedSteps.length;
+            if (currentStep && completedSteps.indexOf(currentStep) === -1) {
+                done += 0.5;
+            }
+            var pct = Math.round((done / total) * 100);
+            progressBar.style.width = pct + "%";
+            progressPct.textContent = pct + "%";
+        }
+
+        function showToast(message, type) {
+            toastEl.style.display = "block";
+            toastText.textContent = message;
+            if (type === "success") {
+                toastEl.style.background = "rgba(22, 163, 74, .95)";
+                toastEl.style.color = "#fff";
+                toastIcon.className = "bi bi-check-circle-fill";
+            } else {
+                toastEl.style.background = "rgba(239, 68, 68, .95)";
+                toastEl.style.color = "#fff";
+                toastIcon.className = "bi bi-exclamation-triangle-fill";
+            }
+            setTimeout(function () { toastEl.style.display = "none"; }, 8000);
+        }
+
+        /* Map failed pipeline step to a user-friendly diagnostic hint */
+        function getFailureSuggestion(failedStep, errorMsg) {
+            var hints = {
+                hisat2_build: "The HISAT2 index build failed. Check that your custom FASTA file is valid and not corrupted.",
+                fastqc: "FastQC quality check failed. One or more FASTQ files may be corrupted or empty.",
+                trimmomatic: "Adapter trimming failed. Your FASTQ files may have an unexpected format or be truncated.",
+                hisat2: "Alignment to the reference genome failed. Ensure the correct genome was selected and FASTQ files are properly formatted.",
+                featurecounts: "Gene quantification failed. The GTF annotation may not match the reference genome, or BAM files may be malformed.",
+                multiqc: "QC report aggregation failed. This is usually non-critical — try re-running the analysis.",
+                deseq2: "Statistical analysis (DESeq2) failed. Common causes: too few samples, metadata sample names not matching FASTQ file names, or a confounded experimental design."
+            };
+            if (errorMsg && errorMsg.toLowerCase().indexOf("full rank") !== -1) {
+                return "The experimental design is confounded — batch and condition variables are perfectly correlated. Remove or adjust one of the variables.";
+            }
+            if (errorMsg && errorMsg.toLowerCase().indexOf("no overlapping sample") !== -1) {
+                return "Metadata sample names do not match the FASTQ file names. Ensure consistent naming between your metadata and uploaded files.";
+            }
+            return hints[failedStep] || "An unexpected error occurred. Review your input files and metadata, then try again.";
+        }
+
+        function handleStatus(data) {
+            updateSteps(data.step_progress);
+
+            if (data.status === "RUNNING") {
+                statusLabel.textContent = "Pipeline running...";
+            } else if (data.status === "SUCCESS") {
+                terminated = true;
+                statusLabel.textContent = "Complete!";
+                progressBar.style.width = "100%";
+                progressBar.classList.remove("animated");
+                progressPct.textContent = "100%";
+                resultArea.classList.remove("rna-hidden");
+                showToast("Pipeline complete! Your results are ready.", "success");
+                blockPageReload();
+            } else if (data.status === "FAILED") {
+                terminated = true;
+                statusLabel.textContent = "Pipeline failed.";
+                progressBar.style.background = "var(--rna-accent-red)";
+                progressBar.classList.remove("animated");
+                var msg = data.error || "An unknown error occurred.";
+                errorMessage.textContent = msg;
+                var failedStep = (data.step_progress && data.step_progress.failed_step) || null;
+                errorSuggestion.textContent = getFailureSuggestion(failedStep, msg);
+                errorArea.classList.remove("rna-hidden");
+                showToast("Pipeline failed at: " + (failedStep || "unknown step"), "error");
+                blockPageReload();
+            } else {
+                statusLabel.textContent = "Queued...";
+            }
+        }
+
+        /* Prevent the user from reloading / navigating away after completion.
+           Clicking overlay action buttons (Core Hub / Try Again) is allowed. */
+        var allowNavigation = false;
+        function blockPageReload() {
+            window.addEventListener("beforeunload", function (e) {
+                if (allowNavigation) return;
+                e.preventDefault();
+                e.returnValue = "";
+            });
+            /* Intercept F5 and Ctrl+R as extra safety */
+            document.addEventListener("keydown", function (e) {
+                if (e.key === "F5" || (e.ctrlKey && e.key === "r")) {
+                    e.preventDefault();
+                }
+            });
+            /* Allow navigation from overlay action links */
+            document.querySelectorAll("#result-area a, #error-area a").forEach(function (link) {
+                link.addEventListener("click", function () { allowNavigation = true; });
+            });
+        }
+
+        /* ── HTTP polling fallback ── */
         function poll() {
+            if (terminated) return;
             fetch("/api/jobs/" + JOB_ID + "/", {
                 headers: { "X-CSRFToken": CSRF }
             })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.status === "RUNNING") {
-                        statusLabel.textContent = "Pipeline running...";
-                        progressBar.style.width = "50%";
-                        progressPct.textContent = "50%";
-                        setTimeout(poll, POLL_MS);
-                    } else if (data.status === "SUCCESS") {
-                        statusLabel.textContent = "Complete!";
-                        progressBar.style.width = "100%";
-                        progressBar.classList.remove("animated");
-                        progressPct.textContent = "100%";
-                        resultArea.classList.remove("rna-hidden");
-                    } else if (data.status === "FAILED") {
-                        statusLabel.textContent = "Pipeline failed.";
-                        progressBar.style.width = "100%";
-                        progressBar.style.background = "var(--rna-accent-red)";
-                        progressPct.textContent = "Error";
-                    } else {
-                        statusLabel.textContent = "Pending...";
-                        setTimeout(poll, POLL_MS);
-                    }
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    handleStatus(data);
+                    if (!terminated) setTimeout(poll, POLL_MS);
                 })
-                .catch(() => setTimeout(poll, POLL_MS));
+                .catch(function () {
+                    if (!terminated) setTimeout(poll, POLL_MS);
+                });
         }
 
-        poll();
+        /* ── WebSocket connection ── */
+        function connectWebSocket() {
+            var protocol = location.protocol === "https:" ? "wss:" : "ws:";
+            var wsUrl = protocol + "//" + location.host + "/ws/pipeline/" + JOB_ID + "/";
+            var ws;
+
+            try {
+                ws = new WebSocket(wsUrl);
+            } catch (e) {
+                poll();
+                return;
+            }
+
+            ws.onopen = function () {
+                statusLabel.textContent = "Connected (live updates)";
+            };
+
+            ws.onmessage = function (event) {
+                try {
+                    var data = JSON.parse(event.data);
+                    handleStatus(data);
+                    if (terminated) ws.close();
+                } catch (e) { /* ignore malformed */ }
+            };
+
+            ws.onclose = function () {
+                if (!terminated) {
+                    /* Fall back to polling if WS drops */
+                    poll();
+                }
+            };
+
+            ws.onerror = function () {
+                ws.close();
+            };
+        }
+
+        /* Start: try WebSocket first, fall back to polling */
+        connectWebSocket();
     })();
 </script>
 {% endblock %}

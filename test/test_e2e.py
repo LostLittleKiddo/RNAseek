@@ -13,15 +13,15 @@ import sys
 import uuid
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
-os.environ["RNASEEK_GENOME_DIR"] = "/home/littlekiddo/Desktop/RNA/genomes"
 
 import django
 django.setup()
 
 from pipeline.models import AnalysisSubmission, FileAsset, Session
+from pipeline.tasks import _genome_paths
 
-GENOME_FA = "/home/littlekiddo/Desktop/RNA/genomes/r64/r64.fa"
-GENOME_GTF = "/home/littlekiddo/Desktop/RNA/genomes/r64/r64.gtf"
+# Use the pre-built reference genome paths
+_, GENOME_FA, GENOME_GTF = _genome_paths("r64")
 # Session created later in main()
 N_READS = 50000  # per sample — enough for alignment/counting
 READ_LEN = 100

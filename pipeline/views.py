@@ -1,9 +1,10 @@
 import json
+import mimetypes
 import os
 import uuid
 
 from django.conf import settings
-from django.http import JsonResponse
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views import View
 from django.views.generic import TemplateView
@@ -30,8 +31,8 @@ class WorkspacesView(TemplateView):
         ctx = super().get_context_data(**kwargs)
         session_obj = self.request.session_obj
         ctx["jobs"] = list(
-            session_obj.analysis_jobs.values(
-                "job_id", "module_name", "status"
+            session_obj.analysis_jobs.order_by("-created_at").values(
+                "job_id", "module_name", "status", "created_at"
             )
         )
         return ctx
@@ -70,6 +71,16 @@ class ProcessingView(TemplateView):
     template_name = "pipeline/processing.html"
     nav_step = 2
 
+    PIPELINE_STEPS = [
+        {"key": "hisat2_build", "title": "Build HISAT2 Index", "desc": "Building genome index from custom FASTA (may take a while)"},
+        {"key": "fastqc", "title": "FastQC", "desc": "Quality control on raw reads"},
+        {"key": "trimmomatic", "title": "Trimmomatic", "desc": "Adapter trimming & quality filtering"},
+        {"key": "hisat2", "title": "HISAT2 Alignment", "desc": "Splice-aware alignment to reference genome"},
+        {"key": "featurecounts", "title": "featureCounts", "desc": "Gene-level read quantification"},
+        {"key": "multiqc", "title": "MultiQC Report", "desc": "Aggregate all QC logs into a single report"},
+        {"key": "deseq2", "title": "Batch Correction & DESeq2", "desc": "Combat-seq normalization & differential expression testing"},
+    ]
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         session_obj = self.request.session_obj
@@ -79,6 +90,12 @@ class ProcessingView(TemplateView):
         ctx["job"] = job
         ctx["job_id"] = str(job.job_id)
         ctx["nav_step"] = self.nav_step
+
+        # Only show the steps that were actually selected for this job
+        active_keys = set((job.step_progress or {}).get("pipeline_steps", []))
+        ctx["pipeline_steps"] = [
+            s for s in self.PIPELINE_STEPS if s["key"] in active_keys
+        ]
         return ctx
 
 
@@ -335,19 +352,65 @@ class CorePipelineView(View):
         # ── Validate metadata ──
         meta = body.get("metadata_payload", {})
 
-        if metadata_mode == "upload":
-            has_csv = submission.file_assets.filter(
-                file_role=FileAsset.FileRole.METADATA_CSV
-            ).exists()
-            if not has_csv:
-                return JsonResponse({"error": "No metadata CSV uploaded."}, status=400)
-        elif metadata_mode == "manual":
-            samples = meta.get("samples", [])
-            if not samples:
+        samples = meta.get("samples", [])
+        if not samples:
+            return JsonResponse(
+                {"error": "Metadata requires sample data."},
+                status=400,
+            )
+
+        # Validate that the first column of uploaded metadata is "sample"
+        if metadata_mode == "upload" and samples and isinstance(samples[0], dict):
+            first_col = list(samples[0].keys())[0] if samples[0] else ""
+            if first_col.strip().lower() != "sample":
                 return JsonResponse(
-                    {"error": "Manual metadata requires sample data."},
+                    {"error": "The first column of metadata must be named 'sample'."},
                     status=400,
                 )
+
+        # ── Validate metadata sample names match uploaded files ──
+        if metadata_mode == "upload" and samples and isinstance(samples[0], dict):
+            import re as re_mod
+
+            sample_col = list(samples[0].keys())[0]
+            meta_sample_ids = {
+                (row.get(sample_col) or "").strip() for row in samples
+            }
+            meta_sample_ids.discard("")
+
+            # Build the set of expected sample stems from uploaded files
+            expected_stems = set()
+            if input_data_type == "fastq":
+                fastq_assets = submission.file_assets.filter(
+                    file_role=FileAsset.FileRole.RAW_FASTQ
+                )
+                fq_names = [os.path.basename(p) for p in fastq_assets.values_list("local_path", flat=True)]
+                if library_type == "paired":
+                    pair_re = re_mod.compile(r'^(.+?)(?:_R[12]|_[12])\.(?:fq|fastq)\.gz$', re_mod.IGNORECASE)
+                    for name in fq_names:
+                        m = pair_re.match(name)
+                        if m:
+                            expected_stems.add(m.group(1))
+                else:
+                    for name in fq_names:
+                        stem = re_mod.sub(r'\.(fq|fastq)(\.gz)?$', '', name, flags=re_mod.IGNORECASE)
+                        expected_stems.add(stem)
+            elif input_data_type == "alignment":
+                bam_assets = submission.file_assets.filter(
+                    file_role=FileAsset.FileRole.ALIGNMENT_BAM
+                )
+                for p in bam_assets.values_list("local_path", flat=True):
+                    stem = re_mod.sub(r'\.(bam|cram)$', '', os.path.basename(p), flags=re_mod.IGNORECASE)
+                    expected_stems.add(stem)
+
+            if expected_stems:
+                unmatched = expected_stems - meta_sample_ids
+                if unmatched:
+                    return JsonResponse(
+                        {"error": f"Metadata is missing rows for uploaded samples: {', '.join(sorted(unmatched))}. "
+                                  f"The 'sample' column must contain the filename stem (without extension)."},
+                        status=400,
+                    )
 
         # ── Validate column mapping ──
         col_mapping = meta.get("column_mapping", {})
@@ -399,14 +462,42 @@ class CorePipelineView(View):
             submission.metadata_payload["quant_level"] = quant_level
         submission.save()
 
+        # Determine pipeline steps based on entry point
+        if input_data_type == "fastq":
+            steps = ["fastqc", "trimmomatic", "hisat2", "featurecounts", "multiqc", "deseq2"]
+            if reference_genome == "custom":
+                steps.insert(0, "hisat2_build")
+        elif input_data_type == "alignment":
+            steps = ["featurecounts", "deseq2"]
+        else:
+            steps = ["deseq2"]
+
         job = AnalysisJob.objects.create(
             session=session_obj,
             module_name="CORE_PIPELINE",
+            step_progress={
+                "pipeline_steps": steps,
+                "completed_steps": [],
+                "current_step": None,
+                "failed_step": None,
+            },
         )
-        run_core_pipeline.apply_async(
-            args=[str(session_obj.session_id), str(submission.submission_id)],
-            task_id=str(job.job_id),
-        )
+
+        try:
+            run_core_pipeline.apply_async(
+                args=[str(session_obj.session_id), str(submission.submission_id)],
+                task_id=str(job.job_id),
+            )
+        except Exception:
+            # In eager mode the task may fail synchronously; job status
+            # is already updated by the task's own except handler.
+            # In async mode, a broker connection error means the task
+            # never queued — mark the job as failed.
+            job.refresh_from_db()
+            if job.status not in (AnalysisJob.Status.SUCCESS, AnalysisJob.Status.FAILED):
+                job.status = AnalysisJob.Status.FAILED
+                job.result_payload = {"error": "Task queue unavailable. Is the Celery worker running?"}
+                job.save(update_fields=["status", "result_payload"])
 
         return JsonResponse({
             "job_id": str(job.job_id),
@@ -428,24 +519,112 @@ class JobStatusView(View):
         except AnalysisJob.DoesNotExist:
             return JsonResponse({"error": "Job not found."}, status=404)
 
+        # Detect stale RUNNING jobs (Celery task lost/revoked)
+        if job.status == AnalysisJob.Status.RUNNING:
+            try:
+                from celery.result import AsyncResult
+                result = AsyncResult(str(job.job_id))
+                if result.state in ("REVOKED",):
+                    job.status = AnalysisJob.Status.FAILED
+                    job.result_payload = {"error": "Task was cancelled."}
+                    progress = job.step_progress or {}
+                    progress["failed_step"] = progress.get("current_step")
+                    progress["current_step"] = None
+                    job.step_progress = progress
+                    job.save(update_fields=["status", "result_payload", "step_progress"])
+            except Exception:
+                pass
+
         data = {
             "job_id": str(job.job_id),
             "module_name": job.module_name,
             "status": job.status,
+            "step_progress": job.step_progress,
         }
         if job.status == AnalysisJob.Status.SUCCESS:
             data["payload"] = job.result_payload
+        elif job.status == AnalysisJob.Status.FAILED:
+            data["error"] = (job.result_payload or {}).get("error", "Unknown error.")
         return JsonResponse(data)
 
 
 class SessionAssetsView(View):
-    """Return the list of FileAsset roles for the current session."""
+    """Return assets for the current session, optionally filtered by role.
+
+    Query params:
+        role    – FileAsset.FileRole value to filter by
+        job_id  – AnalysisJob UUID; when combined with role, redirects to the
+                  first matching asset's download URL for convenience.
+    """
 
     http_method_names = ["get"]
 
     def get(self, request):
+        from django.shortcuts import redirect
+
         session_obj = request.session_obj
-        assets = list(
-            session_obj.file_assets.values("id", "file_role", "local_path", "is_user_uploaded")
-        )
+        role = request.GET.get("role")
+        job_id = request.GET.get("job_id")
+
+        qs = session_obj.file_assets.all()
+        if role:
+            qs = qs.filter(file_role=role)
+        if job_id:
+            # Scope to assets belonging to the submission linked to this job
+            try:
+                job = AnalysisJob.objects.get(job_id=job_id, session=session_obj)
+            except (AnalysisJob.DoesNotExist, ValueError):
+                return JsonResponse({"error": "Job not found."}, status=404)
+            # Find submissions for this session and filter assets
+            qs = qs.filter(submission__in=session_obj.submissions.all())
+
+        asset = qs.first()
+        if asset and role:
+            # Redirect directly to the download endpoint
+            from django.urls import reverse
+            return redirect(reverse("file_download", args=[asset.id]))
+
+        assets = list(qs.values("id", "file_role", "local_path", "is_user_uploaded"))
         return JsonResponse({"assets": assets})
+
+
+class FileDownloadView(View):
+    """Serve a FileAsset for download, restricted to the owning session.
+
+    Security: The file must belong to the requesting user's session_id cookie.
+    The local_path is validated to reside under MEDIA_ROOT to prevent traversal.
+    Uses Django's FileResponse for efficient streaming of large files.
+    """
+
+    http_method_names = ["get"]
+
+    def get(self, request, asset_id):
+        session_obj = request.session_obj
+
+        try:
+            asset = FileAsset.objects.get(id=asset_id, session=session_obj)
+        except (FileAsset.DoesNotExist, ValueError):
+            raise Http404("File not found.")
+
+        file_path = asset.local_path
+
+        # Prevent path traversal: resolved path must be under MEDIA_ROOT
+        media_root = str(settings.MEDIA_ROOT)
+        resolved = os.path.realpath(file_path)
+        if not resolved.startswith(os.path.realpath(media_root)):
+            raise Http404("File not found.")
+
+        if not os.path.isfile(resolved):
+            raise Http404("File not found on disk.")
+
+        content_type, _ = mimetypes.guess_type(resolved)
+        if not content_type:
+            content_type = "application/octet-stream"
+
+        response = FileResponse(
+            open(resolved, "rb"),
+            content_type=content_type,
+            as_attachment=True,
+            filename=os.path.basename(resolved),
+        )
+        return response

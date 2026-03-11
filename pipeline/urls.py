@@ -6,6 +6,7 @@ from pipeline.views import (
     CoreHubView,
     CorePipelineView,
     CreateSubmissionView,
+    FileDownloadView,
     HomeView,
     JobStatusView,
     NewSubmissionView,
@@ -31,4 +32,5 @@ urlpatterns = [
     path("api/pipeline/core", CorePipelineView.as_view(), name="pipeline_core"),
     path("api/jobs/<uuid:job_id>/", JobStatusView.as_view(), name="job_status"),
     path("api/session/assets", SessionAssetsView.as_view(), name="session_assets"),
+    path("api/download/<uuid:asset_id>", FileDownloadView.as_view(), name="file_download"),
 ]
