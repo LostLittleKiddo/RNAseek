@@ -1,6 +1,6 @@
 # RNAseek -- Project Progress
 
-> Last updated after: **Custom Genome, GTF/GFF Support, Metadata Validation & Interactive Plots**
+> Last updated after: **Processing UX Overhaul, Strict Metadata Matching & Production Hardening**
 
 ---
 
@@ -47,19 +47,20 @@ pipeline/           ← Main Django app
 
 Settings auto-detect the environment via `RNASEEK_ENV` env variable (defaults to `development`).
 
-| Setting             | Development (default)        | Production (`RNASEEK_ENV=production`)      |
-| ------------------- | ---------------------------- | ------------------------------------------ |
-| `DEBUG`             | `True`                       | `False`                                    |
-| `SECRET_KEY`        | Insecure default             | From `DJANGO_SECRET_KEY` env var           |
-| `ALLOWED_HOSTS`     | `localhost,127.0.0.1`        | From `DJANGO_ALLOWED_HOSTS` env var        |
-| `DATABASES`         | SQLite (`db.sqlite3`)        | PostgreSQL (from `DB_*` env vars)          |
-| `CELERY_BROKER_URL` | `redis://127.0.0.1:6379/0`   | From `CELERY_BROKER_URL` env var           |
-| `CELERY_EAGER`      | `1` (sync, no worker needed) | N/A (always uses worker)                   |
-| `STATIC_ROOT`       | `None`                       | `staticfiles/`                             |
-| `MEDIA_ROOT`        | `media/`                     | From `MEDIA_ROOT` env var                  |
-| Security headers    | Off                          | HSTS, SSL redirect, secure cookies enabled |
+| Setting             | Development (default)      | Production (`RNASEEK_ENV=production`)      |
+| ------------------- | -------------------------- | ------------------------------------------ |
+| `DEBUG`             | `True`                     | `False`                                    |
+| `SECRET_KEY`        | Insecure default           | From `DJANGO_SECRET_KEY` env var           |
+| `ALLOWED_HOSTS`     | `localhost,127.0.0.1`      | From `DJANGO_ALLOWED_HOSTS` env var        |
+| `DATABASES`         | SQLite (`db.sqlite3`)      | PostgreSQL (from `DB_*` env vars)          |
+| `CELERY_BROKER_URL` | `redis://127.0.0.1:6379/0` | From `CELERY_BROKER_URL` env var           |
+| `CELERY_EAGER`      | `0` (async, needs worker)  | N/A (always uses worker)                   |
+| `STATIC_ROOT`       | `staticfiles/`             | `staticfiles/`                             |
+| `WhiteNoise`        | Enabled                    | Enabled (CompressedManifestStaticFiles)    |
+| `MEDIA_ROOT`        | `media/`                   | From `MEDIA_ROOT` env var                  |
+| Security headers    | Off                        | HSTS, SSL redirect, secure cookies enabled |
 
-Files: `.env` (local dev, gitignored), `.env.example` (documented template for production).
+Files: `.env` (local dev, gitignored), `.env.prod` (documented template for production).
 
 ### 2.2 Database Schema (4 models)
 
@@ -97,6 +98,9 @@ Files: `.env` (local dev, gitignored), `.env.example` (documented template for p
 - `module_name` — CharField (50)
 - `status` — choices: `PENDING`, `RUNNING`, `SUCCESS`, `FAILED`
 - `result_payload` — JSONField
+- `step_progress` — JSONField (pipeline steps, per-step status, timestamps)
+- `created_at` — DateTimeField (auto)
+- `updated_at` — DateTimeField (auto)
 
 ### 2.3 Middleware
 
@@ -116,6 +120,7 @@ Files: `.env` (local dev, gitignored), `.env.example` (documented template for p
 | POST   | `/api/pipeline/core`     | Validate & trigger Core Pipeline by entry point (fastq/alignment/matrix), returns `job_id`   |
 | GET    | `/api/jobs/<uuid>/`      | Poll job status (PENDING/RUNNING/SUCCESS/FAILED) + result payload                            |
 | GET    | `/api/session/assets`    | List all FileAssets for current session                                                      |
+| GET    | `/api/download/<uuid>/`  | Serve pipeline output files for download (FileAsset lookup)                                  |
 
 ### 2.5 Celery Tasks — Core Pipeline Router
 
@@ -357,18 +362,84 @@ test/
 
 ---
 
+## 4c. Processing UX Overhaul, Strict Metadata Matching & Production Hardening
+
+### Server-Side Pipeline Step Filtering
+
+| Change                            | Detail                                                                                                                                                                                                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`views.py` (`ProcessingView`)** | `get_context_data()` now reads `job.step_progress["pipeline_steps"]` and intersects it with the full `PIPELINE_STEPS` list. Only the steps that actually apply to the current job are rendered in the template — no more showing all 7 steps then hiding via JavaScript. |
+| **`processing.html`**             | Removed the `stepsInitialized` JavaScript variable and the client-side show/hide logic that ran on first WebSocket/poll response. Steps are now correct from initial page load.                                                                                          |
+
+### Strict Metadata Sample Matching
+
+| Change                             | Detail                                                                                                                                                                                                                                                                                              |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Frontend (`pipeline_setup.js`)** | Rewrote `getFilteredCsvRows()` — replaced loose prefix matching with strict `Set`-based lookup. Added `stripExtension()` helper. `isMetadataValid()` now requires ALL uploaded samples to have a matching metadata row. `renderCsvPreview()` shows match count and lists unmatched samples by name. |
+| **Backend (`views.py`)**           | Added ~40 lines of server-side metadata sample matching validation in `CorePipelineView.post()`. Builds `expected_stems` from uploaded FileAssets using regex for paired-end prefix extraction (`_R[12]` stripping), then checks all stems exist in metadata's sample column.                       |
+| **`new_submission.html`**          | Updated the metadata CSV format hint — now shows filename stems without extensions, with explicit paired-end naming guidance (use prefix before `_R1`/`_R2`).                                                                                                                                       |
+
+### Dev Dataset Metadata
+
+| Change                                       | Detail                                                                                                                                                                                                                                                                 |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`rnaseek_dev_dataset/metadata.csv`** (NEW) | Created correct metadata file with 6 rows matching the actual dev FASTQ filenames: `GSM9346166_Unstressed_Rep1_dev` through `GSM9346172_NaCl_Rep3_dev`. Columns: `sample`, `condition`, `batch`. Original `metadata_long.csv` (88 rows, wrong sample names) preserved. |
+
+### Full-Screen Overlay Cards
+
+| Change                | Detail                                                                                                                                                                                                                                                      |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`processing.html`** | Replaced inline error/result divs with full-screen overlay implementation using `.pipeline-overlay` (centered card), `.pipeline-overlay-backdrop` (dark blur background). Removed `window.alert()` calls. Overlay animates in with a fade+scale transition. |
+
+### Page Reload Prevention
+
+| Change                | Detail                                                                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`processing.html`** | Added `blockPageReload()` function with `beforeunload` handler, F5/Ctrl+R keyboard interception, and an `allowNavigation` flag that exempts action links inside overlays ("View Results" / "Back to Setup"). |
+
+### Production Static File Serving (WhiteNoise)
+
+| Change                 | Detail                                                                                                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`settings.py`**      | Added `whitenoise.middleware.WhiteNoiseMiddleware` after `SecurityMiddleware`. Changed `STATIC_ROOT` to always be set (was `None` in dev). Added `STORAGES` dict with `CompressedManifestStaticFilesStorage`. |
+| **`requirements.txt`** | Added `whitenoise>=6.6,<7.0`.                                                                                                                                                                                 |
+| **`collectstatic`**    | 138 static files collected, 372 post-processed (gzip + brotli compressed with content hashes).                                                                                                                |
+
+### Production Deployment Documentation
+
+| Change                                         | Detail                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`doc/Production Deployment Guide.md`** (NEW) | Comprehensive 19-section guide covering: system packages, conda setup, PostgreSQL, Redis, env vars, Django migrations, Daphne ASGI server, Celery worker, Nginx reverse proxy (with WebSocket support), SSL/HTTPS via Certbot, systemd services, session cleanup cron, firewall, verification checklist, and troubleshooting. |
+
+### .gitignore Overhaul
+
+| Change           | Detail                                                                                                                                                                                                                                                                                             |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`.gitignore`** | Rewrote from generic template to RNAseek-specific rules. Now excludes: reference genomes (44 GB), media uploads, dev dataset FASTQs, all bioinformatics file types (`.ht2`, `.fa`, `.gtf`, `.bam`, `.cram`, `.fastq.gz`, `.h5ad`, etc.), database, staticfiles output, R artifacts, and IDE files. |
+
+---
+
 ## 5. What Remains (Next Phases)
 
 - [ ] Implement individual module runners (WGCNA, GSEA, Survival, MOFA, DIABLO, etc.)
 - [ ] Implement deconvolution pipeline (BisqueRNA/MuSiC/Scaden → h5ad generation)
 - [ ] Implement advanced spoke pipelines (Trajectory via scVI/PAGA, Spatial via Tangram/Squidpy, Autocorrelation via Moran's I)
 - [x] ~~Wire up Plotly.js for interactive visualization rendering (PCA, UMAP, Volcano, MA, Heatmap)~~
-- [ ] Add real download file serving from pipeline output directories
-- [ ] Add WebSocket support (Django Channels) for real-time progress updates
-- [ ] Session cleanup cron job (purge expired sessions + files)
+- [x] ~~Add real download file serving from pipeline output directories~~
+- [x] ~~Add WebSocket support (Django Channels) for real-time progress updates~~
+- [x] ~~Production static file serving (WhiteNoise + collectstatic)~~
+- [x] ~~Production deployment guide (Daphne + Nginx + systemd)~~
+- [ ] Session cleanup cron job (purge expired sessions + files) — documented in deployment guide, needs Django management command
 - [ ] Docker containerization
-- [ ] Production deployment (Gunicorn + Nginx)
 - [ ] End-to-end integration test with real FASTQ/BAM/matrix data
+- [ ] Alternative Splicing module (IsoformSwitchAnalyzeR)
+- [ ] RNA Editing & SNP Detection module (REDItools2)
+- [ ] Causal Network Inference & STRING PPI module
+- [ ] Literature Mining module (INDRA API)
+- [ ] TCGA Disease Integration module (TCGAbiolinks)
+- [ ] Biomarker Discovery module (MarkerDB API)
+- [ ] Multi-Omics Factor Analysis (MOFA) module
+- [ ] Supervised Multi-Omics (DIABLO) module
 
 ---
 
