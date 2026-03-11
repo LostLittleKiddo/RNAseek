@@ -1,0 +1,109 @@
+# ============================================================
+# RNAseek Docker Compose — Production Stack
+# ============================================================
+# Services:
+#   web     — Daphne ASGI server (HTTP + WebSocket)
+#   worker  — Celery workers (bioinformatics pipeline execution)
+#   beat    — Celery Beat scheduler (nightly purge_expired)
+#   redis   — Message broker + result backend
+#
+# All services that touch pipeline data mount the shared NFS
+# volume at /app/media/ so uploads and results are visible
+# across web and worker containers with zero data movement.
+# ============================================================
+
+x-app-common: &app-common
+  build: .
+  env_file: .env
+  environment:
+    - DJANGO_SETTINGS_MODULE=config.settings
+    - RNASEEK_ENV=production
+    - REDIS_URL=redis://redis:6379/0
+    - CELERY_BROKER_URL=redis://redis:6379/0
+    - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    - MEDIA_ROOT=/app/media
+  volumes:
+    # Shared NFS mount — every container reads/writes the same path.
+    # In production, replace this with an NFS or EFS mount:
+    #   nfs-data:/app/media
+    - media-data:/app/media
+  depends_on:
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  # ── Daphne ASGI Web Server ──
+  # Handles HTTP requests and WebSocket connections for live
+  # progress bars via Django Channels.
+  web:
+    <<: *app-common
+    command: >
+      daphne -b 0.0.0.0 -p 8000 config.asgi:application
+    ports:
+      - "${RNASEEK_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Celery Worker Fleet ──
+  # Strictly executes bioinformatics pipelines (HISAT2, featureCounts,
+  # DESeq2 via rpy2, etc.). Does NOT run a web server.
+  worker:
+    <<: *app-common
+    command: >
+      celery -A config worker
+      --loglevel=info
+      --concurrency=${CELERY_CONCURRENCY:-4}
+      --max-tasks-per-child=50
+    # Workers need more memory for genome alignment (HISAT2 on 44GB genomes)
+    deploy:
+      resources:
+        limits:
+          memory: 32G
+    healthcheck:
+      test: ["CMD", "celery", "-A", "config", "inspect", "ping"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+
+  # ── Celery Beat Scheduler ──
+  # Triggers periodic tasks (e.g., purge_expired_sessions at 2:00 AM).
+  beat:
+    <<: *app-common
+    command: >
+      celery -A config beat
+      --loglevel=info
+      --scheduler=django_celery_beat.schedulers:DatabaseScheduler
+    # Only one beat instance should ever run
+    deploy:
+      replicas: 1
+
+  # ── Redis 7+ Message Broker ──
+  # In-memory queue for Celery job dispatch + Django Channels
+  # WebSocket layer.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  # Shared media volume — in production, replace with an NFS driver:
+  #   media-data:
+  #     driver: local
+  #     driver_opts:
+  #       type: nfs
+  #       o: addr=<NFS_SERVER_IP>,rw,nfsvers=4.1
+  #       device: ":/exports/rnaseek"
+  media-data:
+  redis-data:

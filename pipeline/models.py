@@ -33,6 +33,12 @@ class AnalysisSubmission(models.Model):
         ALIGNMENT = "alignment", "BAM/CRAM Alignment"
         MATRIX = "matrix", "Count Matrix"
 
+    class AssayType(models.TextChoices):
+        STANDARD_RNA = "standard_rna", "Standard RNA-Seq (Poly-A)"
+        SMALL_RNA = "small_rna", "Small RNA / miRNA"
+        CHIP_SEQ = "chip_seq", "ChIP-seq"
+        METHYLATION = "methylation", "DNA Methylation (Bisulfite-seq)"
+
     class LibraryType(models.TextChoices):
         SINGLE = "single", "Single-End"
         PAIRED = "paired", "Paired-End"
@@ -58,6 +64,11 @@ class AnalysisSubmission(models.Model):
         max_length=10,
         choices=InputDataType.choices,
         default=InputDataType.FASTQ,
+    )
+    assay_type = models.CharField(
+        max_length=20,
+        choices=AssayType.choices,
+        default=AssayType.STANDARD_RNA,
     )
 
     library_type = models.CharField(
@@ -112,6 +123,8 @@ class FileAsset(models.Model):
         CUSTOM_GENOME_FASTA = "CUSTOM_GENOME_FASTA", "Custom Genome FASTA"
         CUSTOM_GENOME_ANNOTATION = "CUSTOM_GENOME_ANNOTATION", "Custom Genome Annotation"
         METADATA_CSV = "METADATA_CSV", "Metadata CSV"
+        PEAK_FILE = "PEAK_FILE", "ChIP-seq Peak File"
+        METHYLATION_REPORT = "METHYLATION_REPORT", "Methylation Report"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     session = models.ForeignKey(

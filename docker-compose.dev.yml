@@ -1,0 +1,33 @@
+# ============================================================
+# RNAseek Docker Compose — Development Override
+# ============================================================
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Mounts source code for live reloading and exposes debug ports.
+# ============================================================
+
+services:
+  web:
+    volumes:
+      - .:/app
+      - media-data:/app/media
+    environment:
+      - RNASEEK_ENV=development
+      - DJANGO_SECRET_KEY=dev-secret-key-not-for-production
+
+  worker:
+    volumes:
+      - .:/app
+      - media-data:/app/media
+    environment:
+      - RNASEEK_ENV=development
+    command: >
+      celery -A config worker
+      --loglevel=debug
+      --concurrency=2
+
+  beat:
+    volumes:
+      - .:/app
+      - media-data:/app/media
+    environment:
+      - RNASEEK_ENV=development

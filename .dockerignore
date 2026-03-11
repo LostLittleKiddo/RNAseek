@@ -1,0 +1,20 @@
+# Large binary files — never bake into the Docker image
+*.fastq.gz
+*.fq.gz
+*.bam
+*.cram
+*.sam
+*.h5ad
+*.ht2
+*.RData
+media/
+db.sqlite3
+
+# Development artifacts
+__pycache__/
+*.pyc
+.git/
+.env
+*.egg-info/
+node_modules/
+.vscode/

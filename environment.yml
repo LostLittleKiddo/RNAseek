@@ -24,6 +24,10 @@ dependencies:
   - samtools
   - subread
   - stringtie
+  - bowtie
+  - bwa
+  - macs2
+  - bismark
   - pkg-config
 
   # Python packages (installed via pip after conda env creation)

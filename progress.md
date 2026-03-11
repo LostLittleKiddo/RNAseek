@@ -1,6 +1,6 @@
 # RNAseek -- Project Progress
 
-> Last updated after: **Processing UX Overhaul, Strict Metadata Matching & Production Hardening**
+> Last updated after: **Phase 5: Pipeline Audit, Code Splitting & Docker Documentation**
 
 ---
 
@@ -33,11 +33,11 @@ config/             ← Django project package
 
 pipeline/           ← Main Django app
   models.py         ← Session, AnalysisSubmission, FileAsset, AnalysisJob
-  views.py          ← Page views + API views (conditional validation per entry point)
+  views/            ← Package: pages.py (7 TemplateViews) + api.py (6 API views)
   urls.py           ← 7 page routes + 5 API routes
   middleware.py     ← AnonymousSessionMiddleware
-  tasks.py          ← Core pipeline router + 3 route functions + parallel execution
-  stats.py          ← Stage 2 statistical analysis (DESeq2, Combat-seq, PCA outliers)
+  tasks/            ← Package: 11 modules (core, routes, helpers, constants, genome resolvers)
+  stats/            ← Package: 5 modules (core, DESeq2, helpers, plots, R bridge)
   context_processors.py ← Session context injector (session_id for all templates)
   admin.py          ← (default)
   apps.py           ← PipelineConfig
@@ -88,7 +88,7 @@ Files: `.env` (local dev, gitignored), `.env.prod` (documented template for prod
 - `id` — UUID primary key
 - `session` — FK → Session (cascade)
 - `submission` — FK → AnalysisSubmission (nullable, cascade)
-- `file_role` — choices: `RAW_FASTQ`, `COUNT_MATRIX`, `H5AD_PSEUDO`, `HE_IMAGE_USER`, `HE_IMAGE_GENERIC`, `CUSTOM_GENOME_FASTA`, `CUSTOM_GENOME_ANNOTATION`, `METADATA_CSV`, `ALIGNMENT_BAM`, `USER_COUNT_MATRIX`
+- `file_role` — choices: `RAW_FASTQ`, `COUNT_MATRIX`, `H5AD_PSEUDO`, `HE_IMAGE_USER`, `HE_IMAGE_GENERIC`, `CUSTOM_GENOME_FASTA`, `CUSTOM_GENOME_ANNOTATION`, `METADATA_CSV`, `ALIGNMENT_BAM`, `USER_COUNT_MATRIX`, `PEAK_FILE`, `METHYLATION_REPORT`
 - `local_path` — CharField (500)
 - `is_user_uploaded` — Boolean
 
@@ -419,7 +419,216 @@ test/
 
 ---
 
-## 5. What Remains (Next Phases)
+## 4d. Phase 4 Hub Engine: Multi-Assay Pipeline Tracks
+
+### Overview
+
+Extended the Core Pipeline router from a single RNA-seq track to a multi-assay hub engine. The pipeline now dispatches by both `input_data_type` (fastq/alignment/matrix) and `assay_type` (standard_rna/small_rna/chip_seq/methylation) using the Facade Pattern. All tracks share common FastQC, Trimmomatic, and MultiQC steps via extracted helpers to eliminate code duplication.
+
+### Model Changes
+
+| Change                            | Detail                                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **`AssayType` choices**           | New `TextChoices` class on `AnalysisSubmission`: `standard_rna`, `small_rna`, `chip_seq`, `methylation` |
+| **`assay_type` field**            | CharField(max_length=20) with default `standard_rna` — determines pipeline track for FASTQ entry        |
+| **`PEAK_FILE` FileRole**          | New FileAsset role for MACS2 narrowPeak/broadPeak output files                                          |
+| **`METHYLATION_REPORT` FileRole** | New FileAsset role for Bismark cytosine methylation reports                                             |
+| **Migration**                     | `0007_add_assay_type_and_track_roles` — adds field + updates FileRole choices                           |
+
+### Track B: Small RNA / miRNA Pipeline (`_route_small_rna`)
+
+| Step                    | Tool              | Detail                                                                                                        |
+| ----------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| 1. FastQC               | FastQC            | Quality control on raw reads (shared helper)                                                                  |
+| 2. Trimmomatic          | Trimmomatic       | Adapter trimming with `MINLEN:18` (not 36) for ultra-short miRNA reads (~22 bp)                               |
+| 3. Bowtie Alignment     | Bowtie v1         | Maps against miRBase database (not whole genome). Flags: `-v 1 --best --strata -m 5 --norc -S` for 22bp reads |
+| 4. miRNA Quantification | samtools idxstats | Per-miRNA read counts — each miRBase reference is a single miRNA                                              |
+| 5. MultiQC              | MultiQC           | Aggregate QC report (shared helper)                                                                           |
+| 6. Stage 2              | DESeq2            | Differential expression on miRNA count matrix                                                                 |
+
+Key design decisions:
+- Bowtie v1 (not v2) — optimized for ultra-short reads
+- `samtools idxstats` for quantification — miRBase references are individual miRNAs, no GTF needed
+- miRBase species resolved from genome key via `_MIRBASE_SPECIES_MAP` (hg38 -> hsa, mm39 -> mmu, etc.)
+
+### Track C: ChIP-seq Pipeline (`_route_chip_seq`)
+
+| Step                  | Tool        | Detail                                                                                              |
+| --------------------- | ----------- | --------------------------------------------------------------------------------------------------- |
+| 1. FastQC             | FastQC      | Quality control (shared helper)                                                                     |
+| 2. Trimmomatic        | Trimmomatic | Standard adapter trimming (shared helper)                                                           |
+| 3. BWA MEM Alignment  | BWA         | Read alignment to reference genome. Paired-end: `bwa mem ref.fa R1.fq R2.fq`                        |
+| 4. MACS2 Peak Calling | MACS2       | Identifies transcription factor binding sites. Uses effective genome size from `_MACS2_GENOME_SIZE` |
+| 5. MultiQC            | MultiQC     | Aggregate QC report (shared helper)                                                                 |
+
+Key design decisions:
+- No featureCounts or Stage 2 DESeq2 — peaks are the primary output
+- `_split_chip_samples()` separates treatment (IP) vs control (Input) using metadata condition column
+- MACS2 genome size mapped per species (hg38 -> "hs", dm6 -> "dm", etc.)
+- Control samples are optional — MACS2 uses local background model if no control provided
+
+### Track C: DNA Methylation / Bisulfite-seq Pipeline (`_route_methylation`)
+
+| Step                      | Tool                          | Detail                                                                                                            |
+| ------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 0. Bismark Genome Prep    | bismark_genome_preparation    | Builds bisulfite-converted genome index (if not already present)                                                  |
+| 1. FastQC                 | FastQC                        | Quality control (shared helper)                                                                                   |
+| 2. Trimmomatic            | Trimmomatic                   | Standard adapter trimming (shared helper)                                                                         |
+| 3. Bismark Alignment      | Bismark                       | Aligns bisulfite-converted DNA with `--bowtie2`. Handles C-to-T converted reads                                   |
+| 4. Methylation Extraction | bismark_methylation_extractor | Decodes C-to-T mutations into methylation beta-values. Flags: `--comprehensive --merge_non_CpG --cytosine_report` |
+| 5. MultiQC                | MultiQC                       | Aggregate QC report (shared helper)                                                                               |
+
+Key design decisions:
+- No featureCounts or Stage 2 DESeq2 — methylation reports (beta-values) are the primary output
+- Bismark genome preparation auto-detected and skipped if `Bisulfite_Genome/` directory exists
+- Both single-end and paired-end supported
+
+### Code Deduplication: Shared Step Helpers
+
+Extracted common pipeline steps into reusable helpers used by all 4 tracks:
+
+| Helper                                                    | Purpose                                                            |
+| --------------------------------------------------------- | ------------------------------------------------------------------ |
+| `_run_fastqc_step(job, fastq_paths, qc_dir)`              | FastQC with step progress tracking                                 |
+| `_run_trim_step(job, assets, dir, library_type, min_len)` | Trimmomatic with configurable MINLEN (18 for miRNA, 36 for others) |
+| `_sort_and_index_bam(sam, bam_out)`                       | samtools sort + index                                              |
+| `_run_multiqc_step(job, work_dir, qc_dir)`                | MultiQC with step progress tracking                                |
+
+Track A (`_route_fastq`) was refactored to use these same shared helpers.
+
+### Genome Resolvers
+
+| Resolver                              | Purpose                                             |
+| ------------------------------------- | --------------------------------------------------- |
+| `_resolve_mirbase(genome_key)`        | Finds/builds Bowtie index for miRBase species FASTA |
+| `_resolve_bwa_index(genome_fasta)`    | Finds/builds BWA index from genome FASTA            |
+| `_resolve_bismark_genome(genome_dir)` | Finds/runs bismark_genome_preparation               |
+
+### Views Changes
+
+| Change                       | Detail                                                                                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`VALID_ASSAY_TYPES`**      | New validation set: `{standard_rna, small_rna, chip_seq, methylation}`                                                                         |
+| **Assay type validation**    | `CorePipelineView.post()` validates `assay_type` for FASTQ entry; defaults to `standard_rna`                                                   |
+| **Pipeline steps per assay** | Different step lists generated per assay type (e.g., chip_seq gets `bwa_align + macs2_peaks`, no `deseq2`)                                     |
+| **ProcessingView steps**     | Added 7 new step definitions: `bowtie_mirna`, `mirna_quantify`, `bwa_align`, `macs2_peaks`, `bismark_prep`, `bismark_align`, `bismark_extract` |
+
+### Environment Changes
+
+Added 4 new bioinformatics CLI tools to `environment.yml`: `bowtie`, `bwa`, `macs2`, `bismark`.
+
+### Pipeline Router (updated)
+
+```
+run_core_pipeline(session_id, submission_id)
+  |
+  +-- input_type == "fastq"
+  |     +-- assay_type == "standard_rna" --> _route_fastq()      [Track A]
+  |     +-- assay_type == "small_rna"    --> _route_small_rna()   [Track B]
+  |     +-- assay_type == "chip_seq"     --> _route_chip_seq()    [Track C]
+  |     +-- assay_type == "methylation"  --> _route_methylation() [Track C]
+  |
+  +-- input_type == "alignment"          --> _route_alignment()
+  +-- input_type == "matrix"             --> _route_matrix()
+```
+
+### Test Suite
+
+| Test Class                      | Tests  | Coverage                                                               |
+| ------------------------------- | ------ | ---------------------------------------------------------------------- |
+| `AssayTypeModelTest`            | 5      | AssayType choices, default value, persistence                          |
+| `TrackFileRoleTest`             | 2      | PEAK_FILE and METHYLATION_REPORT FileAsset roles                       |
+| `CorePipelineViewAssayTypeTest` | 7      | assay_type validation, steps per track, persistence, non-fastq default |
+| `ProcessingViewStepsTest`       | 4      | All track step definitions present                                     |
+| `TaskRouterAssayDispatchTest`   | 4      | Router dispatches to correct route function per assay_type             |
+| `SmallRNARouteTest`             | 3      | Bowtie miRNA flags, MINLEN:18, correct tool calls                      |
+| `ChIPSeqRouteTest`              | 2      | BWA + MACS2 calls, PEAK_FILE asset registration                        |
+| `SplitChipSamplesTest`          | 3      | Treatment/control separation, no-control allowed, all-control raises   |
+| `MethylationRouteTest`          | 2      | Bismark calls, METHYLATION_REPORT asset registration                   |
+| `SharedHelperTest`              | 5      | FastQC, Trim (single+paired), MultiQC, sort+index helpers              |
+| `GenomeResolverTest`            | 6      | Species maps, miRBase/BWA/Bismark resolve + build-if-missing           |
+| **Total**                       | **44** | All pass (+ 32 existing = 76 total)                                    |
+
+---
+
+## 5. Phase 5: Pipeline Audit, Code Splitting & Docker Documentation
+
+### 5a. Bioinformatics Pipeline Audit — 5 Critical Bugs Fixed
+
+A professional-level audit of all bioinformatics tool invocations identified 5 bugs, ranked by severity:
+
+| #   | Severity     | Bug                                                                    | Impact                                                                                                                         | Fix                                                                                                                                       |
+| --- | ------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **CRITICAL** | Piped commands (`hisat2 \| samtools sort`) only checked last exit code | HISAT2 could fail silently; samtools would produce an empty/corrupt BAM, propagating bad data to featureCounts                 | `_run()` helper now prepends `set -o pipefail;` and uses `executable="/bin/bash"` for all piped commands                                  |
+| 2   | **CRITICAL** | No normalized data detection for Count Matrix entry                    | If user uploads TPM/FPKM matrix → DESeq2 silently produces invalid differential expression results (false positives/negatives) | `_route_matrix()` checks if >30% of values are non-integer → raises `ValueError` with clear message explaining DESeq2 requires raw counts |
+| 3   | **CRITICAL** | Shell injection via f-string paths with `shell=True`                   | Filenames containing shell metacharacters (`$`, `;`, backticks) could execute arbitrary commands                               | New `_q()` helper wraps all path variables with `shlex.quote()` before interpolation into shell commands                                  |
+| 4   | **HIGH**     | Unpaired FASTQ files silently dropped in paired-end mode               | If an R1 file had no matching R2 (or vice versa), it was quietly ignored — user loses data without warning                     | `_pair_fastqs()` now emits `warnings.warn()` for each unmatched file and raises `RuntimeError` if zero valid pairs found                  |
+| 5   | **HIGH**     | ChIP-seq stem matching fragile (`str.replace("_R1", "")`)              | Failed on filenames like `sample_R1_001.fastq.gz` or `R1_control.fastq.gz` where `_R1` appears in unexpected positions         | `_split_chip_samples()` now uses `re.sub(r"_R[12](?=[\._])", "", stem)` for precise paired-end suffix stripping                           |
+
+All fixes are implemented in the new `pipeline/tasks/` package (see below).
+
+### 5b. Code Splitting — 3 Monolithic Files → 3 Packages
+
+Three files exceeded 600+ lines and were split into focused submodules:
+
+#### `pipeline/tasks/` Package (was `tasks.py` — 1,481 lines → 11 files)
+
+| File                 | Lines | Purpose                                                                                                                                                 |
+| -------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `__init__.py`        | ~90   | Re-exports all public symbols for backward compatibility                                                                                                |
+| `_constants.py`      | ~50   | `_CPU_COUNT`, `_TOOL_THREADS`, `_PARALLEL_SAMPLES`, `_GENOME_BASE`, genome maps                                                                         |
+| `_helpers.py`        | ~200  | `_run()` (with pipefail fix), `_q()` (shlex.quote), `_pair_fastqs()`, `_update_step()`, `_emit_progress()`, shared FastQC/Trim/MultiQC/sort-index steps |
+| `_genome.py`         | ~100  | `_resolve_genome()`, `_resolve_mirbase()`, `_resolve_bwa_index()`, `_resolve_bismark_genome()`                                                          |
+| `_featurecounts.py`  | ~80   | `_run_featurecounts()`, `_featurecounts_to_csv()`, `_detect_gff_gene_attr()`                                                                            |
+| `_routes.py`         | ~60   | `_route_alignment()`, `_route_matrix()` (with normalized data detection)                                                                                |
+| `_track_standard.py` | ~120  | Track A: Standard RNA-seq (`_route_fastq()`)                                                                                                            |
+| `_track_mirna.py`    | ~120  | Track B: Small RNA/miRNA (`_route_small_rna()`)                                                                                                         |
+| `_track_chipseq.py`  | ~140  | Track C: ChIP-seq (`_route_chip_seq()`, `_split_chip_samples()` with regex fix)                                                                         |
+| `_track_methyl.py`   | ~120  | Track C: DNA Methylation (`_route_methylation()`)                                                                                                       |
+| `core.py`            | ~100  | Celery tasks: `run_core_pipeline()`, `purge_expired_sessions()`                                                                                         |
+
+#### `pipeline/views/` Package (was `views.py` — 655 lines → 3 files)
+
+| File          | Lines | Purpose                                                                                           |
+| ------------- | ----- | ------------------------------------------------------------------------------------------------- |
+| `__init__.py` | ~20   | Re-exports all 13 view classes                                                                    |
+| `pages.py`    | ~300  | 7 TemplateViews (Home, Tutorials, Workspaces, NewSubmission, Processing, CoreHub, Advanced)       |
+| `api.py`      | ~350  | 6 API views (CreateSubmission, ChunkUpload, CorePipeline, JobStatus, SessionAssets, FileDownload) |
+
+#### `pipeline/stats/` Package (was `stats.py` — 764 lines → 5 files)
+
+| File           | Lines | Purpose                                                                                               |
+| -------------- | ----- | ----------------------------------------------------------------------------------------------------- |
+| `__init__.py`  | ~30   | Re-exports `run_stage2_stats` + all internal functions                                                |
+| `_r_bridge.py` | ~30   | rpy2 initialization, R warning suppression, `_R_CORES`, `_converter`                                  |
+| `_helpers.py`  | ~150  | `_load_metadata()`, `_align_samples()`, `_filter_low_counts()`, `_combat_seq()`, `_detect_outliers()` |
+| `_deseq2.py`   | ~200  | `_build_formula_string()`, `_sanitize_factor_levels()`, `_run_deseq2()`, contrast extraction          |
+| `_plots.py`    | ~200  | PCA, UMAP, volcano, MA plot data generation                                                           |
+| `core.py`      | ~80   | `run_stage2_stats()` orchestrator                                                                     |
+
+**Backward compatibility preserved:** All `__init__.py` files re-export every public symbol, so existing imports like `from pipeline.tasks import run_core_pipeline` and `from pipeline.stats import run_stage2_stats` continue to work without changes to `urls.py`, `consumers.py`, or any other module.
+
+### 5c. Test Suite — All 76 Tests Passing
+
+After the code split, mock targets in test files needed updating to point to the new submodule locations where functions are consumed (not re-exported). All fixes were verified:
+
+| Test File              | Tests  | Status     |
+| ---------------------- | ------ | ---------- |
+| `test_entry_points.py` | 32     | ✅ All pass |
+| `test_assay_tracks.py` | 44     | ✅ All pass |
+| **Total**              | **76** | ✅ All pass |
+
+### 5d. Docker Documentation
+
+| Document                                                             | Purpose                                                                                                                                                                              |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [Docker Deployment Guide.md](doc/Docker%20Deployment%20Guide.md)     | Production deployment using Docker Compose — environment config, reference genome bind mounts, scaling workers, SSL/reverse proxy, persistent storage, monitoring, updates           |
+| [Docker Development Guide.md](doc/Docker%20Development%20Guide.md)   | Local development with Docker — quick start, live reloading via bind mounts, running tests, working without Docker, transitioning to production                                      |
+| [Reference Genome Strategy.md](doc/Reference%20Genome%20Strategy.md) | Why genomes can't go in Git or Docker images, host-side storage + bind mount strategy, building indexes from scratch, transfer via rsync, alternatives considered (Git LFS, S3, DVC) |
+
+---
+
+## 6. What Remains (Next Phases)
 
 - [ ] Implement individual module runners (WGCNA, GSEA, Survival, MOFA, DIABLO, etc.)
 - [ ] Implement deconvolution pipeline (BisqueRNA/MuSiC/Scaden → h5ad generation)
@@ -429,8 +638,13 @@ test/
 - [x] ~~Add WebSocket support (Django Channels) for real-time progress updates~~
 - [x] ~~Production static file serving (WhiteNoise + collectstatic)~~
 - [x] ~~Production deployment guide (Daphne + Nginx + systemd)~~
+- [x] ~~Docker deployment guide (Docker Compose for production)~~
+- [x] ~~Docker development guide (local dev with Docker)~~
+- [x] ~~Reference genome strategy (storage, distribution, Docker bind mount)~~
+- [x] ~~Bioinformatics pipeline audit (5 critical bugs found and fixed)~~
+- [x] ~~Code splitting (tasks.py → 11 files, views.py → 3 files, stats.py → 5 files)~~
 - [ ] Session cleanup cron job (purge expired sessions + files) — documented in deployment guide, needs Django management command
-- [ ] Docker containerization
+- [x] ~~Docker containerization~~
 - [ ] End-to-end integration test with real FASTQ/BAM/matrix data
 - [ ] Alternative Splicing module (IsoformSwitchAnalyzeR)
 - [ ] RNA Editing & SNP Detection module (REDItools2)
