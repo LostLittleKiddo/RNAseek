@@ -127,6 +127,8 @@
     const colAlignment = document.getElementById("col-alignment");
     const colMatrix = document.getElementById("col-matrix");
     const colGenome = document.getElementById("col-genome");
+    const colMetadata = document.getElementById("col-metadata");
+    const colThresholds = document.getElementById("col-thresholds");
 
     // Alignment entry DOM
     const bamDropZone = document.getElementById("bam-drop-zone");
@@ -1824,6 +1826,41 @@
     maxLog2fc.addEventListener("input", updateThresholdPreview);
 
     // ════════════════════════════════════════════════════════════
+    //  9b. CARD LOCK / UNLOCK (LEFT-TO-RIGHT PROGRESSION)
+    // ════════════════════════════════════════════════════════════
+
+    /**
+     * Enforce left-to-right card progression:
+     *   FASTQ mode:     Upload → Genome → Metadata → Thresholds
+     *   Alignment mode:  Upload → Genome → Metadata → Thresholds
+     *   Matrix mode:     Upload → Metadata → Thresholds  (genome hidden)
+     *
+     * A card is unlocked only when the previous card's required input is satisfied.
+     */
+    function updateCardLocks() {
+        // Step 1: Is the upload column satisfied?
+        var uploadDone = false;
+        if (inputDataType === "fastq") {
+            uploadDone = getLibraryType() !== null && selectedFiles.length > 0;
+        } else if (inputDataType === "alignment") {
+            uploadDone = selectedBamFiles.length > 0;
+        } else {
+            uploadDone = parsedMatrixData !== null && parsedMatrixData.rows.length > 0;
+        }
+
+        // Step 2: Is the genome column satisfied? (skipped in matrix mode)
+        var genomeDone = inputDataType === "matrix" ? true : isGenomeValid();
+
+        // Step 3: Is metadata satisfied?
+        var metadataDone = isMetadataValid();
+
+        // Apply lock states
+        if (colGenome) colGenome.classList.toggle("locked", !uploadDone);
+        if (colMetadata) colMetadata.classList.toggle("locked", !(uploadDone && genomeDone));
+        if (colThresholds) colThresholds.classList.toggle("locked", !(uploadDone && genomeDone && metadataDone));
+    }
+
+    // ════════════════════════════════════════════════════════════
     //  10. FORM VALIDATION
     // ════════════════════════════════════════════════════════════
 
@@ -1866,6 +1903,9 @@
 
         var allValid = Object.values(checks).every(Boolean);
         submitBtn.disabled = !allValid;
+
+        // Update card lock/blur states (left-to-right progression)
+        updateCardLocks();
 
         // Re-render the CSV viewer and preview whenever validation runs
         // (files/metadata may have changed affecting sample matching)
@@ -2130,4 +2170,5 @@
     syncConditionTargetDropdown();
     renderConditionChips();
     applyEntryPointVisibility();
+    updateCardLocks();
 })();
