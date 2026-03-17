@@ -92,7 +92,6 @@ TEST*.xml
 *.mov
 *.wmv
 
-doc/*
 media/*
 test/*
 pipeline/reference_genomes/*
