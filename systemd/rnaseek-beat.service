@@ -1,0 +1,26 @@
+# ============================================================
+# RNAseek — Celery Beat Scheduler
+# ============================================================
+# Runs the nightly purge_expired_sessions task at 2:00 AM UTC.
+# Only ONE beat instance should ever run.
+# ============================================================
+
+[Unit]
+Description=RNAseek Celery Beat Scheduler
+After=network.target redis.service
+Requires=redis.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/apps/rnaseek
+EnvironmentFile=/home/ubuntu/apps/rnaseek/.env
+
+ExecStart=/home/ubuntu/.local/bin/celery -A config beat --loglevel=info --schedule=/home/ubuntu/apps/rnaseek/celerybeat-schedule
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

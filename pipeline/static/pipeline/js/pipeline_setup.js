@@ -20,6 +20,36 @@
 
     const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
     const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+    const MAX_RETRIES = 3;
+    const CHUNK_TIMEOUT_MS = 120000; // 2 minutes per chunk
+
+    /**
+     * Upload a single chunk with retry and timeout.
+     * Returns the parsed JSON response on success, or null on failure.
+     */
+    async function uploadChunkWithRetry(fd) {
+        for (var attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                var controller = new AbortController();
+                var timer = setTimeout(function () { controller.abort(); }, CHUNK_TIMEOUT_MS);
+                var res = await fetch("/api/upload/chunk", {
+                    method: "POST",
+                    headers: { "X-CSRFToken": CSRF },
+                    body: fd,
+                    signal: controller.signal,
+                });
+                clearTimeout(timer);
+                if (res.ok) return await res.json();
+                // Server error — retry after delay
+            } catch (e) {
+                // Network error or timeout — retry after delay
+            }
+            if (attempt < MAX_RETRIES - 1) {
+                await new Promise(function (r) { setTimeout(r, 1000 * (attempt + 1)); });
+            }
+        }
+        return null;
+    }
 
     // ── State ──────────────────────────────────────────────────
     let submissionId = null;
@@ -513,13 +543,9 @@
                 fd.append("total_chunks", totalChunks);
                 fd.append("submission_id", submissionId);
 
-                var res = await fetch("/api/upload/chunk", {
-                    method: "POST",
-                    headers: { "X-CSRFToken": CSRF },
-                    body: fd,
-                });
+                var result = await uploadChunkWithRetry(fd);
 
-                if (!res.ok) {
+                if (!result) {
                     success = false;
                     break;
                 }
@@ -661,13 +687,9 @@
                 fd.append("submission_id", submissionId);
                 fd.append("file_role", "ALIGNMENT_BAM");
 
-                var res = await fetch("/api/upload/chunk", {
-                    method: "POST",
-                    headers: { "X-CSRFToken": CSRF },
-                    body: fd,
-                });
+                var result = await uploadChunkWithRetry(fd);
 
-                if (!res.ok) { success = false; break; }
+                if (!result) { success = false; break; }
                 bar.style.width = Math.round(((i + 1) / totalChunks) * 100) + "%";
             }
 
@@ -843,12 +865,8 @@
             fd.append("submission_id", submissionId);
             fd.append("file_role", "USER_COUNT_MATRIX");
 
-            var res = await fetch("/api/upload/chunk", {
-                method: "POST",
-                headers: { "X-CSRFToken": CSRF },
-                body: fd,
-            });
-            if (!res.ok) return false;
+            var result = await uploadChunkWithRetry(fd);
+            if (!result) return false;
         }
         return true;
     }
@@ -906,13 +924,9 @@
                 fd.append("submission_id", submissionId);
                 fd.append("file_role", item.role);
 
-                var res = await fetch("/api/upload/chunk", {
-                    method: "POST",
-                    headers: { "X-CSRFToken": CSRF },
-                    body: fd,
-                });
+                var result = await uploadChunkWithRetry(fd);
 
-                if (!res.ok) return false;
+                if (!result) return false;
             }
         }
         return true;
@@ -1218,13 +1232,9 @@
             fd.append("submission_id", submissionId);
             fd.append("file_role", "METADATA_CSV");
 
-            var res = await fetch("/api/upload/chunk", {
-                method: "POST",
-                headers: { "X-CSRFToken": CSRF },
-                body: fd,
-            });
+            var result = await uploadChunkWithRetry(fd);
 
-            if (!res.ok) return false;
+            if (!result) return false;
         }
         return true;
     }

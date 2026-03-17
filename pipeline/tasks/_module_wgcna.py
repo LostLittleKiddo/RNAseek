@@ -12,10 +12,8 @@ Pipeline steps:
 import logging
 import os
 
-import gseapy
 import numpy as np
 import pandas as pd
-import PyWGCNA
 from scipy import stats as scipy_stats
 
 from pipeline.models import AnalysisJob
@@ -222,6 +220,8 @@ def _run_pywgcna(
     transposed_path = os.path.join(work_dir, "expression_for_wgcna.csv")
     counts_df.T.to_csv(transposed_path)
 
+    import PyWGCNA  # lazy import: requires pywgcna package
+
     wgcna_obj = PyWGCNA.WGCNA(
         name="rnaseek_wgcna",
         species="homo sapiens",
@@ -372,6 +372,8 @@ def _run_enrichr(
     """
     if not hub_genes:
         return pd.DataFrame()
+
+    import gseapy  # lazy import
 
     enr = gseapy.enrichr(
         gene_list=hub_genes,

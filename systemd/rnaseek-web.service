@@ -1,0 +1,25 @@
+# ============================================================
+# RNAseek — Daphne ASGI Web Server
+# ============================================================
+# Handles HTTP + WebSocket on port 8000, behind Nginx reverse proxy.
+# ============================================================
+
+[Unit]
+Description=RNAseek Daphne ASGI Server
+After=network.target postgresql.service redis.service
+Requires=postgresql.service redis.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/apps/rnaseek
+EnvironmentFile=/home/ubuntu/apps/rnaseek/.env
+
+ExecStart=/home/ubuntu/.local/bin/daphne -b 127.0.0.1 -p 8000 config.asgi:application
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

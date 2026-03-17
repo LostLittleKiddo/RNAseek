@@ -15,7 +15,7 @@ build/
 # ── Environment & Secrets ──
 .env
 .env.local
-.env.prod
+.env.production
 *.pem
 *.key
 
@@ -23,9 +23,11 @@ build/
 db.sqlite3
 db.sqlite3-journal
 media/
+staticfiles/
 
 # ── Reference Genomes (44 GB+ of pre-built indexes & sequences) ──
 pipeline/reference_genomes/
+reference_genomes/
 
 # ── Dev Test Dataset (FASTQ files, ~28 MB) ──
 rnaseek_dev_dataset/*.fastq.gz
@@ -91,8 +93,3 @@ TEST*.xml
 *.flv
 *.mov
 *.wmv
-
-media/*
-test/*
-pipeline/reference_genomes/*
-rnaseek_dev_dataset/*
