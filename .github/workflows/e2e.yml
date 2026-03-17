@@ -1,0 +1,105 @@
+# ============================================================
+# RNAseek CI — End-to-End Integration Test
+# ============================================================
+# Triggered on every push and pull request.
+# Runs the full pipeline on a tiny yeast (sacCer3) dataset to
+# verify: FASTQ generation -> FastQC -> Trimmomatic -> HISAT2
+# -> featureCounts -> DESeq2 statistical analysis.
+#
+# Uses conda for R + bioinformatics CLI tools, then pip for
+# Python dependencies on top.
+# ============================================================
+
+name: E2E Integration Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Cancel redundant runs on the same branch
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Conda environment setup ──
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: environment.yml
+          activate-environment: rnaseek
+          auto-activate-base: false
+          miniforge-version: latest
+
+      # ── Cache conda packages ──
+      - name: Cache conda packages
+        uses: actions/cache@v4
+        with:
+          path: ~/conda_pkgs_dir
+          key: conda-${{ runner.os }}-${{ hashFiles('environment.yml') }}
+          restore-keys: conda-${{ runner.os }}-
+
+      # ── Install pip dependencies ──
+      - name: Install Python dependencies
+        shell: bash -el {0}
+        run: pip install --no-cache-dir -r requirements.txt
+
+      # ── Verify bioinformatics tools are available ──
+      - name: Verify tool availability
+        shell: bash -el {0}
+        run: |
+          echo "Checking bioinformatics tools..."
+          hisat2 --version | head -1
+          samtools --version | head -1
+          fastqc --version
+          trimmomatic -version 2>&1 | head -1 || echo "trimmomatic OK"
+          featureCounts -v 2>&1 | head -1
+          R --version | head -1
+
+      # ── Build HISAT2 index for yeast ──
+      # The pre-built .ht2 files are gitignored; build them in CI.
+      - name: Build yeast HISAT2 index
+        shell: bash -el {0}
+        run: |
+          GENOME_DIR=pipeline/reference_genomes/Yeast_sacCer3
+          FASTA=$(ls ${GENOME_DIR}/*.fa 2>/dev/null | head -1)
+          if [ -z "$FASTA" ]; then
+            echo "ERROR: No FASTA file found in ${GENOME_DIR}"
+            exit 1
+          fi
+          # Only build if index doesn't already exist
+          if [ ! -f "${GENOME_DIR}/Yeast_sacCer3.1.ht2" ]; then
+            echo "Building HISAT2 index from ${FASTA}..."
+            hisat2-build -p $(nproc) "$FASTA" "${GENOME_DIR}/Yeast_sacCer3"
+          else
+            echo "HISAT2 index already exists, skipping build."
+          fi
+
+      # ── Django database setup ──
+      - name: Run migrations
+        shell: bash -el {0}
+        run: python manage.py migrate --run-syncdb
+
+      # ── Run the E2E pipeline test ──
+      - name: Run E2E test (yeast dataset)
+        shell: bash -el {0}
+        env:
+          CELERY_EAGER: "1"
+        run: python test/test_e2e.py
+
+      # ── Run unit tests ──
+      - name: Run Django test suite
+        shell: bash -el {0}
+        env:
+          CELERY_EAGER: "1"
+        run: python manage.py test test/ --verbosity=2

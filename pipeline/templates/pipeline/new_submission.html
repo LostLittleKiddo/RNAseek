@@ -83,6 +83,81 @@
     </div>
 </section>
 
+<!-- ═══ Assay Type Selector (FASTQ only) ═══ -->
+<section class="rna-container rna-mt-3" id="assay-type-section" style="display:none;">
+    <div class="rna-card">
+        <div class="rna-card-header">
+            <i class="bi bi-clipboard2-pulse"></i>&ensp;Assay Type
+        </div>
+        <div class="rna-card-body">
+            <label class="rna-label">Select Your Sequencing Assay <span class="required">*</span>
+                <span class="input-tip"><i class="bi bi-question-circle"></i>
+                    <span class="tip-text">Choose the type of sequencing experiment. This determines which
+                        alignment and analysis tools the pipeline uses.</span>
+                </span>
+            </label>
+            <div class="entry-point-group" id="assay-type-group">
+                <label class="entry-point-card selected" id="at-standard">
+                    <input type="radio" name="assay_type" value="standard_rna" checked>
+                    <div class="ep-icon"><i class="bi bi-rss"></i></div>
+                    <div class="ep-content">
+                        <div class="ep-title">Standard RNA-Seq</div>
+                        <div class="ep-desc">Poly-A mRNA or total RNA. Splice-aware alignment and gene-level
+                            quantification.</div>
+                        <div class="ep-tags">
+                            <span class="ep-tag">HISAT2</span>
+                            <span class="ep-tag">featureCounts</span>
+                            <span class="ep-tag">DESeq2</span>
+                        </div>
+                    </div>
+                </label>
+                <label class="entry-point-card" id="at-small-rna">
+                    <input type="radio" name="assay_type" value="small_rna">
+                    <div class="ep-icon"><i class="bi bi-minecart-loaded"></i></div>
+                    <div class="ep-content">
+                        <div class="ep-title">Small RNA / miRNA</div>
+                        <div class="ep-desc">Ultra-short reads (~22 bp). Bowtie alignment against miRBase.</div>
+                        <div class="ep-tags">
+                            <span class="ep-tag">Bowtie</span>
+                            <span class="ep-tag">miRBase</span>
+                            <span class="ep-tag">DESeq2</span>
+                        </div>
+                    </div>
+                </label>
+                <label class="entry-point-card" id="at-chip-seq">
+                    <input type="radio" name="assay_type" value="chip_seq">
+                    <div class="ep-icon"><i class="bi bi-bullseye"></i></div>
+                    <div class="ep-content">
+                        <div class="ep-title">ChIP-seq</div>
+                        <div class="ep-desc">Chromatin immunoprecipitation. Peak calling and differential binding
+                            analysis.</div>
+                        <div class="ep-tags">
+                            <span class="ep-tag">BWA</span>
+                            <span class="ep-tag">MACS2</span>
+                            <span class="ep-tag">featureCounts</span>
+                            <span class="ep-tag">DESeq2</span>
+                        </div>
+                    </div>
+                </label>
+                <label class="entry-point-card" id="at-methylation">
+                    <input type="radio" name="assay_type" value="methylation">
+                    <div class="ep-icon"><i class="bi bi-fingerprint"></i></div>
+                    <div class="ep-content">
+                        <div class="ep-title">DNA Methylation</div>
+                        <div class="ep-desc">Bisulfite sequencing. Methylation extraction and differential methylation
+                            analysis.</div>
+                        <div class="ep-tags">
+                            <span class="ep-tag">Bismark</span>
+                            <span class="ep-tag">methylKit</span>
+                        </div>
+                    </div>
+                </label>
+            </div>
+            <div id="assay-help-text" class="rna-mt-2" style="display:none;"></div>
+        </div>
+    </div>
+</section>
+
 <!-- ═══ Main 4-Column Grid ═══ -->
 <section class="rna-container rna-mt-3 rna-mb-4">
     <div class="setup-grid">
@@ -418,7 +493,7 @@
         </div>
 
         <!-- ── Column 3: Metadata / Experimental Design ── -->
-        <div class="rna-card setup-col">
+        <div class="rna-card setup-col" id="col-metadata">
             <div class="rna-card-header">
                 <i class="bi bi-table"></i>&ensp;Experimental Design
                 <span class="header-tag">DESeq2</span>
@@ -427,7 +502,9 @@
                 <label class="rna-label">Metadata Input Method <span class="required">*</span>
                     <span class="input-tip"><i class="bi bi-question-circle"></i>
                         <span class="tip-text">Upload a CSV file with sample-to-condition mappings, or manually assign
-                            samples to groups below. DESeq2 requires at least two conditions.</span>
+                            samples to groups below. Differential analysis requires at least two conditions.
+                            For ChIP-seq: label control/input samples as &ldquo;input&rdquo; in the condition column.
+                            For Methylation: define treatment vs. control groups for differential methylation.</span>
                     </span>
                 </label>
                 <div class="meta-toggle-group" id="meta-toggle">
@@ -515,7 +592,7 @@
         </div>
 
         <!-- ── Column 4: Significance Thresholds ── -->
-        <div class="rna-card setup-col">
+        <div class="rna-card setup-col" id="col-thresholds">
             <div class="rna-card-header">
                 <i class="bi bi-sliders2"></i>&ensp;Significance Thresholds
                 <span class="header-tag">DESeq2 &middot; Plots</span>

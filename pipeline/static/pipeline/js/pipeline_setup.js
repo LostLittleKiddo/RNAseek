@@ -24,6 +24,7 @@
     // ── State ──────────────────────────────────────────────────
     let submissionId = null;
     let inputDataType = "fastq";          // "fastq" | "alignment" | "matrix"
+    let assayType = "standard_rna";       // "standard_rna" | "small_rna" | "chip_seq" | "methylation"
     let selectedFiles = [];
     let uploadedFiles = [];
     let isUploading = false;
@@ -127,6 +128,12 @@
     const colAlignment = document.getElementById("col-alignment");
     const colMatrix = document.getElementById("col-matrix");
     const colGenome = document.getElementById("col-genome");
+    const colMetadata = document.getElementById("col-metadata");
+    const colThresholds = document.getElementById("col-thresholds");
+
+    // Assay type DOM
+    const assayTypeSection = document.getElementById("assay-type-section");
+    const assayHelpText = document.getElementById("assay-help-text");
 
     // Alignment entry DOM
     const bamDropZone = document.getElementById("bam-drop-zone");
@@ -176,6 +183,48 @@
             validateAll();
         });
     });
+
+    // ── Assay Type Selection ──
+    var atRadios = document.querySelectorAll('input[name="assay_type"]');
+    var atCards = document.querySelectorAll("#assay-type-group .entry-point-card");
+
+    atRadios.forEach(function (radio) {
+        radio.addEventListener("change", function () {
+            assayType = radio.value;
+            atCards.forEach(function (c) { c.classList.remove("selected"); });
+            radio.closest(".entry-point-card").classList.add("selected");
+            updateAssayHelpText();
+            validateAll();
+        });
+    });
+
+    function updateAssayHelpText() {
+        if (!assayHelpText) return;
+        if (assayType === "chip_seq") {
+            assayHelpText.style.display = "";
+            assayHelpText.innerHTML =
+                '<div style="background: rgba(9,153,152,0.08); border: 1px solid rgba(9,153,152,0.25); border-radius: 8px; padding: 0.75rem 1rem;">' +
+                '<p style="margin: 0 0 .4rem; font-size: .84rem; font-weight: 600; color: var(--rna-navy);"><i class="bi bi-info-circle"></i> ChIP-seq Metadata Tips</p>' +
+                '<ul style="margin: 0; padding-left: 1.2rem; font-size: .82rem; line-height: 1.6; color: var(--rna-grey-700);">' +
+                '<li>Label control/input samples as <strong>&ldquo;input&rdquo;</strong> in the condition column. All other samples are treated as IP (treatment).</li>' +
+                '<li>Define contrasts between your treatment conditions (e.g. DrugA vs. Control) for differential binding analysis.</li>' +
+                '<li>The pipeline will generate a consensus peak count matrix and run DESeq2 for differential binding.</li>' +
+                '</ul></div>';
+        } else if (assayType === "methylation") {
+            assayHelpText.style.display = "";
+            assayHelpText.innerHTML =
+                '<div style="background: rgba(9,153,152,0.08); border: 1px solid rgba(9,153,152,0.25); border-radius: 8px; padding: 0.75rem 1rem;">' +
+                '<p style="margin: 0 0 .4rem; font-size: .84rem; font-weight: 600; color: var(--rna-navy);"><i class="bi bi-info-circle"></i> DNA Methylation Metadata Tips</p>' +
+                '<ul style="margin: 0; padding-left: 1.2rem; font-size: .82rem; line-height: 1.6; color: var(--rna-grey-700);">' +
+                '<li>Define treatment vs. control groups in your condition column for differential methylation.</li>' +
+                '<li>The pipeline runs Bismark for methylation extraction, then methylKit (via R) for differential methylation analysis.</li>' +
+                '<li>PCA, volcano, and MA plots will be generated from differentially methylated regions.</li>' +
+                '</ul></div>';
+        } else {
+            assayHelpText.style.display = "none";
+            assayHelpText.innerHTML = "";
+        }
+    }
 
     /**
      * Reset metadata-related state when switching entry points.
@@ -228,6 +277,11 @@
         colAlignment.style.display = inputDataType === "alignment" ? "" : "none";
         colMatrix.style.display = inputDataType === "matrix" ? "" : "none";
         colGenome.style.display = inputDataType === "matrix" ? "none" : "";
+
+        // Assay type section visibility (only for FASTQ)
+        if (assayTypeSection) {
+            assayTypeSection.style.display = inputDataType === "fastq" ? "" : "none";
+        }
 
         // Center 3 cards in matrix mode
         document.querySelector(".setup-grid").classList.toggle("matrix-mode", inputDataType === "matrix");
@@ -1824,6 +1878,41 @@
     maxLog2fc.addEventListener("input", updateThresholdPreview);
 
     // ════════════════════════════════════════════════════════════
+    //  9b. CARD LOCK / UNLOCK (LEFT-TO-RIGHT PROGRESSION)
+    // ════════════════════════════════════════════════════════════
+
+    /**
+     * Enforce left-to-right card progression:
+     *   FASTQ mode:     Upload → Genome → Metadata → Thresholds
+     *   Alignment mode:  Upload → Genome → Metadata → Thresholds
+     *   Matrix mode:     Upload → Metadata → Thresholds  (genome hidden)
+     *
+     * A card is unlocked only when the previous card's required input is satisfied.
+     */
+    function updateCardLocks() {
+        // Step 1: Is the upload column satisfied?
+        var uploadDone = false;
+        if (inputDataType === "fastq") {
+            uploadDone = getLibraryType() !== null && selectedFiles.length > 0;
+        } else if (inputDataType === "alignment") {
+            uploadDone = selectedBamFiles.length > 0;
+        } else {
+            uploadDone = parsedMatrixData !== null && parsedMatrixData.rows.length > 0;
+        }
+
+        // Step 2: Is the genome column satisfied? (skipped in matrix mode)
+        var genomeDone = inputDataType === "matrix" ? true : isGenomeValid();
+
+        // Step 3: Is metadata satisfied?
+        var metadataDone = isMetadataValid();
+
+        // Apply lock states
+        if (colGenome) colGenome.classList.toggle("locked", !uploadDone);
+        if (colMetadata) colMetadata.classList.toggle("locked", !(uploadDone && genomeDone));
+        if (colThresholds) colThresholds.classList.toggle("locked", !(uploadDone && genomeDone && metadataDone));
+    }
+
+    // ════════════════════════════════════════════════════════════
     //  10. FORM VALIDATION
     // ════════════════════════════════════════════════════════════
 
@@ -1866,6 +1955,9 @@
 
         var allValid = Object.values(checks).every(Boolean);
         submitBtn.disabled = !allValid;
+
+        // Update card lock/blur states (left-to-right progression)
+        updateCardLocks();
 
         // Re-render the CSV viewer and preview whenever validation runs
         // (files/metadata may have changed affecting sample matching)
@@ -2044,6 +2136,7 @@
                 payload.strandedness = document.getElementById("strandedness").value;
                 payload.reference_genome = genomeSelect.value;
                 payload.quant_level = quantLevel.value;
+                payload.assay_type = assayType;
                 if (genomeSelect.value === "custom") {
                     payload.custom_genome_name = customGenomeName.value.trim();
                 }
@@ -2130,4 +2223,6 @@
     syncConditionTargetDropdown();
     renderConditionChips();
     applyEntryPointVisibility();
+    updateCardLocks();
+    updateAssayHelpText();
 })();

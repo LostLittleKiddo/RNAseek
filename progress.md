@@ -1,6 +1,6 @@
 # RNAseek -- Project Progress
 
-> Last updated after: **Processing UX Overhaul, Strict Metadata Matching & Production Hardening**
+> Last updated after: **Phase 5c: Stage 2 Epigenomics, Assay Selector & Full Genome Roster**
 
 ---
 
@@ -33,11 +33,11 @@ config/             ← Django project package
 
 pipeline/           ← Main Django app
   models.py         ← Session, AnalysisSubmission, FileAsset, AnalysisJob
-  views.py          ← Page views + API views (conditional validation per entry point)
-  urls.py           ← 7 page routes + 5 API routes
+  views/            <- Package: pages.py (7 TemplateViews) + api.py (7 API views)
+  urls.py           <- 7 page routes + 7 API routes
   middleware.py     ← AnonymousSessionMiddleware
-  tasks.py          ← Core pipeline router + 3 route functions + parallel execution
-  stats.py          ← Stage 2 statistical analysis (DESeq2, Combat-seq, PCA outliers)
+  tasks/            ← Package: 11 modules (core, routes, helpers, constants, genome resolvers)
+  stats/            ← Package: 5 modules (core, DESeq2, helpers, plots, R bridge)
   context_processors.py ← Session context injector (session_id for all templates)
   admin.py          ← (default)
   apps.py           ← PipelineConfig
@@ -88,7 +88,7 @@ Files: `.env` (local dev, gitignored), `.env.prod` (documented template for prod
 - `id` — UUID primary key
 - `session` — FK → Session (cascade)
 - `submission` — FK → AnalysisSubmission (nullable, cascade)
-- `file_role` — choices: `RAW_FASTQ`, `COUNT_MATRIX`, `H5AD_PSEUDO`, `HE_IMAGE_USER`, `HE_IMAGE_GENERIC`, `CUSTOM_GENOME_FASTA`, `CUSTOM_GENOME_ANNOTATION`, `METADATA_CSV`, `ALIGNMENT_BAM`, `USER_COUNT_MATRIX`
+- `file_role` — choices: `RAW_FASTQ`, `COUNT_MATRIX`, `H5AD_PSEUDO`, `HE_IMAGE_USER`, `HE_IMAGE_GENERIC`, `CUSTOM_GENOME_FASTA`, `CUSTOM_GENOME_ANNOTATION`, `METADATA_CSV`, `ALIGNMENT_BAM`, `USER_COUNT_MATRIX`, `PEAK_FILE`, `METHYLATION_REPORT`
 - `local_path` — CharField (500)
 - `is_user_uploaded` — Boolean
 
@@ -113,14 +113,15 @@ Files: `.env` (local dev, gitignored), `.env.prod` (documented template for prod
 
 ### 2.4 API Endpoints
 
-| Method | Endpoint                 | Purpose                                                                                      |
-| ------ | ------------------------ | -------------------------------------------------------------------------------------------- |
-| POST   | `/api/submission/create` | Create a new AnalysisSubmission, return its UUID for scoping uploads                         |
-| POST   | `/api/upload/chunk`      | Receive 5 MB file chunk, route to subdirectory by file_role, create FileAsset on final chunk |
-| POST   | `/api/pipeline/core`     | Validate & trigger Core Pipeline by entry point (fastq/alignment/matrix), returns `job_id`   |
-| GET    | `/api/jobs/<uuid>/`      | Poll job status (PENDING/RUNNING/SUCCESS/FAILED) + result payload                            |
-| GET    | `/api/session/assets`    | List all FileAssets for current session                                                      |
-| GET    | `/api/download/<uuid>/`  | Serve pipeline output files for download (FileAsset lookup)                                  |
+| Method | Endpoint                  | Purpose                                                                                      |
+| ------ | ------------------------- | -------------------------------------------------------------------------------------------- |
+| POST   | `/api/submission/create`  | Create a new AnalysisSubmission, return its UUID for scoping uploads                         |
+| POST   | `/api/upload/chunk`       | Receive 5 MB file chunk, route to subdirectory by file_role, create FileAsset on final chunk |
+| POST   | `/api/pipeline/core`      | Validate & trigger Core Pipeline by entry point (fastq/alignment/matrix), returns `job_id`   |
+| GET    | `/api/jobs/<uuid>/`       | Poll job status (PENDING/RUNNING/SUCCESS/FAILED) + result payload                            |
+| GET    | `/api/session/assets`     | List all FileAssets for current session                                                      |
+| GET    | `/api/download/<uuid>/`   | Serve pipeline output files for download (FileAsset lookup)                                  |
+| POST   | `/api/modules/<name>/run` | Trigger a Tier 2 module (validates Stage 2 complete, dispatches Celery task)                 |
 
 ### 2.5 Celery Tasks — Core Pipeline Router
 
@@ -251,6 +252,15 @@ pipeline/static/pipeline/
 - [x] Stage 2 statistical engine: DESeq2, Combat-seq batch correction, Mahalanobis PCA outlier detection
 - [x] Yeast R64-1-1 reference genome built (FASTA, GTF, HISAT2 index)
 
+### Assay Type Selector & Epigenomics Stage 2 (NEW)
+
+- [x] **Assay type selector UI:** 4 radio cards (Standard RNA, Small RNA, ChIP-seq, DNA Methylation) shown for FASTQ entry point; dynamic help text for ChIP-seq and Methylation metadata guidance
+- [x] **ChIP-seq Stage 2:** Consensus peak SAF generation (`bedtools merge` → SAF format), `featureCounts -F SAF` on treatment BAMs, `raw_counts.csv` → DESeq2 differential binding analysis via `run_stage2_stats()`
+- [x] **Methylation Stage 2 scaffold:** `_methylkit.py` R-bridge module via rpy2 — `methRead` → `filterByCoverage` → `normalizeCoverage` → `unite` → `calculateDiffMeth` → CSV export; PCA, volcano, MA plot data generation
+- [x] **Methylation track wired:** `_route_methylation()` calls `run_differential_methylation()` after Bismark extraction + MultiQC; `diff_methyl` step tracked in frontend
+- [x] **All 11 reference genomes present:** hg38, mm39, mm10, rn7, danRer11, galGal6, susScr11, dm6, wbcel235, araTha, r64 — HISAT2 indexes + FASTA in all directories; genome dropdown in frontend lists all 10 user-facing species + Custom option
+- [x] **Pipeline step definitions updated:** `api.py` and `pages.py` include ChIP-seq featureCounts+DESeq2 steps and methylation diff_methyl step
+
 ### Dynamic Pipeline Entry Points (NEW)
 
 - [x] **3 entry points:** FASTQ files, BAM/CRAM alignments, Count Matrix (CSV/TSV)
@@ -340,7 +350,7 @@ test/
 | **Frontend (`pipeline_setup.js`)** | After PapaParse completes CSV parsing, validates that the first column header is named `"sample"` (case-insensitive). Shows an error message in the card if validation fails.                         |
 | **Backend (`views.py`)**           | Server-side validation in `CorePipelineView.post()`: for `metadata_mode == "upload"`, checks that the first key of the sample dicts is `"sample"`. Manual mode (which uses `_sample_name`) is exempt. |
 
-### 4 Interactive Plotly.js Plots
+### 5 Interactive Plotly.js Plots
 
 | Plot        | Data Source                   | Detail                                                                                                                              |
 | ----------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -348,12 +358,13 @@ test/
 | **UMAP**    | Normalized counts from DESeq2 | PCA pre-reduction → umap-learn UMAP (n_neighbors auto-capped for small sample sizes). Gracefully skips if umap-learn not installed. |
 | **Volcano** | First DEG results CSV         | log2FC vs -log10(padj), three categories (up/down/not-sig), threshold lines drawn.                                                  |
 | **MA**      | First DEG results CSV         | log10(baseMean) vs log2FC, significant genes highlighted in red.                                                                    |
+| **Heatmap** | Normalized counts + DEG table | Z-score normalized expression of top 50 significant DEGs. Blue-white-red colorscale. Group annotations per sample.                  |
 
-| Component           | Change                                                                                                                                                                                                                                                          |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`stats.py`**      | New function `_generate_plot_data()` computes JSON-serializable data for all 4 plots. Called at the end of `run_stage2_stats()`. Helpers: `_build_group_map()`, `_compute_pca_data()`, `_compute_umap_data()`, `_compute_volcano_data()`, `_compute_ma_data()`. |
-| **`core_hub.html`** | Added Plotly.js CDN (v2.35.2). Inline `<script>` fetches job payload via `/api/jobs/<id>/` and renders all 4 plots with consistent styling (transparent background, Inter font, hover tooltips).                                                                |
-| **Plot data flow**  | `stats.py` → `result_payload["plot_data"]` → `JobStatusView` JSON response → Plotly.js rendering in browser.                                                                                                                                                    |
+| Component           | Change                                                                                                                                                                                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`_plots.py`**     | New function `_generate_plot_data()` computes JSON-serializable data for all 5 plots. Called at the end of `run_stage2_stats()`. Helpers: `_build_group_map()`, `_compute_pca_data()`, `_compute_umap_data()`, `_compute_volcano_data()`, `_compute_ma_data()`, `_compute_heatmap_data()`. |
+| **`core_hub.html`** | Added Plotly.js CDN (v2.35.2). `core_hub.js` fetches job payload via `/api/jobs/<id>/` and renders all 5 plots with consistent styling (transparent background, Inter font, hover tooltips).                                                                                               |
+| **Plot data flow**  | `stats.py` → `result_payload["plot_data"]` → `JobStatusView` JSON response → Plotly.js rendering in browser.                                                                                                                                                                               |
 
 ### Test Results
 
@@ -419,9 +430,266 @@ test/
 
 ---
 
-## 5. What Remains (Next Phases)
+## 4d. Phase 4 Hub Engine: Multi-Assay Pipeline Tracks
 
-- [ ] Implement individual module runners (WGCNA, GSEA, Survival, MOFA, DIABLO, etc.)
+### Overview
+
+Extended the Core Pipeline router from a single RNA-seq track to a multi-assay hub engine. The pipeline now dispatches by both `input_data_type` (fastq/alignment/matrix) and `assay_type` (standard_rna/small_rna/chip_seq/methylation) using the Facade Pattern. All tracks share common FastQC, Trimmomatic, and MultiQC steps via extracted helpers to eliminate code duplication.
+
+### Model Changes
+
+| Change                            | Detail                                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **`AssayType` choices**           | New `TextChoices` class on `AnalysisSubmission`: `standard_rna`, `small_rna`, `chip_seq`, `methylation` |
+| **`assay_type` field**            | CharField(max_length=20) with default `standard_rna` — determines pipeline track for FASTQ entry        |
+| **`PEAK_FILE` FileRole**          | New FileAsset role for MACS2 narrowPeak/broadPeak output files                                          |
+| **`METHYLATION_REPORT` FileRole** | New FileAsset role for Bismark cytosine methylation reports                                             |
+| **Migration**                     | `0007_add_assay_type_and_track_roles` — adds field + updates FileRole choices                           |
+
+### Track B: Small RNA / miRNA Pipeline (`_route_small_rna`)
+
+| Step                    | Tool              | Detail                                                                                                        |
+| ----------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| 1. FastQC               | FastQC            | Quality control on raw reads (shared helper)                                                                  |
+| 2. Trimmomatic          | Trimmomatic       | Adapter trimming with `MINLEN:18` (not 36) for ultra-short miRNA reads (~22 bp)                               |
+| 3. Bowtie Alignment     | Bowtie v1         | Maps against miRBase database (not whole genome). Flags: `-v 1 --best --strata -m 5 --norc -S` for 22bp reads |
+| 4. miRNA Quantification | samtools idxstats | Per-miRNA read counts — each miRBase reference is a single miRNA                                              |
+| 5. MultiQC              | MultiQC           | Aggregate QC report (shared helper)                                                                           |
+| 6. Stage 2              | DESeq2            | Differential expression on miRNA count matrix                                                                 |
+
+Key design decisions:
+- Bowtie v1 (not v2) — optimized for ultra-short reads
+- `samtools idxstats` for quantification — miRBase references are individual miRNAs, no GTF needed
+- miRBase species resolved from genome key via `_MIRBASE_SPECIES_MAP` (hg38 -> hsa, mm39 -> mmu, etc.)
+
+### Track C: ChIP-seq Pipeline (`_route_chip_seq`)
+
+| Step                  | Tool        | Detail                                                                                              |
+| --------------------- | ----------- | --------------------------------------------------------------------------------------------------- |
+| 1. FastQC             | FastQC      | Quality control (shared helper)                                                                     |
+| 2. Trimmomatic        | Trimmomatic | Standard adapter trimming (shared helper)                                                           |
+| 3. BWA MEM Alignment  | BWA         | Read alignment to reference genome. Paired-end: `bwa mem ref.fa R1.fq R2.fq`                        |
+| 4. MACS2 Peak Calling | MACS2       | Identifies transcription factor binding sites. Uses effective genome size from `_MACS2_GENOME_SIZE` |
+| 5. MultiQC            | MultiQC     | Aggregate QC report (shared helper)                                                                 |
+
+Key design decisions:
+- No featureCounts or Stage 2 DESeq2 — peaks are the primary output
+- `_split_chip_samples()` separates treatment (IP) vs control (Input) using metadata condition column
+- MACS2 genome size mapped per species (hg38 -> "hs", dm6 -> "dm", etc.)
+- Control samples are optional — MACS2 uses local background model if no control provided
+
+### Track C: DNA Methylation / Bisulfite-seq Pipeline (`_route_methylation`)
+
+| Step                      | Tool                          | Detail                                                                                                            |
+| ------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 0. Bismark Genome Prep    | bismark_genome_preparation    | Builds bisulfite-converted genome index (if not already present)                                                  |
+| 1. FastQC                 | FastQC                        | Quality control (shared helper)                                                                                   |
+| 2. Trimmomatic            | Trimmomatic                   | Standard adapter trimming (shared helper)                                                                         |
+| 3. Bismark Alignment      | Bismark                       | Aligns bisulfite-converted DNA with `--bowtie2`. Handles C-to-T converted reads                                   |
+| 4. Methylation Extraction | bismark_methylation_extractor | Decodes C-to-T mutations into methylation beta-values. Flags: `--comprehensive --merge_non_CpG --cytosine_report` |
+| 5. MultiQC                | MultiQC                       | Aggregate QC report (shared helper)                                                                               |
+
+Key design decisions:
+- No featureCounts or Stage 2 DESeq2 — methylation reports (beta-values) are the primary output
+- Bismark genome preparation auto-detected and skipped if `Bisulfite_Genome/` directory exists
+- Both single-end and paired-end supported
+
+### Code Deduplication: Shared Step Helpers
+
+Extracted common pipeline steps into reusable helpers used by all 4 tracks:
+
+| Helper                                                    | Purpose                                                            |
+| --------------------------------------------------------- | ------------------------------------------------------------------ |
+| `_run_fastqc_step(job, fastq_paths, qc_dir)`              | FastQC with step progress tracking                                 |
+| `_run_trim_step(job, assets, dir, library_type, min_len)` | Trimmomatic with configurable MINLEN (18 for miRNA, 36 for others) |
+| `_sort_and_index_bam(sam, bam_out)`                       | samtools sort + index                                              |
+| `_run_multiqc_step(job, work_dir, qc_dir)`                | MultiQC with step progress tracking                                |
+
+Track A (`_route_fastq`) was refactored to use these same shared helpers.
+
+### Genome Resolvers
+
+| Resolver                              | Purpose                                             |
+| ------------------------------------- | --------------------------------------------------- |
+| `_resolve_mirbase(genome_key)`        | Finds/builds Bowtie index for miRBase species FASTA |
+| `_resolve_bwa_index(genome_fasta)`    | Finds/builds BWA index from genome FASTA            |
+| `_resolve_bismark_genome(genome_dir)` | Finds/runs bismark_genome_preparation               |
+
+### Views Changes
+
+| Change                       | Detail                                                                                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`VALID_ASSAY_TYPES`**      | New validation set: `{standard_rna, small_rna, chip_seq, methylation}`                                                                         |
+| **Assay type validation**    | `CorePipelineView.post()` validates `assay_type` for FASTQ entry; defaults to `standard_rna`                                                   |
+| **Pipeline steps per assay** | Different step lists generated per assay type (e.g., chip_seq gets `bwa_align + macs2_peaks`, no `deseq2`)                                     |
+| **ProcessingView steps**     | Added 7 new step definitions: `bowtie_mirna`, `mirna_quantify`, `bwa_align`, `macs2_peaks`, `bismark_prep`, `bismark_align`, `bismark_extract` |
+
+### Environment Changes
+
+Added 4 new bioinformatics CLI tools to `environment.yml`: `bowtie`, `bwa`, `macs2`, `bismark`.
+
+### Pipeline Router (updated)
+
+```
+run_core_pipeline(session_id, submission_id)
+  |
+  +-- input_type == "fastq"
+  |     +-- assay_type == "standard_rna" --> _route_fastq()      [Track A]
+  |     +-- assay_type == "small_rna"    --> _route_small_rna()   [Track B]
+  |     +-- assay_type == "chip_seq"     --> _route_chip_seq()    [Track C]
+  |     +-- assay_type == "methylation"  --> _route_methylation() [Track C]
+  |
+  +-- input_type == "alignment"          --> _route_alignment()
+  +-- input_type == "matrix"             --> _route_matrix()
+```
+
+### Test Suite
+
+| Test Class                      | Tests  | Coverage                                                               |
+| ------------------------------- | ------ | ---------------------------------------------------------------------- |
+| `AssayTypeModelTest`            | 5      | AssayType choices, default value, persistence                          |
+| `TrackFileRoleTest`             | 2      | PEAK_FILE and METHYLATION_REPORT FileAsset roles                       |
+| `CorePipelineViewAssayTypeTest` | 7      | assay_type validation, steps per track, persistence, non-fastq default |
+| `ProcessingViewStepsTest`       | 4      | All track step definitions present                                     |
+| `TaskRouterAssayDispatchTest`   | 4      | Router dispatches to correct route function per assay_type             |
+| `SmallRNARouteTest`             | 3      | Bowtie miRNA flags, MINLEN:18, correct tool calls                      |
+| `ChIPSeqRouteTest`              | 2      | BWA + MACS2 calls, PEAK_FILE asset registration                        |
+| `SplitChipSamplesTest`          | 3      | Treatment/control separation, no-control allowed, all-control raises   |
+| `MethylationRouteTest`          | 2      | Bismark calls, METHYLATION_REPORT asset registration                   |
+| `SharedHelperTest`              | 5      | FastQC, Trim (single+paired), MultiQC, sort+index helpers              |
+| `GenomeResolverTest`            | 6      | Species maps, miRBase/BWA/Bismark resolve + build-if-missing           |
+| **Total**                       | **44** | All pass (+ 32 existing = 76 total)                                    |
+
+---
+
+## 5. Phase 5: Pipeline Audit, Code Splitting & Docker Documentation
+
+### 5a. Bioinformatics Pipeline Audit — 5 Critical Bugs Fixed
+
+A professional-level audit of all bioinformatics tool invocations identified 5 bugs, ranked by severity:
+
+| #   | Severity     | Bug                                                                    | Impact                                                                                                                         | Fix                                                                                                                                       |
+| --- | ------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **CRITICAL** | Piped commands (`hisat2 \| samtools sort`) only checked last exit code | HISAT2 could fail silently; samtools would produce an empty/corrupt BAM, propagating bad data to featureCounts                 | `_run()` helper now prepends `set -o pipefail;` and uses `executable="/bin/bash"` for all piped commands                                  |
+| 2   | **CRITICAL** | No normalized data detection for Count Matrix entry                    | If user uploads TPM/FPKM matrix → DESeq2 silently produces invalid differential expression results (false positives/negatives) | `_route_matrix()` checks if >30% of values are non-integer → raises `ValueError` with clear message explaining DESeq2 requires raw counts |
+| 3   | **CRITICAL** | Shell injection via f-string paths with `shell=True`                   | Filenames containing shell metacharacters (`$`, `;`, backticks) could execute arbitrary commands                               | New `_q()` helper wraps all path variables with `shlex.quote()` before interpolation into shell commands                                  |
+| 4   | **HIGH**     | Unpaired FASTQ files silently dropped in paired-end mode               | If an R1 file had no matching R2 (or vice versa), it was quietly ignored — user loses data without warning                     | `_pair_fastqs()` now emits `warnings.warn()` for each unmatched file and raises `RuntimeError` if zero valid pairs found                  |
+| 5   | **HIGH**     | ChIP-seq stem matching fragile (`str.replace("_R1", "")`)              | Failed on filenames like `sample_R1_001.fastq.gz` or `R1_control.fastq.gz` where `_R1` appears in unexpected positions         | `_split_chip_samples()` now uses `re.sub(r"_R[12](?=[\._])", "", stem)` for precise paired-end suffix stripping                           |
+
+All fixes are implemented in the new `pipeline/tasks/` package (see below).
+
+### 5b. Code Splitting — 3 Monolithic Files → 3 Packages
+
+Three files exceeded 600+ lines and were split into focused submodules:
+
+#### `pipeline/tasks/` Package (was `tasks.py` — 1,481 lines → 11 files)
+
+| File                 | Lines | Purpose                                                                                                                                                 |
+| -------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `__init__.py`        | ~90   | Re-exports all public symbols for backward compatibility                                                                                                |
+| `_constants.py`      | ~50   | `_CPU_COUNT`, `_TOOL_THREADS`, `_PARALLEL_SAMPLES`, `_GENOME_BASE`, genome maps                                                                         |
+| `_helpers.py`        | ~200  | `_run()` (with pipefail fix), `_q()` (shlex.quote), `_pair_fastqs()`, `_update_step()`, `_emit_progress()`, shared FastQC/Trim/MultiQC/sort-index steps |
+| `_genome.py`         | ~100  | `_resolve_genome()`, `_resolve_mirbase()`, `_resolve_bwa_index()`, `_resolve_bismark_genome()`                                                          |
+| `_featurecounts.py`  | ~80   | `_run_featurecounts()`, `_featurecounts_to_csv()`, `_detect_gff_gene_attr()`                                                                            |
+| `_routes.py`         | ~60   | `_route_alignment()`, `_route_matrix()` (with normalized data detection)                                                                                |
+| `_track_standard.py` | ~120  | Track A: Standard RNA-seq (`_route_fastq()`)                                                                                                            |
+| `_track_mirna.py`    | ~120  | Track B: Small RNA/miRNA (`_route_small_rna()`)                                                                                                         |
+| `_track_chipseq.py`  | ~140  | Track C: ChIP-seq (`_route_chip_seq()`, `_split_chip_samples()` with regex fix)                                                                         |
+| `_track_methyl.py`   | ~120  | Track C: DNA Methylation (`_route_methylation()`)                                                                                                       |
+| `core.py`            | ~100  | Celery tasks: `run_core_pipeline()`, `purge_expired_sessions()`                                                                                         |
+
+#### `pipeline/views/` Package (was `views.py` — 655 lines → 3 files)
+
+| File          | Lines | Purpose                                                                                           |
+| ------------- | ----- | ------------------------------------------------------------------------------------------------- |
+| `__init__.py` | ~20   | Re-exports all 13 view classes                                                                    |
+| `pages.py`    | ~300  | 7 TemplateViews (Home, Tutorials, Workspaces, NewSubmission, Processing, CoreHub, Advanced)       |
+| `api.py`      | ~350  | 6 API views (CreateSubmission, ChunkUpload, CorePipeline, JobStatus, SessionAssets, FileDownload) |
+
+#### `pipeline/stats/` Package (was `stats.py` — 764 lines → 5 files)
+
+| File           | Lines | Purpose                                                                                               |
+| -------------- | ----- | ----------------------------------------------------------------------------------------------------- |
+| `__init__.py`  | ~30   | Re-exports `run_stage2_stats` + all internal functions                                                |
+| `_r_bridge.py` | ~30   | rpy2 initialization, R warning suppression, `_R_CORES`, `_converter`                                  |
+| `_helpers.py`  | ~150  | `_load_metadata()`, `_align_samples()`, `_filter_low_counts()`, `_combat_seq()`, `_detect_outliers()` |
+| `_deseq2.py`   | ~200  | `_build_formula_string()`, `_sanitize_factor_levels()`, `_run_deseq2()`, contrast extraction          |
+| `_plots.py`    | ~200  | PCA, UMAP, volcano, MA plot data generation                                                           |
+| `core.py`      | ~80   | `run_stage2_stats()` orchestrator                                                                     |
+
+**Backward compatibility preserved:** All `__init__.py` files re-export every public symbol, so existing imports like `from pipeline.tasks import run_core_pipeline` and `from pipeline.stats import run_stage2_stats` continue to work without changes to `urls.py`, `consumers.py`, or any other module.
+
+### 5c. Test Suite — All 76 Tests Passing
+
+After the code split, mock targets in test files needed updating to point to the new submodule locations where functions are consumed (not re-exported). All fixes were verified:
+
+| Test File              | Tests  | Status     |
+| ---------------------- | ------ | ---------- |
+| `test_entry_points.py` | 32     | ✅ All pass |
+| `test_assay_tracks.py` | 44     | ✅ All pass |
+| **Total**              | **76** | ✅ All pass |
+
+### 5d. Docker Documentation
+
+| Document                                                             | Purpose                                                                                                                                                                              |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [Docker Deployment Guide.md](doc/Docker%20Deployment%20Guide.md)     | Production deployment using Docker Compose — environment config, reference genome bind mounts, scaling workers, SSL/reverse proxy, persistent storage, monitoring, updates           |
+| [Docker Development Guide.md](doc/Docker%20Development%20Guide.md)   | Local development with Docker — quick start, live reloading via bind mounts, running tests, working without Docker, transitioning to production                                      |
+| [Reference Genome Strategy.md](doc/Reference%20Genome%20Strategy.md) | Why genomes can't go in Git or Docker images, host-side storage + bind mount strategy, building indexes from scratch, transfer via rsync, alternatives considered (Git LFS, S3, DVC) |
+
+---
+
+## 5b. Bug Fixes and Enhancements
+
+### BAM File Download Fix
+
+| Bug                                                                               | Impact                                                                   | Fix                                                                                                             |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `_route_fastq()` never registered aligned BAM files as `ALIGNMENT_BAM` FileAssets | "Compressed Alignments" download button returned nothing in the Core Hub | BAM files are now registered as `FileAsset.FileRole.ALIGNMENT_BAM` immediately after HISAT2 alignment completes |
+| `_route_alignment()` never registered converted BAM files as FileAssets           | CRAM-to-BAM converted files were not downloadable                        | Converted BAMs (from CRAM input) are now registered as `ALIGNMENT_BAM` assets after conversion                  |
+| Core Hub label said "Compressed Alignments (.cram)"                               | Misleading — pipeline produces sorted BAMs, not CRAMs                    | Label corrected to "Aligned Reads (.bam)" with accurate description                                             |
+
+### Heatmap Plot Added (5th Core Visualization)
+
+| Component           | Change                                                                                                                                                                                                                                                      |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`_plots.py`**     | New `_compute_heatmap_data()` function: selects top 50 significant DEGs (sorted by padj), extracts normalized expression from the count matrix, applies row-wise Z-score normalization. Returns gene names, sample names, group labels, and z-score matrix. |
+| **`core_hub.html`** | Added dedicated full-width heatmap card below the 2x2 plot grid. MA Plot separated from heatmap into its own card.                                                                                                                                          |
+| **`core_hub.js`**   | New `renderHeatmap()` function: Plotly.js heatmap trace with blue-white-red colorscale (`zmid=0`), reversed y-axis (most significant gene on top), group color annotations above the heatmap, hover showing gene/sample/group/z-score detail.               |
+
+### Plot Descriptions Added
+
+All 5 core visualization cards now include an explanatory paragraph beneath the card header that explains:
+- What the plot shows in plain language
+- How to read the axes
+- What patterns to look for
+- What scientific conclusions can be drawn
+
+### JavaScript Bug Fix
+
+| Bug                                                                     | Impact                                                                           | Fix                                        |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------ |
+| `core_hub.js` queried `.querySelector("h4")` for module card title text | Module card click threw `null reference` error — template uses `<h3>` not `<h4>` | Changed selector to `.querySelector("h3")` |
+
+### Unrecorded Features Now Documented
+
+The following features were already implemented but not recorded in progress.md:
+- `ModuleRunView` API endpoint (`POST /api/modules/<name>/run`) with 12 approved modules, Stage 2 completion validation, and Celery dispatch
+- `run_tier2_module()` Celery task (placeholder — dispatches and records SUCCESS with module name, no actual analysis)
+- `purge_expired_sessions()` Celery Beat task (shutil.rmtree on expired session dirs, cascade DB delete)
+- Celery Beat schedule configured in `config/celery.py` (nightly at 2:00 AM UTC)
+- `_annotations.py` — MyGene.info REST API integration for gene description annotation (batch POST, 500 genes/request)
+- WebSocket consumer for live progress (`pipeline/consumers.py` + `routing.py`)
+- `pipeline/context_processors.py` — session_id injector for all templates
+- `_r_bridge.py` — shared rpy2 bridge with converter, BiocParallel setup
+- Docker configs: `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`
+
+---
+
+## 6. What Remains (Next Phases)
+
+- [ ] Implement individual module runners (~~WGCNA~~, GSEA, Survival, MOFA, DIABLO, etc.)
+- [x] **WGCNA & Pathway Enrichment module implemented (first Tier 2 module)**
 - [ ] Implement deconvolution pipeline (BisqueRNA/MuSiC/Scaden → h5ad generation)
 - [ ] Implement advanced spoke pipelines (Trajectory via scVI/PAGA, Spatial via Tangram/Squidpy, Autocorrelation via Moran's I)
 - [x] ~~Wire up Plotly.js for interactive visualization rendering (PCA, UMAP, Volcano, MA, Heatmap)~~
@@ -429,20 +697,152 @@ test/
 - [x] ~~Add WebSocket support (Django Channels) for real-time progress updates~~
 - [x] ~~Production static file serving (WhiteNoise + collectstatic)~~
 - [x] ~~Production deployment guide (Daphne + Nginx + systemd)~~
-- [ ] Session cleanup cron job (purge expired sessions + files) — documented in deployment guide, needs Django management command
-- [ ] Docker containerization
+- [x] ~~Docker deployment guide (Docker Compose for production)~~
+- [x] ~~Docker development guide (local dev with Docker)~~
+- [x] ~~Reference genome strategy (storage, distribution, Docker bind mount)~~
+- [x] ~~Bioinformatics pipeline audit (5 critical bugs found and fixed)~~
+- [x] ~~Code splitting (tasks.py -> 11 files, views.py -> 3 files, stats.py -> 5 files)~~
+- [x] ~~Docker containerization~~
+- [x] ~~BAM file download fix (FileAsset registration after alignment)~~
+- [x] ~~Heatmap plot (5th core visualization — top 50 DEGs z-score heatmap)~~
+- [x] ~~Plot descriptions (explanatory text for all 5 core plots)~~
+- [x] ~~Module card JS selector fix (h4 -> h3)~~
+- [x] ~~ModuleRunView API endpoint (POST /api/modules/<name>/run)~~
+- [x] ~~Celery Beat schedule (purge_expired_sessions nightly at 2 AM)~~
+- [ ] Session cleanup: Celery Beat daemon deployment (schedule defined but Beat not started in dev)
+- [x] ~~ChIP-seq Stage 2 stats integration (consensus peaks → featureCounts → DESeq2)~~
+- [x] ~~Methylation Stage 2 stats integration (methylKit differential methylation via rpy2)~~
 - [ ] End-to-end integration test with real FASTQ/BAM/matrix data
-- [ ] Alternative Splicing module (IsoformSwitchAnalyzeR)
-- [ ] RNA Editing & SNP Detection module (REDItools2)
-- [ ] Causal Network Inference & STRING PPI module
-- [ ] Literature Mining module (INDRA API)
-- [ ] TCGA Disease Integration module (TCGAbiolinks)
-- [ ] Biomarker Discovery module (MarkerDB API)
-- [ ] Multi-Omics Factor Analysis (MOFA) module
-- [ ] Supervised Multi-Omics (DIABLO) module
+- [ ] 12 Tier 2 module implementations (dispatcher exists as placeholder):
+  - [ ] Alternative Splicing (IsoformSwitchAnalyzeR)
+  - [ ] RNA Editing & SNP Detection (REDItools2)
+  - [ ] Time Series analysis (ImpulseDE2)
+  - [x] ~~WGCNA co-expression (PyWGCNA) + Pathway Enrichment (gseapy)~~
+  - [ ] Pathway Enrichment / GSEA (gseapy) — standalone module
+  - [ ] Causal Network Inference (arboreto / GRNBoost2 + STRING-DB)
+  - [ ] Literature Mining (INDRA API)
+  - [ ] Survival Prediction (lifelines)
+  - [ ] TCGA Disease Integration (TCGAbiolinks)
+  - [ ] Biomarker Discovery (MarkerDB API)
+  - [ ] Multi-Omics Factor Analysis (mofapy2)
+  - [ ] Supervised Multi-Omics / DIABLO (mixOmics)
+- [ ] Deconvolution engine (DestVI / BayesPrism -> H5AD output)
+- [ ] Advanced spokes: Trajectory Inference (scanpy PAGA/pseudotime)
+- [ ] Advanced spokes: Spatial Mapping (Tangram deep learning)
+- [ ] Advanced spokes: Spatial Autocorrelation (Squidpy / Moran's I)
+- [x] ~~All 10 reference genomes downloaded and indexed (hg38, mm39, mm10, rn7, danRer11, galGal6, susScr11, dm6, wbcel235, araTha)~~
 
 ---
 
-## 6. Image Placeholders Needed
+## 6a. Phase 6: WGCNA & Pathway Enrichment Module (First Tier 2 Module)
+
+### Overview
+
+Implemented the first real Tier 2 analytical module: WGCNA (Weighted Gene Co-expression Network Analysis) combined with pathway enrichment via Enrichr. This replaces the `run_tier2_module` placeholder for the `WGCNA` branch with a full engine, Plotly plot serializers, and dispatcher integration.
+
+### Architecture
+
+```
+ModuleRunView (POST /api/modules/wgcna/run)
+  |
+  +-- run_tier2_module.apply_async(session_id, core_job_id, "WGCNA")
+        |
+        +-- _dispatch_wgcna()           [core.py — resolves FileAssets]
+              |
+              +-- execute_wgcna_and_pathways()   [_module_wgcna.py — engine]
+                    |
+                    +-- _load_and_validate()     Load & intersect matrix + metadata
+                    +-- _run_pywgcna()           Adjacency -> TOM -> modules
+                    +-- _encode_traits()         One-hot encode categoricals
+                    +-- _correlate_modules_traits()  Pearson r per ME x trait
+                    +-- _find_top_module()        Best non-grey module by p-value
+                    +-- _extract_hub_genes()     kME ranking (vectorised np.corrcoef)
+                    +-- _run_enrichr()           gseapy.enrichr Fisher's exact test
+                    +-- build_module_trait_heatmap()  [_plots_wgcna.py]
+                    +-- build_pathway_dotplot()       [_plots_wgcna.py]
+```
+
+### New Files
+
+| File                              | Lines | Purpose                                                                                                                                    |
+| --------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pipeline/tasks/_module_wgcna.py` | ~340  | WGCNA engine: PyWGCNA network construction, module-trait correlation, hub gene extraction (kME), gseapy Enrichr pathway enrichment         |
+| `pipeline/stats/_plots_wgcna.py`  | ~190  | Plotly JSON serializers: module-trait heatmap (blue-white-red diverging colorscale) and pathway dot plot (bubble chart with Viridis scale) |
+| `test/test_wgcna.py`              | ~330  | 24 Django TestCase tests covering plots, helpers, dispatcher, and integration                                                              |
+
+### Modified Files
+
+| File                         | Change                                                                                                                                 |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `pipeline/tasks/core.py`     | Added `_dispatch_wgcna()` function; replaced placeholder in `run_tier2_module` with WGCNA dispatch branch for `module_name == "WGCNA"` |
+| `pipeline/tasks/__init__.py` | Re-exports `execute_wgcna_and_pathways`                                                                                                |
+| `pipeline/stats/__init__.py` | Re-exports `build_module_trait_heatmap`, `build_pathway_dotplot`                                                                       |
+
+### Pipeline Steps (6-step progress tracking)
+
+| Step                 | What it does                                                                                             |
+| -------------------- | -------------------------------------------------------------------------------------------------------- |
+| `wgcna_load_data`    | Load normalized counts CSV + metadata CSV, validate sample overlap                                       |
+| `wgcna_find_modules` | PyWGCNA: preprocess -> soft threshold -> adjacency -> TOM -> hierarchical clustering -> module detection |
+| `wgcna_module_trait` | One-hot encode categorical traits, Pearson correlate every module eigengene with every trait             |
+| `wgcna_hub_genes`    | Find top module (lowest p-value, grey excluded), extract top N hub genes by kME                          |
+| `wgcna_enrichment`   | gseapy.enrichr on hub genes against KEGG 2021 + GO Biological Process 2023                               |
+| `wgcna_plots`        | Build Plotly JSON for module-trait heatmap and pathway dot plot                                          |
+
+### Plotly Visualizations (2 new plots)
+
+| Plot                 | Type         | Description                                                                                                                                    |
+| -------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module-Trait Heatmap | Heatmap      | Rows = module eigengenes, Cols = traits/conditions, Color = Pearson r (blue-white-red), Text = r value with significance stars (*/\*\*/\*\*\*) |
+| Pathway Dot Plot     | Bubble chart | Y = pathway terms, X = Combined Score, Size = overlap gene count, Color = -log10(adj p) on Viridis scale                                       |
+
+### Key Design Decisions
+
+1. **Manual module-trait correlation** instead of `wgcna_obj.analyseWGCNA()` -- gives full control over trait encoding (one-hot for categoricals) and avoids CSV format mismatches in PyWGCNA's `updateSampleInfo`.
+2. **Vectorised kME** via `np.corrcoef` -- entire module gene set correlated with eigengene in one matrix operation.
+3. **Grey module exclusion** -- `_find_top_module` drops any index containing "grey" (unassigned genes with no coherent biological signal).
+4. **Existing signature preserved** -- `run_tier2_module` keeps its `(self, session_id, core_job_id, module_name, params=None)` signature; WGCNA branch added alongside placeholder for other modules.
+5. **step_progress managed by engine** -- `execute_wgcna_and_pathways` initializes and updates `step_progress` with 6 steps; `run_tier2_module` refreshes from DB after engine returns.
+
+### Test Suite
+
+| Test Class               | Tests  | Coverage                                                                                         |
+| ------------------------ | ------ | ------------------------------------------------------------------------------------------------ |
+| `ModuleTraitHeatmapTest` | 3      | Heatmap structure, ME prefix stripping, z-value accuracy                                         |
+| `PathwayDotplotTest`     | 5      | Empty/None/no-sig placeholders, significant terms scatter, max_terms cap                         |
+| `SignificanceLabelsTest` | 1      | Star threshold mapping (\*\*\*/\*\*/\*/ns)                                                       |
+| `LoadAndValidateTest`    | 2      | Shared sample filtering, no-overlap ValueError                                                   |
+| `EncodeTraitsTest`       | 3      | Numeric passthrough, categorical one-hot, mixed columns                                          |
+| `FindTopModuleTest`      | 3      | Lowest p-value selection, grey exclusion, all-grey ValueError                                    |
+| `ExtractHubGenesTest`    | 2      | Correct hub count, empty module ValueError                                                       |
+| `DispatchWgcnaTest`      | 2      | FileAsset path resolution, missing asset raises                                                  |
+| `Tier2WgcnaRoutingTest`  | 3      | Engine dispatch via Celery .apply(), failure sets FAILED status, non-WGCNA placeholder preserved |
+| **Total**                | **24** | All pass (+ 32 entry_points = 56 total WGCNA-related)                                            |
+
+---
+
+## 7. Copilot Customization Tools (.github/)
+
+The `.github/` directory contains Copilot automation tools for consistent module development:
+
+### Agents
+- **tier2-module** (`.github/agents/tier2-module.agent.md`): Specialized agent invoked via `@tier2-module` in Copilot Chat. Scaffolds Tier 2 module files, wires dispatch, re-exports, and writes tests.
+
+### Prompt Files
+- **new-tier2-module.prompt.md**: Template for implementing a new Tier 2 module end-to-end. Accepts `{{module_name}}`, `{{purpose}}`, `{{engine}}` variables.
+- **new-pipeline-track.prompt.md**: Template for adding a new pipeline assay track. Accepts `{{track_name}}`, `{{assay_key}}`, `{{aligner}}`, `{{quantifier}}`.
+- **write-tests.prompt.md**: Template for writing tests following RNAseek conventions.
+
+### Skills
+- **celery-tasks** (`.github/skills/celery-tasks/SKILL.md`): Reference for progress tracking, step_progress JSON shape, AnalysisJob lifecycle.
+- **file-assets** (`.github/skills/file-assets/SKILL.md`): Reference for FileAsset creation, file roles, upload vs pipeline-generated assets.
+- **r-bridge** (`.github/skills/r-bridge/SKILL.md`): Reference for rpy2 usage, converter, BiocParallel.
+
+### CI/CD
+- **e2e.yml** (`.github/workflows/e2e.yml`): GitHub Actions workflow — builds yeast index, runs E2E + full test suite on push/PR to main/develop.
+
+---
+
+## 8. Image Placeholders Needed
 
 See section at end of this document for all images required.

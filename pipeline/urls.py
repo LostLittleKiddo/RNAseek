@@ -9,6 +9,7 @@ from pipeline.views import (
     FileDownloadView,
     HomeView,
     JobStatusView,
+    ModuleRunView,
     NewSubmissionView,
     ProcessingView,
     SessionAssetsView,
@@ -33,4 +34,5 @@ urlpatterns = [
     path("api/jobs/<uuid:job_id>/", JobStatusView.as_view(), name="job_status"),
     path("api/session/assets", SessionAssetsView.as_view(), name="session_assets"),
     path("api/download/<uuid:asset_id>", FileDownloadView.as_view(), name="file_download"),
+    path("api/modules/<str:module_name>/run", ModuleRunView.as_view(), name="module_run"),
 ]
