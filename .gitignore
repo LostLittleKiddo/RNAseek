@@ -91,3 +91,6 @@ TEST*.xml
 *.flv
 *.mov
 *.wmv
+
+media/*
+pipeline/reference_genomes/*
