@@ -1,6 +1,7 @@
 """Track C: Epigenomics — ChIP-seq peak calling pipeline.
 
-FastQC → Trimmomatic → BWA MEM → MACS2 peak calling → MultiQC
+FastQC → Trimmomatic → BWA MEM → MACS2 peak calling → Consensus peak
+count matrix (featureCounts) → MultiQC → Stage 2 (DESeq2)
 """
 
 import glob
@@ -21,6 +22,38 @@ from pipeline.tasks._helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _build_consensus_saf(peak_files, peaks_dir):
+    """Merge MACS2 peak files into a consensus SAF for featureCounts.
+
+    SAF format: GeneID, Chr, Start, End, Strand
+    Peaks from narrowPeak/broadPeak are merged via bedtools to create
+    non-overlapping consensus regions, then output in SAF format.
+    """
+    merged_bed = os.path.join(peaks_dir, "consensus_peaks.bed")
+    saf_path = os.path.join(peaks_dir, "consensus_peaks.saf")
+
+    # Concatenate all peak files and sort
+    cat_bed = os.path.join(peaks_dir, "all_peaks_sorted.bed")
+    peak_str = " ".join(_q(p) for p in peak_files)
+    _run(
+        f"cat {peak_str} "
+        f"| cut -f1-3 "
+        f"| sort -k1,1 -k2,2n > {_q(cat_bed)}"
+    )
+
+    # Merge overlapping peaks
+    _run(f"bedtools merge -i {_q(cat_bed)} > {_q(merged_bed)}")
+
+    # Convert to SAF format for featureCounts
+    with open(merged_bed) as fin, open(saf_path, "w") as fout:
+        fout.write("GeneID\tChr\tStart\tEnd\tStrand\n")
+        for i, line in enumerate(fin, 1):
+            chrom, start, end = line.strip().split("\t")[:3]
+            fout.write(f"peak_{i}\t{chrom}\t{start}\t{end}\t.\n")
+
+    return saf_path
 
 
 def _run_bwa_align(trimmed_files, genome_fasta, aligned_dir, library_type):
@@ -158,16 +191,22 @@ def _route_chip_seq(submission, job):
 
     Samples labeled as 'input' (case-insensitive) in the metadata condition
     column are used as MACS2 control.  All other samples are treatment (IP).
+    After peak calling, builds a consensus peak count matrix via featureCounts
+    on the merged SAF regions, then runs Stage 2 DESeq2 for differential binding.
     """
     from pipeline.models import FileAsset
+    from pipeline.stats import run_stage2_stats
+    from pipeline.tasks._constants import _CPU_COUNT
+    from pipeline.tasks._routes import _register_stage2_assets
 
     work_dir = submission.upload_dir
     trimmed_dir = os.path.join(work_dir, "trimmed")
     aligned_dir = os.path.join(work_dir, "aligned")
     peaks_dir = os.path.join(work_dir, "peaks")
+    counts_dir = os.path.join(work_dir, "counts")
     qc_dir = os.path.join(work_dir, "qc")
 
-    for d in (trimmed_dir, aligned_dir, peaks_dir, qc_dir):
+    for d in (trimmed_dir, aligned_dir, peaks_dir, counts_dir, qc_dir):
         os.makedirs(d, exist_ok=True)
 
     fastq_assets = list(
@@ -217,11 +256,49 @@ def _route_chip_seq(submission, job):
         )
     _update_step(job, "macs2_peaks", completed=True)
 
-    # --- Step 5: MultiQC ---
+    # --- Step 5: Consensus peak count matrix ---
+    _update_step(job, "featurecounts")
+    saf_path = _build_consensus_saf(peak_files, peaks_dir)
+    paired_flag = "-p --countReadPairs" if library_type == "paired" else ""
+    fc_output = os.path.join(counts_dir, "featurecounts_output.txt")
+    count_matrix_path = os.path.join(counts_dir, "raw_counts.csv")
+
+    # Use only treatment BAMs for counting (not input/control)
+    bams_str = " ".join(_q(b) for b in treatment_bams)
+    _run(
+        f"featureCounts {paired_flag} "
+        f"-T {_CPU_COUNT} -F SAF "
+        f"-a {_q(saf_path)} "
+        f"-o {_q(fc_output)} "
+        f"{bams_str}"
+    )
+
+    from pipeline.tasks._featurecounts import _featurecounts_to_csv
+    _featurecounts_to_csv(fc_output, count_matrix_path)
+
+    FileAsset.objects.create(
+        session_id=submission.session_id,
+        submission=submission,
+        file_role=FileAsset.FileRole.COUNT_MATRIX,
+        local_path=count_matrix_path,
+        is_user_uploaded=False,
+    )
+    _update_step(job, "featurecounts", completed=True)
+
+    # --- Step 6: MultiQC ---
     _run_multiqc_step(job, work_dir, qc_dir)
+
+    # --- Stage 2: DESeq2 differential binding ---
+    _update_step(job, "deseq2")
+    stats_result = run_stage2_stats(submission)
+    _update_step(job, "deseq2", completed=True)
+
+    _register_stage2_assets(submission, stats_result, qc_dir=qc_dir)
 
     return {
         "peaks_dir": peaks_dir,
         "peak_files": peak_files,
+        "count_matrix": count_matrix_path,
         "qc_dir": qc_dir,
+        **stats_result,
     }

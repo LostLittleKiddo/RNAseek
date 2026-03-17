@@ -25,6 +25,7 @@ from pipeline.stats._helpers import (
 )
 from pipeline.stats._deseq2 import _run_deseq2
 from pipeline.stats._plots import _generate_plot_data
+from pipeline.stats._annotations import annotate_deg_table
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,16 @@ def run_stage2_stats(submission):
         min_log2fc=submission.min_log2fc,
         max_log2fc=submission.max_log2fc,
     )
+
+    # ── Step 4b: Gene annotation enrichment (MyGene.info) ──
+    for deg_path in deg_results:
+        try:
+            deg_df = pd.read_csv(deg_path)
+            deg_df = annotate_deg_table(deg_df, gene_id_col="gene_id")
+            deg_df.to_csv(deg_path, index=False)
+            logger.info("Annotated DEG table: %s", deg_path)
+        except Exception as exc:
+            logger.warning("Gene annotation failed for %s: %s", deg_path, exc)
 
     # ── Step 5: Generate interactive plot data ──
     norm_df = pd.read_csv(norm_path)

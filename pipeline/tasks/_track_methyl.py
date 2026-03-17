@@ -106,9 +106,12 @@ def _route_methylation(submission, job):
     """Track C: Epigenomics — DNA Methylation (Bisulfite-seq) pipeline.
 
     Bismark aligns bisulfite-converted DNA and mathematically decodes C→T
-    base pair mutations into methylation beta-values.
+    base pair mutations into methylation beta-values. After extraction,
+    runs methylKit for differential methylation analysis.
     """
     from pipeline.models import FileAsset
+    from pipeline.stats._methylkit import run_differential_methylation
+    from pipeline.tasks._routes import _register_stage2_assets
 
     work_dir = submission.upload_dir
     trimmed_dir = os.path.join(work_dir, "trimmed")
@@ -169,8 +172,16 @@ def _route_methylation(submission, job):
     # --- Step 5: MultiQC ---
     _run_multiqc_step(job, work_dir, qc_dir)
 
+    # --- Stage 2: Differential methylation (methylKit) ---
+    _update_step(job, "diff_methyl")
+    stats_result = run_differential_methylation(submission)
+    _update_step(job, "diff_methyl", completed=True)
+
+    _register_stage2_assets(submission, stats_result, qc_dir=qc_dir)
+
     return {
         "methyl_dir": methyl_dir,
         "methylation_reports": report_files,
         "qc_dir": qc_dir,
+        **stats_result,
     }

@@ -16,5 +16,6 @@ from pipeline.views.api import (            # noqa: F401
     CreateSubmissionView,
     FileDownloadView,
     JobStatusView,
+    ModuleRunView,
     SessionAssetsView,
 )

@@ -45,13 +45,19 @@ def _generate_plot_data(norm_df, metadata, deg_result_paths, primary_group,
             plot_data["ma"] = _compute_ma_data(
                 deg_df, adj_pvalue_cutoff, min_log2fc, max_log2fc
             )
+            plot_data["heatmap"] = _compute_heatmap_data(
+                norm_matrix, deg_df, group_map, adj_pvalue_cutoff,
+                min_log2fc, max_log2fc,
+            )
         except Exception as exc:
-            logger.warning("Volcano/MA plot data generation failed: %s", exc)
+            logger.warning("Volcano/MA/Heatmap plot data generation failed: %s", exc)
             plot_data["volcano"] = None
             plot_data["ma"] = None
+            plot_data["heatmap"] = None
     else:
         plot_data["volcano"] = None
         plot_data["ma"] = None
+        plot_data["heatmap"] = None
 
     return plot_data
 
@@ -193,4 +199,50 @@ def _compute_ma_data(deg_df, adj_pvalue_cutoff, min_log2fc, max_log2fc):
         "log2fc": [float(v) for v in log2fc],
         "genes": gene_ids,
         "significant": [bool(v) for v in is_sig],
+    }
+
+
+def _compute_heatmap_data(norm_matrix, deg_df, group_map, adj_pvalue_cutoff,
+                          min_log2fc, max_log2fc, top_n=50):
+    """Compute heatmap data for the top N differentially expressed genes.
+
+    Uses z-score normalized expression across samples for the most
+    significant DEGs (sorted by adjusted p-value).
+    """
+    sig = deg_df.dropna(subset=["padj", "log2FoldChange"]).copy()
+    sig = sig[
+        (sig["padj"] <= adj_pvalue_cutoff)
+        & ((sig["log2FoldChange"] <= min_log2fc) | (sig["log2FoldChange"] >= max_log2fc))
+    ]
+
+    if len(sig) == 0:
+        return None
+
+    sig = sig.sort_values("padj").head(top_n)
+
+    gene_col = "gene_id" if "gene_id" in sig.columns else sig.columns[0]
+    top_genes = sig[gene_col].tolist()
+
+    available = [g for g in top_genes if g in norm_matrix.index]
+    if len(available) < 2:
+        return None
+
+    subset = norm_matrix.loc[available]
+    log_subset = np.log2(subset.values + 1)
+
+    # Row-wise z-score normalization
+    row_means = log_subset.mean(axis=1, keepdims=True)
+    row_stds = log_subset.std(axis=1, keepdims=True)
+    row_stds[row_stds == 0] = 1
+    z_scores = (log_subset - row_means) / row_stds
+
+    samples = list(subset.columns)
+    genes = list(available)
+    groups = [group_map.get(s, "unknown") for s in samples]
+
+    return {
+        "z_scores": z_scores.tolist(),
+        "genes": genes,
+        "samples": samples,
+        "groups": groups,
     }

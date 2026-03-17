@@ -80,6 +80,7 @@ class ProcessingView(TemplateView):
         {"key": "bismark_prep", "title": "Bismark Genome Prep", "desc": "Preparing bisulfite-converted genome index"},
         {"key": "bismark_align", "title": "Bismark Alignment", "desc": "Aligning bisulfite-converted reads"},
         {"key": "bismark_extract", "title": "Methylation Extraction", "desc": "Decoding C-to-T mutations into methylation beta-values"},
+        {"key": "diff_methyl", "title": "Differential Methylation", "desc": "methylKit differential methylation analysis"},
     ]
 
     def get_context_data(self, **kwargs):

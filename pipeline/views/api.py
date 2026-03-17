@@ -12,6 +12,7 @@ from django.views import View
 
 from pipeline.models import AnalysisJob, AnalysisSubmission, FileAsset
 from pipeline.tasks import run_core_pipeline
+from pipeline.tasks.core import run_tier2_module
 
 
 class CreateSubmissionView(View):
@@ -356,9 +357,9 @@ class CorePipelineView(View):
             if assay_type == "small_rna":
                 steps = ["fastqc", "trimmomatic", "bowtie_mirna", "mirna_quantify", "multiqc", "deseq2"]
             elif assay_type == "chip_seq":
-                steps = ["fastqc", "trimmomatic", "bwa_align", "macs2_peaks", "multiqc"]
+                steps = ["fastqc", "trimmomatic", "bwa_align", "macs2_peaks", "featurecounts", "multiqc", "deseq2"]
             elif assay_type == "methylation":
-                steps = ["fastqc", "trimmomatic", "bismark_prep", "bismark_align", "bismark_extract", "multiqc"]
+                steps = ["fastqc", "trimmomatic", "bismark_prep", "bismark_align", "bismark_extract", "multiqc", "diff_methyl"]
             else:
                 steps = ["fastqc", "trimmomatic", "hisat2", "featurecounts", "multiqc", "deseq2"]
             if reference_genome == "custom" and assay_type == "standard_rna":
@@ -506,3 +507,105 @@ class FileDownloadView(View):
             filename=os.path.basename(resolved),
         )
         return response
+
+
+class ModuleRunView(View):
+    """Trigger a Tier 2 analytical module for a completed Stage 2 session.
+
+    Endpoint: POST /api/modules/<name>/run
+    Validates the module name, confirms Stage 2 completed, and dispatches
+    the corresponding Celery task.
+    """
+
+    http_method_names = ["post"]
+
+    APPROVED_MODULES = {
+        "SPLICING",       # A — IsoformSwitchAnalyzeR
+        "RNA_EDITING",    # B — REDItools2
+        "TIME_SERIES",    # C — ImpulseDE2
+        "WGCNA",          # D — PyWGCNA
+        "PATHWAY",        # E — gseapy
+        "NETWORKS",       # F — arboreto / GRNBoost2 + STRING-DB
+        "LIT_MINING",     # G — INDRA Bio API
+        "SURVIVAL",       # H — lifelines
+        "TCGA",           # I — TCGAbiolinks
+        "BIOMARKER",      # J — MarkerDB API
+        "MOFA",           # K — mofapy2
+        "DIABLO",         # L — mixOmics DIABLO
+    }
+
+    def post(self, request, module_name):
+        session_obj = request.session_obj
+
+        # ── Validate module name ──
+        name_upper = module_name.upper()
+        if name_upper not in self.APPROVED_MODULES:
+            return JsonResponse(
+                {"error": f"Unknown module '{module_name}'. "
+                          f"Approved modules: {', '.join(sorted(self.APPROVED_MODULES))}"},
+                status=400,
+            )
+
+        body = json.loads(request.body) if request.body else {}
+        job_id = body.get("job_id")
+
+        if not job_id:
+            return JsonResponse({"error": "Missing job_id."}, status=400)
+
+        # ── Verify Stage 2 completed successfully ──
+        try:
+            core_job = AnalysisJob.objects.get(
+                job_id=job_id,
+                session=session_obj,
+                module_name="CORE_PIPELINE",
+            )
+        except (AnalysisJob.DoesNotExist, ValueError):
+            return JsonResponse(
+                {"error": "No core pipeline job found for this session."},
+                status=404,
+            )
+
+        if core_job.status != AnalysisJob.Status.SUCCESS:
+            return JsonResponse(
+                {"error": "Stage 2 has not completed successfully. "
+                          f"Current status: {core_job.status}"},
+                status=409,
+            )
+
+        # ── Create the Tier 2 AnalysisJob ──
+        module_job = AnalysisJob.objects.create(
+            session=session_obj,
+            module_name=name_upper,
+            step_progress={
+                "pipeline_steps": [name_upper],
+                "completed_steps": [],
+                "current_step": None,
+                "failed_step": None,
+            },
+        )
+
+        # ── Dispatch Celery task ──
+        params = {k: v for k, v in body.items() if k != "job_id"}
+
+        try:
+            run_tier2_module.apply_async(
+                args=[
+                    str(session_obj.session_id),
+                    str(core_job.job_id),
+                    name_upper,
+                ],
+                kwargs={"params": params},
+                task_id=str(module_job.job_id),
+            )
+        except Exception:
+            module_job.status = AnalysisJob.Status.FAILED
+            module_job.result_payload = {
+                "error": "Task queue unavailable. Is the Celery worker running?"
+            }
+            module_job.save(update_fields=["status", "result_payload"])
+
+        return JsonResponse({
+            "job_id": str(module_job.job_id),
+            "module": name_upper,
+            "status": module_job.status,
+        })

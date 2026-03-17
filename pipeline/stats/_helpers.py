@@ -85,8 +85,19 @@ def _filter_low_counts(counts_df, min_total=10):
 # ─────────────────────────────────────────────────────────────
 
 def _combat_seq(counts_df, metadata, batch_col, group_col):
-    """Run sva::ComBat_seq in R for batch correction."""
+    """Run sva::ComBat_seq in R for batch correction.
+
+    Gracefully returns the original counts if the batch column has fewer
+    than 2 distinct levels (nothing to correct).
+    """
     import pandas as pd
+
+    if metadata[batch_col].nunique() < 2:
+        logger.info(
+            "Batch column '%s' has only one level — skipping ComBat_seq.",
+            batch_col,
+        )
+        return counts_df
 
     with localconverter(_converter):
         sva = importr("sva")

@@ -102,6 +102,17 @@ def _route_alignment(submission, job):
     with ThreadPoolExecutor(max_workers=_PARALLEL_SAMPLES) as pool:
         bam_files = list(pool.map(_convert_or_index, bam_assets))
 
+    # Register converted/indexed BAM files as downloadable assets
+    for bam_path in bam_files:
+        if bam_path not in bam_assets:
+            FileAsset.objects.create(
+                session_id=submission.session_id,
+                submission=submission,
+                file_role=FileAsset.FileRole.ALIGNMENT_BAM,
+                local_path=bam_path,
+                is_user_uploaded=False,
+            )
+
     # featureCounts
     _update_step(job, "featurecounts")
     count_matrix_path = _run_featurecounts(

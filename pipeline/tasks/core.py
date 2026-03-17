@@ -81,6 +81,119 @@ def run_core_pipeline(self, session_id, submission_id):
     return {"job_id": str(job.job_id), "status": job.status}
 
 
+@shared_task(bind=True)
+def run_tier2_module(self, session_id, core_job_id, module_name, params=None):
+    """Tier 2 module runner: dispatches the named analytical module.
+
+    Pre-conditions (checked by the API view before dispatch):
+      - module_name is one of the 12 approved modules
+      - The core pipeline job (core_job_id) completed with SUCCESS
+    """
+    from pipeline.models import AnalysisJob, AnalysisSubmission
+
+    job = AnalysisJob.objects.get(job_id=self.request.id)
+    job.status = AnalysisJob.Status.RUNNING
+    job.save(update_fields=["status"])
+
+    params = params or {}
+
+    try:
+        core_job = AnalysisJob.objects.get(job_id=core_job_id)
+        session = core_job.session
+
+        # Locate the submission from the core job's session
+        submission = (
+            session.submissions.order_by("-created_at").first()
+        )
+        if not submission:
+            raise RuntimeError("No submission found for this session.")
+
+        _emit_progress(job)
+
+        # Dispatch to the correct module engine.
+        if module_name == "WGCNA":
+            result = _dispatch_wgcna(
+                job, session_id, str(submission.submission_id), **params,
+            )
+        else:
+            # Placeholder for unimplemented modules.
+            progress = job.step_progress or {}
+            progress["current_step"] = module_name
+            job.step_progress = progress
+            job.save(update_fields=["step_progress"])
+            _emit_progress(job)
+
+            result = {
+                "module": module_name,
+                "message": f"Module {module_name} executed successfully.",
+                "params": params,
+            }
+
+        # Mark completed — refresh to pick up step_progress changes from engine.
+        job.refresh_from_db(fields=["step_progress"])
+        progress = job.step_progress or {}
+        progress["completed_steps"] = list(progress.get("pipeline_steps", []))
+        progress["current_step"] = None
+        job.step_progress = progress
+        job.status = AnalysisJob.Status.SUCCESS
+        job.result_payload = result
+        job.save(update_fields=["status", "result_payload", "step_progress"])
+        _emit_progress(job)
+
+    except Exception as exc:
+        logger.exception("Tier 2 module %s failed", module_name)
+        job.refresh_from_db(fields=["step_progress"])
+        progress = job.step_progress or {}
+        progress["failed_step"] = progress.get("current_step") or module_name
+        progress["current_step"] = None
+        job.step_progress = progress
+        job.status = AnalysisJob.Status.FAILED
+        job.result_payload = {"error": str(exc)}
+        job.save(update_fields=["status", "result_payload", "step_progress"])
+        _emit_progress(job)
+        raise
+
+    return {"job_id": str(job.job_id), "status": job.status}
+
+
+# ---------------------------------------------------------------------------
+# Module-specific dispatchers (private)
+# ---------------------------------------------------------------------------
+
+def _dispatch_wgcna(job, session_id, submission_id, **kwargs):
+    """Resolve input files and delegate to the WGCNA + pathway enrichment engine.
+
+    Required FileAsset roles on the submission:
+        NORMALIZED_COUNTS  - DESeq2 normalized count matrix
+        METADATA_CSV       - sample-level metadata (conditions / traits)
+    """
+    from pipeline.models import AnalysisSubmission, FileAsset
+    from pipeline.tasks._module_wgcna import execute_wgcna_and_pathways
+
+    submission = AnalysisSubmission.objects.get(
+        submission_id=submission_id, session_id=session_id,
+    )
+
+    matrix_asset = FileAsset.objects.get(
+        session_id=session_id,
+        submission=submission,
+        file_role=FileAsset.FileRole.NORMALIZED_COUNTS,
+    )
+    metadata_asset = FileAsset.objects.get(
+        session_id=session_id,
+        submission=submission,
+        file_role=FileAsset.FileRole.METADATA_CSV,
+    )
+
+    return execute_wgcna_and_pathways(
+        job_id=str(job.job_id),
+        session_id=str(session_id),
+        matrix_path=matrix_asset.local_path,
+        metadata_path=metadata_asset.local_path,
+        **kwargs,
+    )
+
+
 @shared_task(ignore_result=True)
 def purge_expired_sessions():
     """Celery Beat task: purge expired anonymous sessions.

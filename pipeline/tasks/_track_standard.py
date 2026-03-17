@@ -119,6 +119,16 @@ def _route_fastq(submission, job):
                 bam_files.append(fut.result())
     _update_step(job, "hisat2", completed=True)
 
+    # Register aligned BAM files as downloadable assets
+    for bam_path in bam_files:
+        FileAsset.objects.create(
+            session_id=submission.session_id,
+            submission=submission,
+            file_role=FileAsset.FileRole.ALIGNMENT_BAM,
+            local_path=bam_path,
+            is_user_uploaded=False,
+        )
+
     # --- Step 4: featureCounts ---
     _update_step(job, "featurecounts")
     count_matrix_path = _run_featurecounts(

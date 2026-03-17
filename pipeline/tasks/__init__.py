@@ -70,6 +70,7 @@ from pipeline.tasks._track_mirna import (  # noqa: F401
     _run_bowtie_mirna,
 )
 from pipeline.tasks._track_chipseq import (  # noqa: F401
+    _build_consensus_saf,
     _route_chip_seq,
     _run_bwa_align,
     _run_macs2_callpeak,
@@ -86,8 +87,12 @@ from pipeline.tasks._routes import (  # noqa: F401
     _route_matrix,
 )
 
+# ── WGCNA module ──
+from pipeline.tasks._module_wgcna import execute_wgcna_and_pathways  # noqa: F401
+
 # ── Celery tasks (must be importable for autodiscovery) ──
 from pipeline.tasks.core import (  # noqa: F401
     purge_expired_sessions,
     run_core_pipeline,
+    run_tier2_module,
 )

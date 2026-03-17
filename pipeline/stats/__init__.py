@@ -20,3 +20,16 @@ from pipeline.stats._deseq2 import (          # noqa: F401
 from pipeline.stats._plots import (           # noqa: F401
     _generate_plot_data,
 )
+
+from pipeline.stats._annotations import (     # noqa: F401
+    annotate_deg_table,
+)
+
+from pipeline.stats._methylkit import (        # noqa: F401
+    run_differential_methylation,
+)
+
+from pipeline.stats._plots_wgcna import (     # noqa: F401
+    build_module_trait_heatmap,
+    build_pathway_dotplot,
+)

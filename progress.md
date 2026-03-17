@@ -1,6 +1,6 @@
 # RNAseek -- Project Progress
 
-> Last updated after: **Phase 5: Pipeline Audit, Code Splitting & Docker Documentation**
+> Last updated after: **Phase 5c: Stage 2 Epigenomics, Assay Selector & Full Genome Roster**
 
 ---
 
@@ -33,8 +33,8 @@ config/             ← Django project package
 
 pipeline/           ← Main Django app
   models.py         ← Session, AnalysisSubmission, FileAsset, AnalysisJob
-  views/            ← Package: pages.py (7 TemplateViews) + api.py (6 API views)
-  urls.py           ← 7 page routes + 5 API routes
+  views/            <- Package: pages.py (7 TemplateViews) + api.py (7 API views)
+  urls.py           <- 7 page routes + 7 API routes
   middleware.py     ← AnonymousSessionMiddleware
   tasks/            ← Package: 11 modules (core, routes, helpers, constants, genome resolvers)
   stats/            ← Package: 5 modules (core, DESeq2, helpers, plots, R bridge)
@@ -113,14 +113,15 @@ Files: `.env` (local dev, gitignored), `.env.prod` (documented template for prod
 
 ### 2.4 API Endpoints
 
-| Method | Endpoint                 | Purpose                                                                                      |
-| ------ | ------------------------ | -------------------------------------------------------------------------------------------- |
-| POST   | `/api/submission/create` | Create a new AnalysisSubmission, return its UUID for scoping uploads                         |
-| POST   | `/api/upload/chunk`      | Receive 5 MB file chunk, route to subdirectory by file_role, create FileAsset on final chunk |
-| POST   | `/api/pipeline/core`     | Validate & trigger Core Pipeline by entry point (fastq/alignment/matrix), returns `job_id`   |
-| GET    | `/api/jobs/<uuid>/`      | Poll job status (PENDING/RUNNING/SUCCESS/FAILED) + result payload                            |
-| GET    | `/api/session/assets`    | List all FileAssets for current session                                                      |
-| GET    | `/api/download/<uuid>/`  | Serve pipeline output files for download (FileAsset lookup)                                  |
+| Method | Endpoint                  | Purpose                                                                                      |
+| ------ | ------------------------- | -------------------------------------------------------------------------------------------- |
+| POST   | `/api/submission/create`  | Create a new AnalysisSubmission, return its UUID for scoping uploads                         |
+| POST   | `/api/upload/chunk`       | Receive 5 MB file chunk, route to subdirectory by file_role, create FileAsset on final chunk |
+| POST   | `/api/pipeline/core`      | Validate & trigger Core Pipeline by entry point (fastq/alignment/matrix), returns `job_id`   |
+| GET    | `/api/jobs/<uuid>/`       | Poll job status (PENDING/RUNNING/SUCCESS/FAILED) + result payload                            |
+| GET    | `/api/session/assets`     | List all FileAssets for current session                                                      |
+| GET    | `/api/download/<uuid>/`   | Serve pipeline output files for download (FileAsset lookup)                                  |
+| POST   | `/api/modules/<name>/run` | Trigger a Tier 2 module (validates Stage 2 complete, dispatches Celery task)                 |
 
 ### 2.5 Celery Tasks — Core Pipeline Router
 
@@ -251,6 +252,15 @@ pipeline/static/pipeline/
 - [x] Stage 2 statistical engine: DESeq2, Combat-seq batch correction, Mahalanobis PCA outlier detection
 - [x] Yeast R64-1-1 reference genome built (FASTA, GTF, HISAT2 index)
 
+### Assay Type Selector & Epigenomics Stage 2 (NEW)
+
+- [x] **Assay type selector UI:** 4 radio cards (Standard RNA, Small RNA, ChIP-seq, DNA Methylation) shown for FASTQ entry point; dynamic help text for ChIP-seq and Methylation metadata guidance
+- [x] **ChIP-seq Stage 2:** Consensus peak SAF generation (`bedtools merge` → SAF format), `featureCounts -F SAF` on treatment BAMs, `raw_counts.csv` → DESeq2 differential binding analysis via `run_stage2_stats()`
+- [x] **Methylation Stage 2 scaffold:** `_methylkit.py` R-bridge module via rpy2 — `methRead` → `filterByCoverage` → `normalizeCoverage` → `unite` → `calculateDiffMeth` → CSV export; PCA, volcano, MA plot data generation
+- [x] **Methylation track wired:** `_route_methylation()` calls `run_differential_methylation()` after Bismark extraction + MultiQC; `diff_methyl` step tracked in frontend
+- [x] **All 11 reference genomes present:** hg38, mm39, mm10, rn7, danRer11, galGal6, susScr11, dm6, wbcel235, araTha, r64 — HISAT2 indexes + FASTA in all directories; genome dropdown in frontend lists all 10 user-facing species + Custom option
+- [x] **Pipeline step definitions updated:** `api.py` and `pages.py` include ChIP-seq featureCounts+DESeq2 steps and methylation diff_methyl step
+
 ### Dynamic Pipeline Entry Points (NEW)
 
 - [x] **3 entry points:** FASTQ files, BAM/CRAM alignments, Count Matrix (CSV/TSV)
@@ -340,7 +350,7 @@ test/
 | **Frontend (`pipeline_setup.js`)** | After PapaParse completes CSV parsing, validates that the first column header is named `"sample"` (case-insensitive). Shows an error message in the card if validation fails.                         |
 | **Backend (`views.py`)**           | Server-side validation in `CorePipelineView.post()`: for `metadata_mode == "upload"`, checks that the first key of the sample dicts is `"sample"`. Manual mode (which uses `_sample_name`) is exempt. |
 
-### 4 Interactive Plotly.js Plots
+### 5 Interactive Plotly.js Plots
 
 | Plot        | Data Source                   | Detail                                                                                                                              |
 | ----------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -348,12 +358,13 @@ test/
 | **UMAP**    | Normalized counts from DESeq2 | PCA pre-reduction → umap-learn UMAP (n_neighbors auto-capped for small sample sizes). Gracefully skips if umap-learn not installed. |
 | **Volcano** | First DEG results CSV         | log2FC vs -log10(padj), three categories (up/down/not-sig), threshold lines drawn.                                                  |
 | **MA**      | First DEG results CSV         | log10(baseMean) vs log2FC, significant genes highlighted in red.                                                                    |
+| **Heatmap** | Normalized counts + DEG table | Z-score normalized expression of top 50 significant DEGs. Blue-white-red colorscale. Group annotations per sample.                  |
 
-| Component           | Change                                                                                                                                                                                                                                                          |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`stats.py`**      | New function `_generate_plot_data()` computes JSON-serializable data for all 4 plots. Called at the end of `run_stage2_stats()`. Helpers: `_build_group_map()`, `_compute_pca_data()`, `_compute_umap_data()`, `_compute_volcano_data()`, `_compute_ma_data()`. |
-| **`core_hub.html`** | Added Plotly.js CDN (v2.35.2). Inline `<script>` fetches job payload via `/api/jobs/<id>/` and renders all 4 plots with consistent styling (transparent background, Inter font, hover tooltips).                                                                |
-| **Plot data flow**  | `stats.py` → `result_payload["plot_data"]` → `JobStatusView` JSON response → Plotly.js rendering in browser.                                                                                                                                                    |
+| Component           | Change                                                                                                                                                                                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`_plots.py`**     | New function `_generate_plot_data()` computes JSON-serializable data for all 5 plots. Called at the end of `run_stage2_stats()`. Helpers: `_build_group_map()`, `_compute_pca_data()`, `_compute_umap_data()`, `_compute_volcano_data()`, `_compute_ma_data()`, `_compute_heatmap_data()`. |
+| **`core_hub.html`** | Added Plotly.js CDN (v2.35.2). `core_hub.js` fetches job payload via `/api/jobs/<id>/` and renders all 5 plots with consistent styling (transparent background, Inter font, hover tooltips).                                                                                               |
+| **Plot data flow**  | `stats.py` → `result_payload["plot_data"]` → `JobStatusView` JSON response → Plotly.js rendering in browser.                                                                                                                                                                               |
 
 ### Test Results
 
@@ -628,9 +639,57 @@ After the code split, mock targets in test files needed updating to point to the
 
 ---
 
+## 5b. Bug Fixes and Enhancements
+
+### BAM File Download Fix
+
+| Bug                                                                               | Impact                                                                   | Fix                                                                                                             |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `_route_fastq()` never registered aligned BAM files as `ALIGNMENT_BAM` FileAssets | "Compressed Alignments" download button returned nothing in the Core Hub | BAM files are now registered as `FileAsset.FileRole.ALIGNMENT_BAM` immediately after HISAT2 alignment completes |
+| `_route_alignment()` never registered converted BAM files as FileAssets           | CRAM-to-BAM converted files were not downloadable                        | Converted BAMs (from CRAM input) are now registered as `ALIGNMENT_BAM` assets after conversion                  |
+| Core Hub label said "Compressed Alignments (.cram)"                               | Misleading — pipeline produces sorted BAMs, not CRAMs                    | Label corrected to "Aligned Reads (.bam)" with accurate description                                             |
+
+### Heatmap Plot Added (5th Core Visualization)
+
+| Component           | Change                                                                                                                                                                                                                                                      |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`_plots.py`**     | New `_compute_heatmap_data()` function: selects top 50 significant DEGs (sorted by padj), extracts normalized expression from the count matrix, applies row-wise Z-score normalization. Returns gene names, sample names, group labels, and z-score matrix. |
+| **`core_hub.html`** | Added dedicated full-width heatmap card below the 2x2 plot grid. MA Plot separated from heatmap into its own card.                                                                                                                                          |
+| **`core_hub.js`**   | New `renderHeatmap()` function: Plotly.js heatmap trace with blue-white-red colorscale (`zmid=0`), reversed y-axis (most significant gene on top), group color annotations above the heatmap, hover showing gene/sample/group/z-score detail.               |
+
+### Plot Descriptions Added
+
+All 5 core visualization cards now include an explanatory paragraph beneath the card header that explains:
+- What the plot shows in plain language
+- How to read the axes
+- What patterns to look for
+- What scientific conclusions can be drawn
+
+### JavaScript Bug Fix
+
+| Bug                                                                     | Impact                                                                           | Fix                                        |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------ |
+| `core_hub.js` queried `.querySelector("h4")` for module card title text | Module card click threw `null reference` error — template uses `<h3>` not `<h4>` | Changed selector to `.querySelector("h3")` |
+
+### Unrecorded Features Now Documented
+
+The following features were already implemented but not recorded in progress.md:
+- `ModuleRunView` API endpoint (`POST /api/modules/<name>/run`) with 12 approved modules, Stage 2 completion validation, and Celery dispatch
+- `run_tier2_module()` Celery task (placeholder — dispatches and records SUCCESS with module name, no actual analysis)
+- `purge_expired_sessions()` Celery Beat task (shutil.rmtree on expired session dirs, cascade DB delete)
+- Celery Beat schedule configured in `config/celery.py` (nightly at 2:00 AM UTC)
+- `_annotations.py` — MyGene.info REST API integration for gene description annotation (batch POST, 500 genes/request)
+- WebSocket consumer for live progress (`pipeline/consumers.py` + `routing.py`)
+- `pipeline/context_processors.py` — session_id injector for all templates
+- `_r_bridge.py` — shared rpy2 bridge with converter, BiocParallel setup
+- Docker configs: `Dockerfile`, `docker-compose.yml`, `docker-compose.dev.yml`
+
+---
+
 ## 6. What Remains (Next Phases)
 
-- [ ] Implement individual module runners (WGCNA, GSEA, Survival, MOFA, DIABLO, etc.)
+- [ ] Implement individual module runners (~~WGCNA~~, GSEA, Survival, MOFA, DIABLO, etc.)
+- [x] **WGCNA & Pathway Enrichment module implemented (first Tier 2 module)**
 - [ ] Implement deconvolution pipeline (BisqueRNA/MuSiC/Scaden → h5ad generation)
 - [ ] Implement advanced spoke pipelines (Trajectory via scVI/PAGA, Spatial via Tangram/Squidpy, Autocorrelation via Moran's I)
 - [x] ~~Wire up Plotly.js for interactive visualization rendering (PCA, UMAP, Volcano, MA, Heatmap)~~
@@ -642,21 +701,148 @@ After the code split, mock targets in test files needed updating to point to the
 - [x] ~~Docker development guide (local dev with Docker)~~
 - [x] ~~Reference genome strategy (storage, distribution, Docker bind mount)~~
 - [x] ~~Bioinformatics pipeline audit (5 critical bugs found and fixed)~~
-- [x] ~~Code splitting (tasks.py → 11 files, views.py → 3 files, stats.py → 5 files)~~
-- [ ] Session cleanup cron job (purge expired sessions + files) — documented in deployment guide, needs Django management command
+- [x] ~~Code splitting (tasks.py -> 11 files, views.py -> 3 files, stats.py -> 5 files)~~
 - [x] ~~Docker containerization~~
+- [x] ~~BAM file download fix (FileAsset registration after alignment)~~
+- [x] ~~Heatmap plot (5th core visualization — top 50 DEGs z-score heatmap)~~
+- [x] ~~Plot descriptions (explanatory text for all 5 core plots)~~
+- [x] ~~Module card JS selector fix (h4 -> h3)~~
+- [x] ~~ModuleRunView API endpoint (POST /api/modules/<name>/run)~~
+- [x] ~~Celery Beat schedule (purge_expired_sessions nightly at 2 AM)~~
+- [ ] Session cleanup: Celery Beat daemon deployment (schedule defined but Beat not started in dev)
+- [x] ~~ChIP-seq Stage 2 stats integration (consensus peaks → featureCounts → DESeq2)~~
+- [x] ~~Methylation Stage 2 stats integration (methylKit differential methylation via rpy2)~~
 - [ ] End-to-end integration test with real FASTQ/BAM/matrix data
-- [ ] Alternative Splicing module (IsoformSwitchAnalyzeR)
-- [ ] RNA Editing & SNP Detection module (REDItools2)
-- [ ] Causal Network Inference & STRING PPI module
-- [ ] Literature Mining module (INDRA API)
-- [ ] TCGA Disease Integration module (TCGAbiolinks)
-- [ ] Biomarker Discovery module (MarkerDB API)
-- [ ] Multi-Omics Factor Analysis (MOFA) module
-- [ ] Supervised Multi-Omics (DIABLO) module
+- [ ] 12 Tier 2 module implementations (dispatcher exists as placeholder):
+  - [ ] Alternative Splicing (IsoformSwitchAnalyzeR)
+  - [ ] RNA Editing & SNP Detection (REDItools2)
+  - [ ] Time Series analysis (ImpulseDE2)
+  - [x] ~~WGCNA co-expression (PyWGCNA) + Pathway Enrichment (gseapy)~~
+  - [ ] Pathway Enrichment / GSEA (gseapy) — standalone module
+  - [ ] Causal Network Inference (arboreto / GRNBoost2 + STRING-DB)
+  - [ ] Literature Mining (INDRA API)
+  - [ ] Survival Prediction (lifelines)
+  - [ ] TCGA Disease Integration (TCGAbiolinks)
+  - [ ] Biomarker Discovery (MarkerDB API)
+  - [ ] Multi-Omics Factor Analysis (mofapy2)
+  - [ ] Supervised Multi-Omics / DIABLO (mixOmics)
+- [ ] Deconvolution engine (DestVI / BayesPrism -> H5AD output)
+- [ ] Advanced spokes: Trajectory Inference (scanpy PAGA/pseudotime)
+- [ ] Advanced spokes: Spatial Mapping (Tangram deep learning)
+- [ ] Advanced spokes: Spatial Autocorrelation (Squidpy / Moran's I)
+- [x] ~~All 10 reference genomes downloaded and indexed (hg38, mm39, mm10, rn7, danRer11, galGal6, susScr11, dm6, wbcel235, araTha)~~
 
 ---
 
-## 6. Image Placeholders Needed
+## 6a. Phase 6: WGCNA & Pathway Enrichment Module (First Tier 2 Module)
+
+### Overview
+
+Implemented the first real Tier 2 analytical module: WGCNA (Weighted Gene Co-expression Network Analysis) combined with pathway enrichment via Enrichr. This replaces the `run_tier2_module` placeholder for the `WGCNA` branch with a full engine, Plotly plot serializers, and dispatcher integration.
+
+### Architecture
+
+```
+ModuleRunView (POST /api/modules/wgcna/run)
+  |
+  +-- run_tier2_module.apply_async(session_id, core_job_id, "WGCNA")
+        |
+        +-- _dispatch_wgcna()           [core.py — resolves FileAssets]
+              |
+              +-- execute_wgcna_and_pathways()   [_module_wgcna.py — engine]
+                    |
+                    +-- _load_and_validate()     Load & intersect matrix + metadata
+                    +-- _run_pywgcna()           Adjacency -> TOM -> modules
+                    +-- _encode_traits()         One-hot encode categoricals
+                    +-- _correlate_modules_traits()  Pearson r per ME x trait
+                    +-- _find_top_module()        Best non-grey module by p-value
+                    +-- _extract_hub_genes()     kME ranking (vectorised np.corrcoef)
+                    +-- _run_enrichr()           gseapy.enrichr Fisher's exact test
+                    +-- build_module_trait_heatmap()  [_plots_wgcna.py]
+                    +-- build_pathway_dotplot()       [_plots_wgcna.py]
+```
+
+### New Files
+
+| File                              | Lines | Purpose                                                                                                                                    |
+| --------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pipeline/tasks/_module_wgcna.py` | ~340  | WGCNA engine: PyWGCNA network construction, module-trait correlation, hub gene extraction (kME), gseapy Enrichr pathway enrichment         |
+| `pipeline/stats/_plots_wgcna.py`  | ~190  | Plotly JSON serializers: module-trait heatmap (blue-white-red diverging colorscale) and pathway dot plot (bubble chart with Viridis scale) |
+| `test/test_wgcna.py`              | ~330  | 24 Django TestCase tests covering plots, helpers, dispatcher, and integration                                                              |
+
+### Modified Files
+
+| File                         | Change                                                                                                                                 |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `pipeline/tasks/core.py`     | Added `_dispatch_wgcna()` function; replaced placeholder in `run_tier2_module` with WGCNA dispatch branch for `module_name == "WGCNA"` |
+| `pipeline/tasks/__init__.py` | Re-exports `execute_wgcna_and_pathways`                                                                                                |
+| `pipeline/stats/__init__.py` | Re-exports `build_module_trait_heatmap`, `build_pathway_dotplot`                                                                       |
+
+### Pipeline Steps (6-step progress tracking)
+
+| Step                 | What it does                                                                                             |
+| -------------------- | -------------------------------------------------------------------------------------------------------- |
+| `wgcna_load_data`    | Load normalized counts CSV + metadata CSV, validate sample overlap                                       |
+| `wgcna_find_modules` | PyWGCNA: preprocess -> soft threshold -> adjacency -> TOM -> hierarchical clustering -> module detection |
+| `wgcna_module_trait` | One-hot encode categorical traits, Pearson correlate every module eigengene with every trait             |
+| `wgcna_hub_genes`    | Find top module (lowest p-value, grey excluded), extract top N hub genes by kME                          |
+| `wgcna_enrichment`   | gseapy.enrichr on hub genes against KEGG 2021 + GO Biological Process 2023                               |
+| `wgcna_plots`        | Build Plotly JSON for module-trait heatmap and pathway dot plot                                          |
+
+### Plotly Visualizations (2 new plots)
+
+| Plot                 | Type         | Description                                                                                                                                    |
+| -------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module-Trait Heatmap | Heatmap      | Rows = module eigengenes, Cols = traits/conditions, Color = Pearson r (blue-white-red), Text = r value with significance stars (*/\*\*/\*\*\*) |
+| Pathway Dot Plot     | Bubble chart | Y = pathway terms, X = Combined Score, Size = overlap gene count, Color = -log10(adj p) on Viridis scale                                       |
+
+### Key Design Decisions
+
+1. **Manual module-trait correlation** instead of `wgcna_obj.analyseWGCNA()` -- gives full control over trait encoding (one-hot for categoricals) and avoids CSV format mismatches in PyWGCNA's `updateSampleInfo`.
+2. **Vectorised kME** via `np.corrcoef` -- entire module gene set correlated with eigengene in one matrix operation.
+3. **Grey module exclusion** -- `_find_top_module` drops any index containing "grey" (unassigned genes with no coherent biological signal).
+4. **Existing signature preserved** -- `run_tier2_module` keeps its `(self, session_id, core_job_id, module_name, params=None)` signature; WGCNA branch added alongside placeholder for other modules.
+5. **step_progress managed by engine** -- `execute_wgcna_and_pathways` initializes and updates `step_progress` with 6 steps; `run_tier2_module` refreshes from DB after engine returns.
+
+### Test Suite
+
+| Test Class               | Tests  | Coverage                                                                                         |
+| ------------------------ | ------ | ------------------------------------------------------------------------------------------------ |
+| `ModuleTraitHeatmapTest` | 3      | Heatmap structure, ME prefix stripping, z-value accuracy                                         |
+| `PathwayDotplotTest`     | 5      | Empty/None/no-sig placeholders, significant terms scatter, max_terms cap                         |
+| `SignificanceLabelsTest` | 1      | Star threshold mapping (\*\*\*/\*\*/\*/ns)                                                       |
+| `LoadAndValidateTest`    | 2      | Shared sample filtering, no-overlap ValueError                                                   |
+| `EncodeTraitsTest`       | 3      | Numeric passthrough, categorical one-hot, mixed columns                                          |
+| `FindTopModuleTest`      | 3      | Lowest p-value selection, grey exclusion, all-grey ValueError                                    |
+| `ExtractHubGenesTest`    | 2      | Correct hub count, empty module ValueError                                                       |
+| `DispatchWgcnaTest`      | 2      | FileAsset path resolution, missing asset raises                                                  |
+| `Tier2WgcnaRoutingTest`  | 3      | Engine dispatch via Celery .apply(), failure sets FAILED status, non-WGCNA placeholder preserved |
+| **Total**                | **24** | All pass (+ 32 entry_points = 56 total WGCNA-related)                                            |
+
+---
+
+## 7. Copilot Customization Tools (.github/)
+
+The `.github/` directory contains Copilot automation tools for consistent module development:
+
+### Agents
+- **tier2-module** (`.github/agents/tier2-module.agent.md`): Specialized agent invoked via `@tier2-module` in Copilot Chat. Scaffolds Tier 2 module files, wires dispatch, re-exports, and writes tests.
+
+### Prompt Files
+- **new-tier2-module.prompt.md**: Template for implementing a new Tier 2 module end-to-end. Accepts `{{module_name}}`, `{{purpose}}`, `{{engine}}` variables.
+- **new-pipeline-track.prompt.md**: Template for adding a new pipeline assay track. Accepts `{{track_name}}`, `{{assay_key}}`, `{{aligner}}`, `{{quantifier}}`.
+- **write-tests.prompt.md**: Template for writing tests following RNAseek conventions.
+
+### Skills
+- **celery-tasks** (`.github/skills/celery-tasks/SKILL.md`): Reference for progress tracking, step_progress JSON shape, AnalysisJob lifecycle.
+- **file-assets** (`.github/skills/file-assets/SKILL.md`): Reference for FileAsset creation, file roles, upload vs pipeline-generated assets.
+- **r-bridge** (`.github/skills/r-bridge/SKILL.md`): Reference for rpy2 usage, converter, BiocParallel.
+
+### CI/CD
+- **e2e.yml** (`.github/workflows/e2e.yml`): GitHub Actions workflow — builds yeast index, runs E2E + full test suite on push/PR to main/develop.
+
+---
+
+## 8. Image Placeholders Needed
 
 See section at end of this document for all images required.

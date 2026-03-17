@@ -75,7 +75,7 @@
     document.querySelectorAll(".rna-module-card[data-module]").forEach(card => {
         card.addEventListener("click", () => {
             currentModule = card.dataset.module;
-            const prettyName = card.querySelector("h4").textContent;
+            const prettyName = card.querySelector("h3").textContent;
             modalTitle.textContent = prettyName;
             const builder = moduleInputs[currentModule];
             modalBody.innerHTML = builder ? builder() : defaultInputs(prettyName);
@@ -341,6 +341,71 @@
         Plotly.newPlot(el, traces, layout, plotConfig);
     }
 
+    function renderHeatmap(hm) {
+        var el = document.getElementById("heatmap-plot");
+        if (!el) return;
+        el.innerHTML = "";
+
+        // Build annotation text for hover
+        var hoverText = [];
+        for (var r = 0; r < hm.genes.length; r++) {
+            var row = [];
+            for (var c = 0; c < hm.samples.length; c++) {
+                row.push(hm.genes[r] + "<br>Sample: " + hm.samples[c] +
+                    " (" + hm.groups[c] + ")" +
+                    "<br>Z-score: " + hm.z_scores[r][c].toFixed(2));
+            }
+            hoverText.push(row);
+        }
+
+        var trace = {
+            z: hm.z_scores,
+            x: hm.samples,
+            y: hm.genes,
+            type: "heatmap",
+            colorscale: [
+                [0, "#3498db"],
+                [0.5, "#f8f9fa"],
+                [1, "#e74c3c"]
+            ],
+            zmid: 0,
+            hoverinfo: "text",
+            text: hoverText,
+            colorbar: {
+                title: "Z-score",
+                titleside: "right",
+                thickness: 15,
+                len: 0.6,
+            },
+        };
+
+        // Group annotation bar at the top
+        var groupColors = {};
+        var gi = 0;
+        hm.groups.forEach(function (g) {
+            if (!groupColors[g]) { groupColors[g] = COLORS[gi % COLORS.length]; gi++; }
+        });
+
+        var annotations = hm.samples.map(function (s, i) {
+            return {
+                x: s, y: hm.genes.length, xref: "x", yref: "y",
+                text: hm.groups[i], showarrow: false,
+                font: { size: 9, color: groupColors[hm.groups[i]] },
+                yshift: 12,
+            };
+        });
+
+        var hmLayout = Object.assign({}, plotLayout, {
+            title: { text: "Top " + hm.genes.length + " DEGs — Z-score Heatmap", font: { size: 14 } },
+            xaxis: { title: "", tickangle: -45, tickfont: { size: 10 } },
+            yaxis: { title: "", autorange: "reversed", tickfont: { size: 9 }, dtick: 1 },
+            margin: { l: 100, r: 60, t: 50, b: 80 },
+            annotations: annotations,
+        });
+
+        Plotly.newPlot(el, [trace], hmLayout, plotConfig);
+    }
+
     // ── Fetch job data and render plots ──
     if (typeof Plotly !== "undefined") {
         fetch("/api/jobs/" + JOB_ID + "/", {
@@ -354,6 +419,7 @@
                 if (pd.umap) renderUMAP(pd.umap);
                 if (pd.volcano) renderVolcano(pd.volcano);
                 if (pd.ma) renderMA(pd.ma);
+                if (pd.heatmap) renderHeatmap(pd.heatmap);
             })
             .catch(function (err) { console.warn("Plot data fetch failed:", err); });
     }

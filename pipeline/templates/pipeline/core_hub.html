@@ -28,8 +28,8 @@
                 <div class="file-info">
                     <i class="bi bi-file-earmark-binary"></i>
                     <div>
-                        <div class="file-name">Compressed Alignments (.cram)</div>
-                        <div class="file-desc">Aligned reads against the reference genome</div>
+                        <div class="file-name">Aligned Reads (.bam)</div>
+                        <div class="file-desc">Sorted and indexed BAM files aligned against the reference genome</div>
                     </div>
                 </div>
                 <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="ALIGNMENT_BAM"
@@ -85,13 +85,19 @@
     <!-- ═══ Core Visualizations ═══ -->
     <div class="rna-mb-3">
         <h2 class="rna-section-title rna-mb-1">Core Visualizations</h2>
-        <p class="rna-section-subtitle">Interactive plots powered by your analysis results.</p>
+        <p class="rna-section-subtitle">Interactive plots powered by your analysis results. Hover over data points for
+            sample details.</p>
     </div>
 
     <div class="rna-grid-2 rna-mb-3">
         <div class="rna-card">
             <div class="rna-card-header"><i class="bi bi-scatter-chart"></i>&ensp;PCA Plot</div>
             <div class="rna-card-body">
+                <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
+                    Principal Component Analysis reduces high-dimensional gene expression data into two axes that
+                    capture the largest variance. Samples that cluster together share similar expression profiles. The
+                    percentage on each axis shows how much of the total variability it explains.
+                </p>
                 <div class="rna-plot-container" id="pca-plot">
                     <span class="rna-text-sm rna-text-muted">PCA visualization loads here</span>
                 </div>
@@ -100,6 +106,11 @@
         <div class="rna-card">
             <div class="rna-card-header"><i class="bi bi-scatter-chart"></i>&ensp;UMAP Plot</div>
             <div class="rna-card-body">
+                <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
+                    UMAP (Uniform Manifold Approximation and Projection) is a non-linear dimensionality reduction method
+                    that preserves local neighborhood structure. It highlights clusters of similar samples more sharply
+                    than PCA, especially in datasets with complex structure.
+                </p>
                 <div class="rna-plot-container" id="umap-plot">
                     <span class="rna-text-sm rna-text-muted">UMAP visualization loads here</span>
                 </div>
@@ -111,16 +122,45 @@
         <div class="rna-card">
             <div class="rna-card-header"><i class="bi bi-fire"></i>&ensp;Volcano Plot</div>
             <div class="rna-card-body">
+                <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
+                    Each dot is a gene. The x-axis shows fold change (how much expression differs between conditions)
+                    and the y-axis shows statistical significance. Genes in the upper-left (blue, downregulated) and
+                    upper-right (red, upregulated) corners are the most biologically interesting. Dashed lines mark your
+                    chosen thresholds.
+                </p>
                 <div class="rna-plot-container" id="volcano-plot">
                     <span class="rna-text-sm rna-text-muted">Volcano plot loads here</span>
                 </div>
             </div>
         </div>
         <div class="rna-card">
-            <div class="rna-card-header"><i class="bi bi-grid-3x3"></i>&ensp;MA Plot &amp; Heatmaps</div>
+            <div class="rna-card-header"><i class="bi bi-bar-chart-line"></i>&ensp;MA Plot</div>
             <div class="rna-card-body">
+                <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
+                    MA plot shows the relationship between average expression level (x-axis) and fold change (y-axis).
+                    It helps identify if differential expression is biased toward highly or lowly expressed genes. Red
+                    points are statistically significant DEGs. A balanced cloud centered on y=0 indicates good
+                    normalization.
+                </p>
                 <div class="rna-plot-container" id="ma-plot">
-                    <span class="rna-text-sm rna-text-muted">MA plot &amp; top 50 DEG heatmap loads here</span>
+                    <span class="rna-text-sm rna-text-muted">MA plot loads here</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="rna-mb-3">
+        <div class="rna-card">
+            <div class="rna-card-header"><i class="bi bi-grid-3x3"></i>&ensp;Top DEG Heatmap</div>
+            <div class="rna-card-body">
+                <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
+                    Z-score normalized expression heatmap of the top 50 most significant differentially expressed genes.
+                    Each row is a gene, each column is a sample. Blue indicates below-average expression and red
+                    indicates above-average expression relative to each gene's mean. Use this to visually confirm that
+                    your conditions show distinct expression patterns.
+                </p>
+                <div class="rna-plot-container" id="heatmap-plot" style="min-height: 500px;">
+                    <span class="rna-text-sm rna-text-muted">Heatmap loads here</span>
                 </div>
             </div>
         </div>
