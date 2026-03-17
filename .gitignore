@@ -27,7 +27,6 @@ staticfiles/
 
 # ── Reference Genomes (44 GB+ of pre-built indexes & sequences) ──
 pipeline/reference_genomes/
-reference_genomes/
 
 # ── Dev Test Dataset (FASTQ files, ~28 MB) ──
 rnaseek_dev_dataset/*.fastq.gz
@@ -71,8 +70,7 @@ rnaseek_dev_dataset/*.fq.gz
 *.swo
 *~
 
-# ── OS Generated ──
-.DS_Store
+# ── OS Generated ──DS_Store
 Thumbs.db
 desktop.ini
 
