@@ -1,0 +1,7 @@
+sample,condition,batch
+GSM9346166_Unstressed_Rep1_dev,unstressed control,batch_1
+GSM9346167_Unstressed_Rep2_dev,unstressed control,batch_1
+GSM9346168_Unstressed_Rep3_dev,unstressed control,batch_1
+GSM9346170_NaCl_Rep1_dev,0.4 M NaCl,batch_1
+GSM9346171_NaCl_Rep2_dev,0.4 M NaCl,batch_1
+GSM9346172_NaCl_Rep3_dev,0.4 M NaCl,batch_1

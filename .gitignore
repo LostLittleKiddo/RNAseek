@@ -93,6 +93,4 @@ TEST*.xml
 *.wmv
 
 media/*
-test/*
 pipeline/reference_genomes/*
-rnaseek_dev_dataset/*
