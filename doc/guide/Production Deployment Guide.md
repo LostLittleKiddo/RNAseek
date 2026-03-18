@@ -1,8 +1,8 @@
 # RNAseek — Production Deployment Guide
 
 > **Target OS:** Ubuntu 22.04+ LTS (bare-metal or VM)
-> **Last updated:** March 17, 2026
-> **Live deployment:** rnaseek.ca — bare-metal, `ubuntu` user, system Python 3.10 + pip
+> **Last updated:** March 18, 2026
+> **Live deployment:** rnaseek.ca — bare-metal, `ubuntu` user, conda env at `/opt/miniconda3/envs/rnaseek` (Python 3.11 + R 4.3)
 
 ---
 

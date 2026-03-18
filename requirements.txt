@@ -32,7 +32,7 @@ h5py>=3.9
 statsmodels>=0.14
 
 # ── Python-R Bridge (requires R headers — install via conda env) ──
-# rpy2>=3.6,<4.0
+rpy2>=3.6,<4.0
 
 # ── Single-Cell / Spatial (install via conda env for GPU/R support) ──
 anndata>=0.10

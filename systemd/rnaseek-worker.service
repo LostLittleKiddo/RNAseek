@@ -15,8 +15,10 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/apps/rnaseek
 EnvironmentFile=/home/ubuntu/apps/rnaseek/.env
+Environment=PATH=/opt/miniconda3/envs/rnaseek/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=CONDA_PREFIX=/opt/miniconda3/envs/rnaseek
 
-ExecStart=/home/ubuntu/.local/bin/celery -A config worker --loglevel=info --concurrency=4 --max-tasks-per-child=50
+ExecStart=/opt/miniconda3/envs/rnaseek/bin/celery -A config worker --loglevel=info --concurrency=4 --max-tasks-per-child=50
 
 Restart=always
 RestartSec=10
