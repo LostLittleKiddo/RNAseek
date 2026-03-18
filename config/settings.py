@@ -225,12 +225,22 @@ LOGGING = {
     },
     "root": {
         "handlers": ["console"],
-        "level": "INFO" if IS_PRODUCTION else "DEBUG",
+        "level": "WARNING",
     },
     "loggers": {
         "django": {
             "handlers": ["console"],
-            "level": "INFO" if IS_PRODUCTION else "DEBUG",
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "daphne": {
+            "handlers": ["console"],
+            "level": "ERROR",
             "propagate": False,
         },
         "pipeline": {
