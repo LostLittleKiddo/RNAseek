@@ -83,6 +83,81 @@
     </div>
 </section>
 
+<!-- ═══ Assay Type Selector (FASTQ only) ═══ -->
+<section class="rna-container rna-mt-3" id="assay-type-section" style="display:none;">
+    <div class="rna-card">
+        <div class="rna-card-header">
+            <i class="bi bi-clipboard2-pulse"></i>&ensp;Assay Type
+        </div>
+        <div class="rna-card-body">
+            <label class="rna-label">Select Your Sequencing Assay <span class="required">*</span>
+                <span class="input-tip"><i class="bi bi-question-circle"></i>
+                    <span class="tip-text">Choose the type of sequencing experiment. This determines which
+                        alignment and analysis tools the pipeline uses.</span>
+                </span>
+            </label>
+            <div class="entry-point-group" id="assay-type-group">
+                <label class="entry-point-card selected" id="at-standard">
+                    <input type="radio" name="assay_type" value="standard_rna" checked>
+                    <div class="ep-icon"><i class="bi bi-rss"></i></div>
+                    <div class="ep-content">
+                        <div class="ep-title">Standard RNA-Seq</div>
+                        <div class="ep-desc">Poly-A mRNA or total RNA. Splice-aware alignment and gene-level
+                            quantification.</div>
+                        <div class="ep-tags">
+                            <span class="ep-tag">HISAT2</span>
+                            <span class="ep-tag">featureCounts</span>
+                            <span class="ep-tag">DESeq2</span>
+                        </div>
+                    </div>
+                </label>
+                <label class="entry-point-card" id="at-small-rna">
+                    <input type="radio" name="assay_type" value="small_rna">
+                    <div class="ep-icon"><i class="bi bi-minecart-loaded"></i></div>
+                    <div class="ep-content">
+                        <div class="ep-title">Small RNA / miRNA</div>
+                        <div class="ep-desc">Ultra-short reads (~22 bp). Bowtie alignment against miRBase.</div>
+                        <div class="ep-tags">
+                            <span class="ep-tag">Bowtie</span>
+                            <span class="ep-tag">miRBase</span>
+                            <span class="ep-tag">DESeq2</span>
+                        </div>
+                    </div>
+                </label>
+                <label class="entry-point-card" id="at-chip-seq">
+                    <input type="radio" name="assay_type" value="chip_seq">
+                    <div class="ep-icon"><i class="bi bi-bullseye"></i></div>
+                    <div class="ep-content">
+                        <div class="ep-title">ChIP-seq</div>
+                        <div class="ep-desc">Chromatin immunoprecipitation. Peak calling and differential binding
+                            analysis.</div>
+                        <div class="ep-tags">
+                            <span class="ep-tag">BWA</span>
+                            <span class="ep-tag">MACS2</span>
+                            <span class="ep-tag">featureCounts</span>
+                            <span class="ep-tag">DESeq2</span>
+                        </div>
+                    </div>
+                </label>
+                <label class="entry-point-card" id="at-methylation">
+                    <input type="radio" name="assay_type" value="methylation">
+                    <div class="ep-icon"><i class="bi bi-fingerprint"></i></div>
+                    <div class="ep-content">
+                        <div class="ep-title">DNA Methylation</div>
+                        <div class="ep-desc">Bisulfite sequencing. Methylation extraction and differential methylation
+                            analysis.</div>
+                        <div class="ep-tags">
+                            <span class="ep-tag">Bismark</span>
+                            <span class="ep-tag">methylKit</span>
+                        </div>
+                    </div>
+                </label>
+            </div>
+            <div id="assay-help-text" class="rna-mt-2" style="display:none;"></div>
+        </div>
+    </div>
+</section>
+
 <!-- ═══ Main 4-Column Grid ═══ -->
 <section class="rna-container rna-mt-3 rna-mb-4">
     <div class="setup-grid">
@@ -355,6 +430,17 @@
                         <i class="bi bi-gear"></i> Custom Genome Configuration
                     </h4>
 
+                    <div
+                        style="background: rgba(255, 193, 7, 0.10); border: 1px solid rgba(255, 193, 7, 0.35); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem;">
+                        <p style="margin: 0; font-size: .82rem; color: var(--rna-navy); line-height: 1.55;">
+                            <i class="bi bi-exclamation-triangle" style="color: #d97706; margin-right: .35rem;"></i>
+                            <strong>Attention:</strong> Building a HISAT2 index from a custom FASTA genome can take
+                            <strong>30 minutes to several hours</strong> depending on genome size. Large genomes
+                            (e.g. human ~3 GB) require significant memory and time. Make sure you provide the correct
+                            FASTA and GTF/GFF annotation files before submitting.
+                        </p>
+                    </div>
+
                     <div class="custom-genome-field">
                         <label class="rna-label">Genome Name <span class="required">*</span></label>
                         <input type="text" class="rna-input" id="custom-genome-name" placeholder="e.g. MyOrganism_v1">
@@ -407,7 +493,7 @@
         </div>
 
         <!-- ── Column 3: Metadata / Experimental Design ── -->
-        <div class="rna-card setup-col">
+        <div class="rna-card setup-col" id="col-metadata">
             <div class="rna-card-header">
                 <i class="bi bi-table"></i>&ensp;Experimental Design
                 <span class="header-tag">DESeq2</span>
@@ -416,7 +502,9 @@
                 <label class="rna-label">Metadata Input Method <span class="required">*</span>
                     <span class="input-tip"><i class="bi bi-question-circle"></i>
                         <span class="tip-text">Upload a CSV file with sample-to-condition mappings, or manually assign
-                            samples to groups below. DESeq2 requires at least two conditions.</span>
+                            samples to groups below. Differential analysis requires at least two conditions.
+                            For ChIP-seq: label control/input samples as &ldquo;input&rdquo; in the condition column.
+                            For Methylation: define treatment vs. control groups for differential methylation.</span>
                     </span>
                 </label>
                 <div class="meta-toggle-group" id="meta-toggle">
@@ -444,15 +532,19 @@
                     <div id="csv-preview-area" style="display:none;"></div>
 
                     <div class="rna-mt-2 csv-format-hint">
-                        <strong>Expected format:</strong> First column = sample filename. Additional columns
-                        can be any metadata (condition, batch, age, sex, etc.). Columns are auto-detected.
+                        <strong>Expected format:</strong> First column must be named <code>sample</code>.
+                        Values must match your uploaded filenames <strong>without the file extension</strong>
+                        (e.g. <code>SampleA</code> for <code>SampleA.fastq.gz</code>).
+                        For <strong>paired-end</strong>, use the shared prefix before <code>_R1</code>/<code>_R2</code>
+                        (e.g. <code>SampleA</code> for
+                        <code>SampleA_R1.fastq.gz</code>/<code>SampleA_R2.fastq.gz</code>).
                     </div>
 
                     <!-- CSV example mini-table -->
                     <div class="csv-example">
                         <div class="csv-example-header">
                             <span><i class="bi bi-file-earmark-spreadsheet"></i> metadata.csv</span>
-                            <span>Example template</span>
+                            <span>Example (single-end)</span>
                         </div>
                         <table>
                             <thead>
@@ -460,33 +552,28 @@
                                     <th>sample</th>
                                     <th>condition</th>
                                     <th>batch</th>
-                                    <th>age</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td>SampleA_R1.fq.gz</td>
+                                    <td>SampleA</td>
                                     <td>Control</td>
                                     <td class="col-optional">batch_1</td>
-                                    <td class="col-optional">25</td>
                                 </tr>
                                 <tr>
-                                    <td>SampleB_R1.fq.gz</td>
+                                    <td>SampleB</td>
                                     <td>Control</td>
                                     <td class="col-optional">batch_2</td>
-                                    <td class="col-optional">30</td>
                                 </tr>
                                 <tr>
-                                    <td>SampleC_R1.fq.gz</td>
+                                    <td>SampleC</td>
                                     <td>Treatment</td>
                                     <td class="col-optional">batch_1</td>
-                                    <td class="col-optional">28</td>
                                 </tr>
                                 <tr>
-                                    <td>SampleD_R1.fq.gz</td>
+                                    <td>SampleD</td>
                                     <td>Treatment</td>
                                     <td class="col-optional">batch_2</td>
-                                    <td class="col-optional">32</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -505,7 +592,7 @@
         </div>
 
         <!-- ── Column 4: Significance Thresholds ── -->
-        <div class="rna-card setup-col">
+        <div class="rna-card setup-col" id="col-thresholds">
             <div class="rna-card-header">
                 <i class="bi bi-sliders2"></i>&ensp;Significance Thresholds
                 <span class="header-tag">DESeq2 &middot; Plots</span>
@@ -550,6 +637,18 @@
                         padj &le; <strong id="pval-preview">0.05</strong> will be flagged as significant.</span>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ═══ Metadata CSV Viewer (full-width, populated after CSV upload + file matching) ═══ -->
+    <div class="csv-viewer-section rna-card rna-mt-3" id="csv-viewer-section" style="display:none;">
+        <div class="rna-card-header">
+            <i class="bi bi-table"></i>&ensp;Metadata Preview
+            <span class="header-tag">Matched Samples</span>
+        </div>
+        <div class="rna-card-body">
+            <div id="csv-viewer-info" class="csv-viewer-info"></div>
+            <div id="csv-viewer-table" class="csv-viewer-table-wrap"></div>
         </div>
     </div>
 
