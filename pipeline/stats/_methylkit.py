@@ -15,6 +15,7 @@ import pandas as pd
 from pipeline.stats._r_bridge import (
     _R_CORES,
     _converter,
+    _ensure_rpy2,
     importr,
     localconverter,
     ro,
@@ -178,6 +179,7 @@ def _run_methylkit_r(cov_files, sample_ids, treatments, stats_dir,
       5. Calculate differential methylation
       6. Export results as CSV
     """
+    _ensure_rpy2()
     methylkit = importr("methylKit")
 
     with localconverter(_converter):

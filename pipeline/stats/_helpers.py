@@ -7,7 +7,7 @@ import re
 
 import numpy as np
 
-from pipeline.stats._r_bridge import _converter, localconverter, importr, ro
+from pipeline.stats._r_bridge import _converter, _ensure_rpy2, localconverter, importr, ro
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,7 @@ def _combat_seq(counts_df, metadata, batch_col, group_col):
     Gracefully returns the original counts if the batch column has fewer
     than 2 distinct levels (nothing to correct).
     """
+    _ensure_rpy2()
     import pandas as pd
 
     if metadata[batch_col].nunique() < 2:

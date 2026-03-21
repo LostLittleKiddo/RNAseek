@@ -9,6 +9,7 @@ import numpy as np
 from pipeline.stats._r_bridge import (
     _R_CORES,
     _converter,
+    _ensure_rpy2,
     importr,
     localconverter,
     ro,
@@ -83,6 +84,7 @@ def _r_string_vector(items):
 def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
                 stats_dir, norm_output, adj_pvalue_cutoff,
                 min_log2fc, max_log2fc):
+    _ensure_rpy2()
     """Run DESeq2 with a dynamically constructed formula and extract contrasts.
 
     Returns a list of result file paths.
