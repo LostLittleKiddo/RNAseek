@@ -1,2238 +1,2234 @@
-/**
- * RNAseek – Core Pipeline Setup (Single Page)
- *
- * Handles:
- * - Submission creation (unique UUID per analysis)
- * - Library type + strandedness selection
- * - FASTQ chunked upload with per-file progress
- * - Paired-end pair validation
- * - Reference genome selection (incl. custom genome upload)
- * - Metadata: CSV upload with in-browser PapaParse parsing, or manual table
- *   with dynamically added columns (Age, Sex, Batch, etc.)
- * - Column role assignment (primary_group, batch_effect, additional_covariates)
- * - Column validation (missing values, zero variance)
- * - Dynamic contrast builder for multi-group comparisons (>2 groups)
- * - Significance threshold live preview
- * - Full form validation + pipeline submission
- */
+/* ═══════════════════════════════════════════════════════════════════
+   RNAseek – Pipeline Setup Wizard
+   Multi-step wizard controller for Core Pipeline submission.
+   ═══════════════════════════════════════════════════════════════════ */
 (function () {
     "use strict";
 
-    const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
-    const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+    /* ─── Configuration ──────────────────────────────────────────── */
+    const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || "";
+    const IS_PRODUCTION_META = document.querySelector('meta[name="rnaseek-is-production"]')?.content;
+    const CHUNK_SIZE = 5 * 1024 * 1024;   // 5 MB per chunk
     const MAX_RETRIES = 3;
-    const CHUNK_TIMEOUT_MS = 120000; // 2 minutes per chunk
+    const UPLOAD_TIMEOUT = 120_000;       // 2 min per chunk
+    const FILE_SIZE_WARN = 10 * 1024 * 1024 * 1024; // 10 GB
 
-    /**
-     * Upload a single chunk with retry and timeout.
-     * Returns the parsed JSON response on success, or null on failure.
-     */
-    async function uploadChunkWithRetry(fd) {
-        for (var attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            try {
-                var controller = new AbortController();
-                var timer = setTimeout(function () { controller.abort(); }, CHUNK_TIMEOUT_MS);
-                var res = await fetch("/api/upload/chunk", {
-                    method: "POST",
-                    headers: { "X-CSRFToken": CSRF },
-                    body: fd,
-                    signal: controller.signal,
-                });
-                clearTimeout(timer);
-                if (res.ok) return await res.json();
-                // Server error — retry after delay
-            } catch (e) {
-                // Network error or timeout — retry after delay
-            }
-            if (attempt < MAX_RETRIES - 1) {
-                await new Promise(function (r) { setTimeout(r, 1000 * (attempt + 1)); });
-            }
-        }
-        return null;
-    }
-
-    // ── State ──────────────────────────────────────────────────
+    /* ─── State ──────────────────────────────────────────────────── */
     let submissionId = null;
-    let inputDataType = "fastq";          // "fastq" | "alignment" | "matrix"
-    let assayType = "standard_rna";       // "standard_rna" | "small_rna" | "chip_seq" | "methylation"
+    let inputDataType = "fastq";
+    let assayType = "standard_rna";
+    let libraryType = "single";
+    let metadataMode = "upload";
+
+    // FASTQ
     let selectedFiles = [];
     let uploadedFiles = [];
-    let isUploading = false;
-    let csvFile = null;
-    let customGenomeFiles = { fasta: null, annotation: null };
 
-    // Alignment entry state
+    // BAM
     let selectedBamFiles = [];
     let uploadedBamFiles = [];
 
-    // Matrix entry state
+    // Matrix
     let matrixFile = null;
-    let parsedMatrixData = null;          // { headers: string[], rows: object[] }
+    let parsedMatrixData = null;
 
-    // Metadata state (new)
-    let parsedCsvData = null;           // { headers: string[], rows: object[] }
-    let manualColumns = ["condition"];   // Default column for manual mode
-    let columnSelectableValues = {};      // Per-column predefined values, e.g. { condition: ["Control","Treatment"] }
-    let columnMapping = {
-        primary_group: null,
-        batch_effect: null,
-        additional_covariates: [],
-    };
-    let contrasts = [];                 // e.g. [["Drug_A","Control"], ["Drug_B","Control"]]
+    // CSV metadata
+    let csvFile = null;
+    let parsedCsvData = null;
 
-    // ── DOM References (existing) ─────────────────────────────
-    const dropZone = document.getElementById("drop-zone");
-    const fastqInput = document.getElementById("fastq-input");
-    const filePills = document.getElementById("file-pills");
-    const fileList = document.getElementById("file-list");
-    const uploadArea = document.getElementById("upload-progress-area");
-    const pairValidation = document.getElementById("pair-validation");
+    // Manual metadata
+    let manualColumns = ["condition"];
+    let columnSelectableValues = { condition: [] };
 
-    const genomeSelect = document.getElementById("genome-select");
-    const customGenomeSection = document.getElementById("custom-genome-section");
-    const customGenomeName = document.getElementById("custom-genome-name");
-    const customGenomeFasta = document.getElementById("custom-genome-fasta");
-    const customGenomeAnnotation = document.getElementById("custom-genome-annotation");
+    // Column mapping / contrasts
+    let columnMapping = { primary_group: "", batch_effect: "", covariates: [] };
+    let contrasts = [];
 
-    const metaToggle = document.getElementById("meta-toggle");
-    const metaUploadPanel = document.getElementById("meta-upload-panel");
-    const metaManualPanel = document.getElementById("meta-manual-panel");
-    const csvDropZone = document.getElementById("csv-drop-zone");
-    const csvInput = document.getElementById("csv-input");
-    const csvFileName = document.getElementById("csv-file-name");
-    const manualPanel = document.getElementById("manual-metadata-panel");
+    // Custom genome
+    let customGenomeFiles = { fasta: null, annotation: null };
 
-    const adjPvalue = document.getElementById("adj-pvalue");
-    const minLog2fc = document.getElementById("min-log2fc");
-    const maxLog2fc = document.getElementById("max-log2fc");
-    const fcPreview = document.getElementById("fc-preview");
-    const pvalPreview = document.getElementById("pval-preview");
+    // Wizard
+    let currentStep = 1;
+    const TOTAL_STEPS = 5;
+    let isSubmitting = false;
 
-    const submitBtn = document.getElementById("submit-pipeline");
-    const pairedEndTip = document.getElementById("paired-end-tip");
-    const quantLevel = document.getElementById("quant-level");
+    /* ─── Background Upload Tracker ──────────────────────────────── */
+    // Map: filename → { status, controller, assetId, progress, error }
+    // status: "pending" | "uploading" | "done" | "failed" | "removing"
+    let uploadTracker = {};
+    let backgroundUploadPromise = null;
 
-    // Validation indicators (existing)
-    const valLibrary = document.getElementById("val-library");
-    const valFiles = document.getElementById("val-files");
-    const valGenome = document.getElementById("val-genome");
-    const valMetadata = document.getElementById("val-metadata");
+    /* ─── DOM helpers ────────────────────────────────────────────── */
+    const $ = (id) => document.getElementById(id);
+    const $$ = (sel) => document.querySelectorAll(sel);
 
-    // ── DOM References (new) ──────────────────────────────────
-    const csvPreviewArea = document.getElementById("csv-preview-area");
-    const columnNameInput = document.getElementById("column-name-input");
-    const addColumnBtn = document.getElementById("add-column-btn");
-    const columnChips = document.getElementById("column-chips");
-    const metadataBody = document.getElementById("metadata-body");
-    const metadataHeaderRow = document.getElementById("metadata-header-row");
-    const noFilesHint = document.getElementById("no-files-hint");
+    /* ─── DOM references ─────────────────────────────────────────── */
+    const toastContainer = $("toast-container");
+    const wizardBack = $("wizard-back");
+    const wizardNext = $("wizard-next");
+    const wizardNavInfo = $("wizard-nav-info");
 
-    // Condition builder DOM
-    const conditionValueInput = document.getElementById("condition-value-input");
-    const addConditionValueBtn = document.getElementById("add-condition-btn");
-    const conditionChipsEl = document.getElementById("condition-chips");
-    const conditionTargetSelect = document.getElementById("condition-target-column");
+    const entryPointGroup = $("entry-point-group");
+    const assayTypeSection = $("assay-type-section");
 
-    // Roles + Contrast row
-    const rolesContrastRow = document.getElementById("roles-contrast-row");
+    const dropZone = $("drop-zone");
+    const fastqInput = $("fastq-input");
+    const filePills = $("file-pills");
+    const fileList = $("file-list");
+    const uploadProgressArea = $("upload-progress-area");
+    const pairValidation = $("pair-validation");
+    const pairedEndTip = $("paired-end-tip");
 
-    // CSV Viewer section (below the 4-card grid)
-    const csvViewerSection = document.getElementById("csv-viewer-section");
-    const csvViewerInfo = document.getElementById("csv-viewer-info");
-    const csvViewerTable = document.getElementById("csv-viewer-table");
+    const bamDropZone = $("bam-drop-zone");
+    const bamInput = $("bam-input");
+    const bamFilePills = $("bam-file-pills");
+    const bamFileList = $("bam-file-list");
+    const bamUploadProgressArea = $("bam-upload-progress-area");
 
-    const columnMappingSection = document.getElementById("column-mapping-section");
-    const primaryGroupSelect = document.getElementById("primary-group-select");
-    const batchEffectSelect = document.getElementById("batch-effect-select");
-    const covariatesList = document.getElementById("covariates-list");
-    const columnValidationMsg = document.getElementById("column-validation-msg");
-    const valMapping = document.getElementById("val-mapping");
+    const matrixDropZone = $("matrix-drop-zone");
+    const matrixInput = $("matrix-input");
+    const matrixFileName = $("matrix-file-name");
+    const matrixPreviewArea = $("matrix-preview-area");
+    const matrixValidation = $("matrix-validation");
 
-    const contrastSection = document.getElementById("contrast-section");
-    const contrastList = document.getElementById("contrast-list");
-    const addContrastBtn = document.getElementById("add-contrast-btn");
+    const genomeSelect = $("genome-select");
+    const customGenomeSection = $("custom-genome-section");
+    const customGenomeName = $("custom-genome-name");
+    const customGenomeFasta = $("custom-genome-fasta");
+    const customGenomeAnnotation = $("custom-genome-annotation");
+    const fastaFileLabel = $("fasta-file-label");
+    const annotationFileLabel = $("annotation-file-label");
+    const quantLevel = $("quant-level");
 
-    // ── DOM References (entry point + alignment + matrix) ─────
-    const entryPointGroup = document.getElementById("entry-point-group");
-    const colFastq = document.getElementById("col-fastq");
-    const colAlignment = document.getElementById("col-alignment");
-    const colMatrix = document.getElementById("col-matrix");
-    const colGenome = document.getElementById("col-genome");
-    const colMetadata = document.getElementById("col-metadata");
-    const colThresholds = document.getElementById("col-thresholds");
+    const metaToggle = $("meta-toggle");
+    const metaUploadPanel = $("meta-upload-panel");
+    const metaManualPanel = $("meta-manual-panel");
+    const csvDropZone = $("csv-drop-zone");
+    const csvInput = $("csv-input");
+    const csvFileName = $("csv-file-name");
+    const csvPreviewArea = $("csv-preview-area");
+    const csvViewerSection = $("csv-viewer-section");
+    const csvViewerInfo = $("csv-viewer-info");
+    const csvViewerTable = $("csv-viewer-table");
+    const manualMetadataPanel = $("manual-metadata-panel");
+    const columnNameInput = $("column-name-input");
+    const addColumnBtn = $("add-column-btn");
+    const columnChips = $("column-chips");
+    const conditionTargetColumn = $("condition-target-column");
+    const conditionValueInput = $("condition-value-input");
+    const addConditionBtn = $("add-condition-btn");
+    const conditionChips = $("condition-chips");
+    const metadataHeaderRow = $("metadata-header-row");
+    const metadataBody = $("metadata-body");
+    const noFilesHint = $("no-files-hint");
+    const metaPlaceholderCard = $("meta-placeholder-card");
 
-    // Assay type DOM
-    const assayTypeSection = document.getElementById("assay-type-section");
-    const assayHelpText = document.getElementById("assay-help-text");
+    const columnMappingSection = $("column-mapping-section");
+    const primaryGroupSelect = $("primary-group-select");
+    const batchEffectSelect = $("batch-effect-select");
+    const covariatesList = $("covariates-list");
+    const columnValidationMsg = $("column-validation-msg");
+    const contrastSection = $("contrast-section");
+    const contrastList = $("contrast-list");
+    const addContrastBtn = $("add-contrast-btn");
 
-    // Alignment entry DOM
-    const bamDropZone = document.getElementById("bam-drop-zone");
-    const bamInput = document.getElementById("bam-input");
-    const bamFilePills = document.getElementById("bam-file-pills");
-    const bamFileList = document.getElementById("bam-file-list");
-    const bamUploadArea = document.getElementById("bam-upload-progress-area");
-    const strandednessAlignment = document.getElementById("strandedness-alignment");
+    const bannerInfo = $("banner-info");
+    const IS_PRODUCTION = IS_PRODUCTION_META === "1";
 
-    // Matrix entry DOM
-    const matrixDropZone = document.getElementById("matrix-drop-zone");
-    const matrixInput = document.getElementById("matrix-input");
-    const matrixFileName = document.getElementById("matrix-file-name");
-    const matrixPreviewArea = document.getElementById("matrix-preview-area");
-    const matrixValidation = document.getElementById("matrix-validation");
+    const adjPvalue = $("adj-pvalue");
+    const minLog2fc = $("min-log2fc");
+    const maxLog2fc = $("max-log2fc");
+    const fcPreview = $("fc-preview");
+    const pvalPreview = $("pval-preview");
 
-    // ════════════════════════════════════════════════════════════
-    //  1. SUBMISSION CREATION
-    // ════════════════════════════════════════════════════════════
+    const valName = $("val-name");
+    const valLibrary = $("val-library");
+    const valFiles = $("val-files");
+    const valGenome = $("val-genome");
+    const valMetadata = $("val-metadata");
+    const valMapping = $("val-mapping");
+    const submitBtn = $("submit-pipeline");
 
-    async function ensureSubmission() {
-        if (submissionId) return submissionId;
-        const res = await fetch("/api/submission/create", {
-            method: "POST",
-            headers: { "X-CSRFToken": CSRF },
-        });
-        if (!res.ok) throw new Error("Failed to create submission");
-        const data = await res.json();
-        submissionId = data.submission_id;
-        return submissionId;
+    const uploadModalBackdrop = $("upload-modal-backdrop");
+    const uploadModalBody = $("upload-modal-body");
+    const submissionNameInput = $("submission-name");
+
+    const fileMgmtPanel = $("file-mgmt-panel");
+    const step2Graphic = $("step2-graphic");
+    const fileMgmtList = $("file-mgmt-list");
+    const fileMgmtCount = $("file-mgmt-count");
+
+    /* ═══════════════════════════════════════════════════════════════════
+       TOAST NOTIFICATION SYSTEM
+       ═══════════════════════════════════════════════════════════════════ */
+
+    function showToast(type, title, message, duration) {
+        if (duration === undefined) duration = 5000;
+        const icons = {
+            error: "bi-x-circle-fill",
+            success: "bi-check-circle-fill",
+            warning: "bi-exclamation-triangle-fill",
+            info: "bi-info-circle-fill",
+        };
+        const toast = document.createElement("div");
+        toast.className = "rna-toast toast-" + type;
+        toast.innerHTML =
+            '<span class="toast-icon toast-' + type + '-icon"><i class="bi ' + (icons[type] || icons.info) + '"></i></span>' +
+            '<div class="toast-body">' +
+            '<p class="toast-title">' + escapeHtml(title) + '</p>' +
+            '<p class="toast-message">' + escapeHtml(message) + '</p>' +
+            '</div>' +
+            '<button class="toast-close" aria-label="Close">&times;</button>';
+        toast.querySelector(".toast-close").addEventListener("click", function () { dismissToast(toast); });
+        toastContainer.appendChild(toast);
+        if (duration > 0) setTimeout(function () { dismissToast(toast); }, duration);
+        return toast;
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  1b. ENTRY POINT SWITCHING
-    // ════════════════════════════════════════════════════════════
+    function dismissToast(el) {
+        if (!el || !el.parentNode) return;
+        el.classList.add("toast-exit");
+        el.addEventListener("animationend", function () { el.remove(); });
+    }
 
-    var epRadios = document.querySelectorAll('input[name="input_data_type"]');
-    var epCards = document.querySelectorAll(".entry-point-card");
+    /* ═══════════════════════════════════════════════════════════════════
+       WIZARD NAVIGATION
+       ═══════════════════════════════════════════════════════════════════ */
 
-    epRadios.forEach(function (radio) {
-        radio.addEventListener("change", function () {
-            inputDataType = radio.value;
-            epCards.forEach(function (c) { c.classList.remove("selected"); });
-            radio.closest(".entry-point-card").classList.add("selected");
-            resetMetadataState();
-            applyEntryPointVisibility();
-            validateAll();
+    function getEffectiveSteps() {
+        // Matrix mode skips step 3 (Reference Genome)
+        return inputDataType === "matrix" ? [1, 2, 4, 5] : [1, 2, 3, 4, 5];
+    }
+
+    function goToStep(step) {
+        var steps = getEffectiveSteps();
+        if (steps.indexOf(step) === -1) return;
+
+        $$(".wizard-step").forEach(function (el) { el.classList.remove("active"); });
+        var target = $("wizard-step-" + step);
+        if (target) target.classList.add("active");
+
+        currentStep = step;
+        updateWizardProgress();
+        updateWizardNav();
+        updateBannerInfo();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+
+        if (step === 4) syncMetadataView();
+        if (step === 5) validateAll();
+    }
+
+    function updateWizardProgress() {
+        var steps = getEffectiveSteps();
+        $$(".wizard-step-ind").forEach(function (ind) {
+            var s = parseInt(ind.dataset.wstep);
+            ind.classList.remove("active", "completed", "skipped");
+            if (s === currentStep) {
+                ind.classList.add("active");
+            } else if (steps.indexOf(s) !== -1 && s < currentStep) {
+                ind.classList.add("completed");
+            } else if (steps.indexOf(s) === -1) {
+                ind.classList.add("skipped");
+            }
         });
-    });
 
-    // ── Assay Type Selection ──
-    var atRadios = document.querySelectorAll('input[name="assay_type"]');
-    var atCards = document.querySelectorAll("#assay-type-group .entry-point-card");
-
-    atRadios.forEach(function (radio) {
-        radio.addEventListener("change", function () {
-            assayType = radio.value;
-            atCards.forEach(function (c) { c.classList.remove("selected"); });
-            radio.closest(".entry-point-card").classList.add("selected");
-            updateAssayHelpText();
-            validateAll();
+        var lines = [].slice.call($$(".wizard-step-line"));
+        lines.forEach(function (line, i) {
+            line.classList.remove("completed");
+            if (i + 1 < currentStep) line.classList.add("completed");
         });
-    });
+    }
 
-    function updateAssayHelpText() {
-        if (!assayHelpText) return;
-        if (assayType === "chip_seq") {
-            assayHelpText.style.display = "";
-            assayHelpText.innerHTML =
-                '<div style="background: rgba(9,153,152,0.08); border: 1px solid rgba(9,153,152,0.25); border-radius: 8px; padding: 0.75rem 1rem;">' +
-                '<p style="margin: 0 0 .4rem; font-size: .84rem; font-weight: 600; color: var(--rna-navy);"><i class="bi bi-info-circle"></i> ChIP-seq Metadata Tips</p>' +
-                '<ul style="margin: 0; padding-left: 1.2rem; font-size: .82rem; line-height: 1.6; color: var(--rna-grey-700);">' +
-                '<li>Label control/input samples as <strong>&ldquo;input&rdquo;</strong> in the condition column. All other samples are treated as IP (treatment).</li>' +
-                '<li>Define contrasts between your treatment conditions (e.g. DrugA vs. Control) for differential binding analysis.</li>' +
-                '<li>The pipeline will generate a consensus peak count matrix and run DESeq2 for differential binding.</li>' +
-                '</ul></div>';
-        } else if (assayType === "methylation") {
-            assayHelpText.style.display = "";
-            assayHelpText.innerHTML =
-                '<div style="background: rgba(9,153,152,0.08); border: 1px solid rgba(9,153,152,0.25); border-radius: 8px; padding: 0.75rem 1rem;">' +
-                '<p style="margin: 0 0 .4rem; font-size: .84rem; font-weight: 600; color: var(--rna-navy);"><i class="bi bi-info-circle"></i> DNA Methylation Metadata Tips</p>' +
-                '<ul style="margin: 0; padding-left: 1.2rem; font-size: .82rem; line-height: 1.6; color: var(--rna-grey-700);">' +
-                '<li>Define treatment vs. control groups in your condition column for differential methylation.</li>' +
-                '<li>The pipeline runs Bismark for methylation extraction, then methylKit (via R) for differential methylation analysis.</li>' +
-                '<li>PCA, volcano, and MA plots will be generated from differentially methylated regions.</li>' +
-                '</ul></div>';
+    function initStepNavigation() {
+        $("wizard-progress").addEventListener("click", function (e) {
+            var ind = e.target.closest(".wizard-step-ind");
+            if (!ind || !ind.classList.contains("completed")) return;
+            var step = parseInt(ind.dataset.wstep);
+            if (!isNaN(step)) goToStep(step);
+        });
+    }
+
+    function updateWizardNav() {
+        var steps = getEffectiveSteps();
+        var idx = steps.indexOf(currentStep);
+        wizardBack.style.visibility = idx === 0 ? "hidden" : "visible";
+
+        if (idx === steps.length - 1) {
+            wizardNext.style.display = "none";
+            if (submitBtn) submitBtn.style.display = "";
         } else {
-            assayHelpText.style.display = "none";
-            assayHelpText.innerHTML = "";
+            wizardNext.style.display = "";
+            wizardNext.innerHTML = 'Next <i class="bi bi-arrow-right"></i>';
+            if (submitBtn) submitBtn.style.display = "none";
         }
     }
 
-    /**
-     * Reset metadata-related state when switching entry points.
-     * Prevents stale data from bleeding across workflows.
-     */
-    function resetMetadataState() {
-        // Reset CSV metadata
-        parsedCsvData = null;
-        csvFile = null;
-        if (csvPreviewArea) csvPreviewArea.style.display = "none";
-        if (csvFileName) { csvFileName.style.display = "none"; csvFileName.innerHTML = ""; }
-        if (csvDropZone) csvDropZone.classList.remove("has-files");
-        if (csvViewerSection) csvViewerSection.style.display = "none";
+    function nextStep() {
+        var errors = validateCurrentStep();
+        if (errors.length > 0) {
+            errors.forEach(function (msg) { showToast("error", "Required", msg); });
+            return;
+        }
+        // Trigger background upload when leaving Step 2
+        if (currentStep === 2) {
+            startBackgroundUploads();
+        }
+        var steps = getEffectiveSteps();
+        var idx = steps.indexOf(currentStep);
+        if (idx < steps.length - 1) goToStep(steps[idx + 1]);
+    }
 
-        // Reset manual columns to default
-        manualColumns = ["condition"];
-        columnSelectableValues = {};
+    function prevStep() {
+        var steps = getEffectiveSteps();
+        var idx = steps.indexOf(currentStep);
+        if (idx > 0) goToStep(steps[idx - 1]);
+    }
 
-        // Reset column mapping & contrasts
-        columnMapping = { primary_group: null, batch_effect: null, additional_covariates: [] };
-        contrasts = [];
+    function validateCurrentStep() {
+        var errors = [];
+        switch (currentStep) {
+            case 1:
+                if (!submissionNameInput.value.trim())
+                    errors.push("Please enter a submission name.");
+                break;
 
-        // Reset metadata toggle to upload mode
-        metaToggle.querySelectorAll(".meta-toggle-btn").forEach(function (b) {
-            b.classList.toggle("active", b.dataset.mode === "upload");
+            case 2:
+                if (inputDataType === "fastq") {
+                    if (!libraryType) errors.push("Please select a library type (Single-End or Paired-End).");
+                    if (selectedFiles.length === 0 && uploadedFiles.length === 0)
+                        errors.push("Please upload at least one FASTQ file.");
+                    if (libraryType === "paired" && selectedFiles.length > 0) {
+                        var peR1 = [], peR2 = [], peUnpaired = [];
+                        selectedFiles.forEach(function (f) {
+                            if (/_R1[._]|_1\.(fq|fastq)\.gz$/i.test(f.name)) peR1.push(f.name);
+                            else if (/_R2[._]|_2\.(fq|fastq)\.gz$/i.test(f.name)) peR2.push(f.name);
+                            else peUnpaired.push(f.name);
+                        });
+                        if (peUnpaired.length > 0)
+                            errors.push(peUnpaired.length + " file(s) don't match _R1/_R2 naming convention: " + peUnpaired.join(", "));
+                        else if (peR1.length !== peR2.length)
+                            errors.push("Unequal pairs: " + peR1.length + " R1 and " + peR2.length + " R2 files.");
+                    }
+                } else if (inputDataType === "alignment") {
+                    if (selectedBamFiles.length === 0 && uploadedBamFiles.length === 0)
+                        errors.push("Please upload at least one BAM/CRAM file.");
+                } else if (inputDataType === "matrix") {
+                    if (!matrixFile && !parsedMatrixData)
+                        errors.push("Please upload a count matrix file.");
+                    if (parsedMatrixData) {
+                        var mv = validateMatrixData();
+                        if (!mv.valid) errors.push(mv.message);
+                    }
+                }
+                break;
+
+            case 3:
+                if (!isGenomeValid())
+                    errors.push("Please select a reference genome or configure a custom genome.");
+                break;
+
+            case 4:
+                if (!isMetadataValid())
+                    errors.push("Please configure your metadata (upload a CSV or build manually).");
+                if (isMetadataValid() && !isMappingValid())
+                    errors.push("Please assign the primary group column in Column Roles.");
+                /* Enforce contrast completion when contrast section is visible */
+                if (contrastSection.style.display !== "none") {
+                    var incomplete = contrasts.filter(function (c) { return !c[0] || !c[1]; });
+                    if (contrasts.length === 0 || incomplete.length > 0)
+                        errors.push("Please complete all pairwise comparisons in Define Comparisons.");
+                }
+                /* Validate CSV has a 'sample' column when in upload mode */
+                if (metadataMode === "upload" && parsedCsvData) {
+                    var hasSampleCol = parsedCsvData.meta.fields.some(function (f) {
+                        return f.toLowerCase() === "sample";
+                    });
+                    if (!hasSampleCol)
+                        errors.push("CSV must have a column named 'sample' to match uploaded file names.");
+                }
+                break;
+
+            case 5:
+                {
+                    var pval = parseFloat(adjPvalue.value);
+                    if (isNaN(pval) || pval <= 0 || pval > 1)
+                        errors.push("Adjusted P-value must be between 0 (exclusive) and 1.");
+                    var minFC = parseFloat(minLog2fc.value);
+                    var maxFC = parseFloat(maxLog2fc.value);
+                    if (!isNaN(minFC) && !isNaN(maxFC) && minFC >= maxFC)
+                        errors.push("Min Log2FC must be less than Max Log2FC.");
+                }
+                break;
+        }
+        return errors;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       ENTRY POINT
+       ═══════════════════════════════════════════════════════════════════ */
+
+    function initEntryPoints() {
+        entryPointGroup.addEventListener("click", function (e) {
+            var card = e.target.closest(".radio-card");
+            if (!card || !card.closest("#entry-point-group")) return;
+            var radio = card.querySelector('input[name="input_data_type"]');
+            if (!radio) return;
+            entryPointGroup.querySelectorAll(".radio-card").forEach(function (c) {
+                c.classList.remove("selected");
+            });
+            card.classList.add("selected");
+            radio.checked = true;
+            inputDataType = radio.value;
+            applyEntryPointVisibility();
         });
-        metaUploadPanel.style.display = "";
-        metaManualPanel.style.display = "none";
-        if (manualPanel) manualPanel.style.display = "none";
-
-        // Clear manual table
-        if (metadataBody) metadataBody.innerHTML = "";
-        if (noFilesHint) noFilesHint.style.display = "";
-
-        // Hide mapping & contrast panels, clear contrast DOM
-        columnMappingSection.style.display = "none";
-        contrastSection.style.display = "none";
-        rolesContrastRow.style.display = "none";
-        if (contrastList) contrastList.innerHTML = "";
-
-        // Rebuild chips
-        renderColumnChips();
-        renderConditionChips();
-        syncConditionTargetDropdown();
     }
 
     function applyEntryPointVisibility() {
-        // Column visibility
-        colFastq.style.display = inputDataType === "fastq" ? "" : "none";
-        colAlignment.style.display = inputDataType === "alignment" ? "" : "none";
-        colMatrix.style.display = inputDataType === "matrix" ? "" : "none";
-        colGenome.style.display = inputDataType === "matrix" ? "none" : "";
+        $("col-fastq").style.display = inputDataType === "fastq" ? "" : "none";
+        $("col-alignment").style.display = inputDataType === "alignment" ? "" : "none";
+        $("col-matrix").style.display = inputDataType === "matrix" ? "" : "none";
 
-        // Assay type section visibility (only for FASTQ)
-        if (assayTypeSection) {
-            assayTypeSection.style.display = inputDataType === "fastq" ? "" : "none";
-        }
+        assayTypeSection.style.display = inputDataType === "fastq" ? "" : "none";
 
-        // Center 3 cards in matrix mode
-        document.querySelector(".setup-grid").classList.toggle("matrix-mode", inputDataType === "matrix");
+        if (valGenome) valGenome.style.display = inputDataType === "matrix" ? "none" : "";
+        if (valLibrary) valLibrary.style.display = inputDataType === "matrix" ? "none" : "";
 
-        // Validation summary items
-        valLibrary.style.display = inputDataType === "fastq" ? "" : "none";
-        valGenome.style.display = inputDataType === "matrix" ? "none" : "";
-
-        // Update file validation label
-        if (inputDataType === "fastq") {
-            valFiles.querySelector("i").nextSibling.textContent = " FASTQ files uploaded";
-        } else if (inputDataType === "alignment") {
-            valFiles.querySelector("i").nextSibling.textContent = " BAM/CRAM files uploaded";
-        } else {
-            valFiles.querySelector("i").nextSibling.textContent = " Count matrix uploaded";
-        }
-
-        // Manual metadata table hint
-        if (noFilesHint) {
-            if (inputDataType === "fastq") {
-                noFilesHint.innerHTML = '<i class="bi bi-arrow-up"></i> Upload FASTQ files above to populate this table.';
-            } else if (inputDataType === "alignment") {
-                noFilesHint.innerHTML = '<i class="bi bi-arrow-up"></i> Upload BAM files above to populate this table.';
+        var fl = $("fasta-label");
+        if (fl) {
+            if (inputDataType === "alignment") {
+                fl.innerHTML = 'Reference FASTA <span class="rna-text-muted">(optional for BAM)</span>';
             } else {
-                noFilesHint.innerHTML = '<i class="bi bi-arrow-up"></i> Upload a count matrix above — sample names will be extracted from column headers.';
+                fl.innerHTML = 'Reference FASTA <span class="required">*</span>';
             }
         }
 
-        // Rebuild manual metadata table if mode is manual
-        if (getMetadataMode() === "manual") rebuildMetadataTable();
+        updateWizardProgress();
+        updateWizardNav();
+        renderFileManagementPanel();
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  2. LIBRARY TYPE SELECTION
-    // ════════════════════════════════════════════════════════════
+    /* ═══════════════════════════════════════════════════════════════════
+       ASSAY TYPE
+       ═══════════════════════════════════════════════════════════════════ */
 
-    const libRadios = document.querySelectorAll('input[name="library_type"]');
-    const ltCards = document.querySelectorAll(".library-type-card");
-
-    libRadios.forEach(function (radio) {
-        radio.addEventListener("change", function () {
-            ltCards.forEach(function (c) { c.classList.remove("selected"); });
-            radio.closest(".library-type-card").classList.add("selected");
-            pairedEndTip.classList.toggle("visible", radio.value === "paired");
-            validatePairs();
-            rebuildMetadataTable();
-            validateAll();
+    function initAssayType() {
+        var group = $("assay-type-group");
+        if (!group) return;
+        group.addEventListener("click", function (e) {
+            var card = e.target.closest(".radio-card");
+            if (!card || !card.closest("#assay-type-group")) return;
+            var radio = card.querySelector('input[name="assay_type"]');
+            if (!radio) return;
+            group.querySelectorAll(".radio-card").forEach(function (c) {
+                c.classList.remove("selected");
+            });
+            card.classList.add("selected");
+            radio.checked = true;
+            assayType = radio.value;
         });
-    });
-
-    function getLibraryType() {
-        var checked = document.querySelector('input[name="library_type"]:checked');
-        return checked ? checked.value : null;
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  3. FASTQ FILE SELECTION + CHUNKED UPLOAD
-    // ════════════════════════════════════════════════════════════
+    /* ═══════════════════════════════════════════════════════════════════
+       LIBRARY TYPE
+       ═══════════════════════════════════════════════════════════════════ */
 
-    dropZone.addEventListener("click", function () { fastqInput.click(); });
+    function initLibraryType() {
+        $$('input[name="library_type"]').forEach(function (radio) {
+            radio.addEventListener("change", function () {
+                libraryType = radio.value;
+                $$("#col-fastq .library-type-card").forEach(function (c) {
+                    c.classList.remove("selected");
+                });
+                radio.closest(".library-type-card").classList.add("selected");
 
-    dropZone.addEventListener("dragover", function (e) {
-        e.preventDefault();
-        dropZone.classList.add("drag-over");
-    });
+                if (pairedEndTip) pairedEndTip.classList.toggle("visible", libraryType === "paired");
+                if (selectedFiles.length > 0) validatePairedEnd();
+                if (metadataMode === "manual") rebuildMetadataTable();
+                if (parsedCsvData) renderCsvViewer();
+            });
+        });
 
-    dropZone.addEventListener("dragleave", function () {
-        dropZone.classList.remove("drag-over");
-    });
+        $$('input[name="library_type_alignment"]').forEach(function (radio) {
+            radio.addEventListener("change", function () {
+                $$("#col-alignment .library-type-card").forEach(function (c) {
+                    c.classList.remove("selected");
+                });
+                radio.closest(".library-type-card").classList.add("selected");
+            });
+        });
+    }
 
-    dropZone.addEventListener("drop", function (e) {
-        e.preventDefault();
-        dropZone.classList.remove("drag-over");
-        addFiles(e.dataTransfer.files);
-    });
+    /* ═══════════════════════════════════════════════════════════════════
+       PARSE OVERLAY HELPER
+       ═══════════════════════════════════════════════════════════════════ */
 
-    fastqInput.addEventListener("change", function () {
-        addFiles(fastqInput.files);
-        fastqInput.value = "";
-    });
+    function showParseOverlay(dropZoneEl) {
+        removeParseOverlay(dropZoneEl);
+        var overlay = document.createElement("div");
+        overlay.className = "parse-overlay";
+        overlay.innerHTML = '<div class="parse-spinner"></div><span class="parse-overlay-text">Parsing\u2026</span>';
+        dropZoneEl.appendChild(overlay);
+    }
+
+    function removeParseOverlay(dropZoneEl) {
+        var existing = dropZoneEl.querySelector(".parse-overlay");
+        if (existing) existing.remove();
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       FASTQ FILE UPLOAD
+       ═══════════════════════════════════════════════════════════════════ */
+
+    function warnLargeFiles(files) {
+        var large = files.filter(function (f) { return f.size > FILE_SIZE_WARN; });
+        if (large.length > 0) {
+            var names = large.map(function (f) { return f.name; }).join(", ");
+            showToast("warning", "Large File Warning",
+                large.length + " file(s) exceed 10 GB and may take a long time to upload: " + names);
+        }
+    }
+
+    function initFastqUpload() {
+        dropZone.addEventListener("click", function () { fastqInput.click(); });
+        dropZone.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fastqInput.click(); }
+        });
+        dropZone.addEventListener("dragover", function (e) {
+            e.preventDefault(); dropZone.classList.add("drag-over");
+        });
+        dropZone.addEventListener("dragleave", function () {
+            dropZone.classList.remove("drag-over");
+        });
+        dropZone.addEventListener("drop", function (e) {
+            e.preventDefault(); dropZone.classList.remove("drag-over");
+            addFiles(e.dataTransfer.files);
+        });
+        fastqInput.addEventListener("change", function () {
+            addFiles(fastqInput.files); fastqInput.value = "";
+        });
+    }
 
     function addFiles(fileListObj) {
-        for (var i = 0; i < fileListObj.length; i++) {
-            var file = fileListObj[i];
-            if (!selectedFiles.some(function (f) { return f.name === file.name; })) {
-                selectedFiles.push(file);
-            }
+        var allFiles = [].slice.call(fileListObj);
+        var newFiles = allFiles.filter(function (f) {
+            var n = f.name.toLowerCase();
+            return n.endsWith(".fq.gz") || n.endsWith(".fastq.gz");
+        });
+        var rejected = allFiles.length - newFiles.length;
+        if (newFiles.length === 0) {
+            showToast("warning", "Invalid Files", "Only .fq.gz or .fastq.gz files are accepted." + (rejected > 0 ? " " + rejected + " file(s) rejected." : ""));
+            return;
         }
+        if (rejected > 0) {
+            showToast("warning", "Files Filtered", rejected + " non-FASTQ file(s) were ignored. Only .fq.gz / .fastq.gz accepted.");
+        }
+        warnLargeFiles(newFiles);
+        var existing = {};
+        selectedFiles.forEach(function (f) { existing[f.name] = true; });
+        newFiles.forEach(function (f) {
+            if (!existing[f.name]) {
+                selectedFiles.push(f);
+                existing[f.name] = true;
+                // Mark as pending in tracker (not uploading yet)
+                if (!uploadTracker[f.name]) {
+                    uploadTracker[f.name] = { status: "pending", controller: null, assetId: null, progress: 0, error: null };
+                }
+            }
+        });
         renderFilePills();
-        validatePairs();
-        rebuildMetadataTable();
-        validateAll();
+        renderFileManagementPanel();
+        validatePairedEnd();
+        if (metadataMode === "manual") rebuildMetadataTable();
+        if (parsedCsvData) renderCsvViewer();
+    }
+
+    async function removeFile(index) {
+        var file = selectedFiles[index];
+        if (!file) return;
+        var fname = file.name;
+        var tracker = uploadTracker[fname];
+
+        if (tracker) {
+            tracker.status = "removing";
+            renderFileManagementPanel();
+
+            // Abort in-flight upload
+            if (tracker.controller) {
+                tracker.controller.abort();
+                tracker.controller = null;
+            }
+
+            // Delete from backend if already uploaded
+            if (tracker.assetId) {
+                try {
+                    await fetch("/api/files/" + tracker.assetId + "/", {
+                        method: "DELETE",
+                        headers: { "X-CSRFToken": CSRF },
+                    });
+                } catch (_e) { /* best-effort */ }
+            }
+
+            delete uploadTracker[fname];
+        }
+
+        // Remove from uploaded list
+        var upIdx = uploadedFiles.indexOf(fname);
+        if (upIdx !== -1) uploadedFiles.splice(upIdx, 1);
+
+        selectedFiles.splice(index, 1);
+        renderFilePills();
+        renderFileManagementPanel();
+        validatePairedEnd();
+        if (metadataMode === "manual") rebuildMetadataTable();
+        if (parsedCsvData) renderCsvViewer();
     }
 
     function renderFilePills() {
-        filePills.innerHTML = "";
-        if (selectedFiles.length === 0) {
-            fileList.style.display = "none";
-            dropZone.classList.remove("has-files");
+        // File pills removed from UI
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        var k = 1024;
+        var sizes = ['B', 'KB', 'MB', 'GB'];
+        var i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function renderFileManagementPanel() {
+        if (!fileMgmtPanel || !fileMgmtList) return;
+
+        var files = [];
+        if (inputDataType === "fastq") {
+            files = selectedFiles;
+        } else if (inputDataType === "alignment") {
+            files = selectedBamFiles;
+        } else if (inputDataType === "matrix" && matrixFile) {
+            files = [matrixFile];
+        }
+
+        if (files.length === 0) {
+            fileMgmtPanel.style.display = "none";
+            if (step2Graphic) step2Graphic.style.display = "";
             return;
         }
-        fileList.style.display = "block";
-        dropZone.classList.add("has-files");
 
-        selectedFiles.forEach(function (file, idx) {
-            var pill = document.createElement("span");
-            pill.className = "file-pill";
-            pill.innerHTML =
-                '<i class="bi bi-file-earmark-zip"></i> ' +
-                escapeHtml(file.name) +
-                ' <span class="remove-file" data-idx="' + idx + '">&times;</span>';
-            filePills.appendChild(pill);
-        });
+        fileMgmtPanel.style.display = "";
+        if (step2Graphic) step2Graphic.style.display = "none";
+        if (fileMgmtCount) fileMgmtCount.textContent = files.length + " file" + (files.length !== 1 ? "s" : "");
 
-        filePills.querySelectorAll(".remove-file").forEach(function (btn) {
-            btn.addEventListener("click", function (e) {
-                e.stopPropagation();
-                var idx = parseInt(btn.dataset.idx, 10);
-                selectedFiles.splice(idx, 1);
-                uploadedFiles = uploadedFiles.filter(function (n) {
-                    return selectedFiles.some(function (f) { return f.name === n; });
-                });
-                renderFilePills();
-                validatePairs();
-                rebuildMetadataTable();
-                validateAll();
+        var icon = "bi-file-earmark-zip";
+        if (inputDataType === "alignment") icon = "bi-file-earmark-binary";
+        if (inputDataType === "matrix") icon = "bi-file-earmark-spreadsheet";
+
+        fileMgmtList.innerHTML = files.map(function (f, i) {
+            var tracker = uploadTracker[f.name];
+            var statusClass = "";
+            var statusBadge = "";
+            var progressBar = "";
+            var isRemoving = false;
+
+            if (tracker) {
+                if (tracker.status === "removing") {
+                    statusClass = " file-mgmt-removing";
+                    isRemoving = true;
+                    statusBadge = '<span class="file-mgmt-status file-mgmt-status-removing"><i class="bi bi-arrow-repeat rna-processing"></i></span>';
+                } else if (tracker.status === "uploading") {
+                    statusClass = " file-mgmt-uploading";
+                    statusBadge = '<span class="file-mgmt-status file-mgmt-status-uploading">' + tracker.progress + '%</span>';
+                    progressBar = '<div class="file-mgmt-progress"><div class="file-mgmt-progress-bar" style="width:' + tracker.progress + '%"></div></div>';
+                } else if (tracker.status === "done") {
+                    statusBadge = '<span class="file-mgmt-status file-mgmt-status-done"><i class="bi bi-check-circle-fill"></i></span>';
+                } else if (tracker.status === "failed") {
+                    statusBadge = '<span class="file-mgmt-status file-mgmt-status-failed"><i class="bi bi-exclamation-circle"></i></span>';
+                } else if (tracker.status === "pending") {
+                    statusBadge = '<span class="file-mgmt-status file-mgmt-status-pending"><i class="bi bi-clock"></i></span>';
+                }
+            }
+
+            return '<div class="file-mgmt-row' + statusClass + '" data-filename="' + escapeHtml(f.name) + '">' +
+                '<div class="file-mgmt-icon"><i class="bi ' + icon + '"></i></div>' +
+                '<div class="file-mgmt-info">' +
+                '<div class="file-mgmt-name">' + escapeHtml(f.name) + '</div>' +
+                '<div class="file-mgmt-size">' + formatFileSize(f.size) + '</div>' +
+                progressBar +
+                '</div>' +
+                statusBadge +
+                (isRemoving ? '' : '<button type="button" class="file-mgmt-remove" data-idx="' + i + '" title="Remove">' +
+                    '<i class="bi bi-trash"></i></button>') +
+                '</div>';
+        }).join("");
+
+        fileMgmtList.querySelectorAll(".file-mgmt-remove").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var idx = parseInt(btn.dataset.idx);
+                if (inputDataType === "fastq") {
+                    removeFile(idx);
+                } else if (inputDataType === "alignment") {
+                    removeBamFile(idx);
+                } else if (inputDataType === "matrix") {
+                    matrixFile = null;
+                    parsedMatrixData = null;
+                    matrixFileName.style.display = "none";
+                    matrixPreviewArea.style.display = "none";
+                    matrixValidation.style.display = "none";
+                    renderFileManagementPanel();
+                }
             });
         });
     }
 
-    // ── Paired-end validation ──
-    function validatePairs() {
-        if (getLibraryType() !== "paired" || selectedFiles.length === 0) {
+    function validatePairedEnd() {
+        if (libraryType !== "paired" || selectedFiles.length === 0) {
             pairValidation.style.display = "none";
             return;
         }
-
-        var names = selectedFiles.map(function (f) { return f.name; });
-        var pairMap = {};
-        var re = /^(.+?)(?:_R([12])|_([12]))\.(?:fq|fastq)\.gz$/i;
-
-        names.forEach(function (name) {
-            var m = re.exec(name);
-            if (m) {
-                var prefix = m[1];
-                var readNum = m[2] || m[3];
-                if (!pairMap[prefix]) pairMap[prefix] = {};
-                pairMap[prefix][readNum] = name;
-            }
+        var r1 = [], r2 = [], unpaired = [];
+        selectedFiles.forEach(function (f) {
+            if (/_R1[._]|_1\.(fq|fastq)\.gz$/i.test(f.name)) r1.push(f.name);
+            else if (/_R2[._]|_2\.(fq|fastq)\.gz$/i.test(f.name)) r2.push(f.name);
+            else unpaired.push(f.name);
         });
-
-        var unpaired = [];
-        for (var prefix in pairMap) {
-            if (!pairMap[prefix]["1"] || !pairMap[prefix]["2"]) {
-                unpaired.push(prefix);
-            }
-        }
-
-        var matchedNames = new Set();
-        for (var p in pairMap) {
-            Object.values(pairMap[p]).forEach(function (n) { matchedNames.add(n); });
-        }
-        var unmatched = names.filter(function (n) { return !matchedNames.has(n); });
-
-        if (unpaired.length > 0 || unmatched.length > 0) {
-            var msg = '<i class="bi bi-exclamation-triangle"></i> ';
-            if (unpaired.length > 0) {
-                msg += "Missing pair partner for: " + unpaired.join(", ") + ". ";
-            }
-            if (unmatched.length > 0) {
-                msg += "Could not parse read direction from: " + unmatched.join(", ") + ".";
-            }
+        pairValidation.style.display = "";
+        if (unpaired.length > 0) {
             pairValidation.className = "validation-msg error";
-            pairValidation.innerHTML = msg;
-            pairValidation.style.display = "block";
-        } else if (Object.keys(pairMap).length > 0) {
-            pairValidation.className = "validation-msg success";
-            pairValidation.innerHTML =
-                '<i class="bi bi-check-circle"></i> ' +
-                Object.keys(pairMap).length + " paired sample(s) detected.";
-            pairValidation.style.display = "block";
+            pairValidation.textContent = unpaired.length + " file(s) don't match _R1/_R2 naming: " + unpaired.join(", ");
+        } else if (r1.length !== r2.length) {
+            pairValidation.className = "validation-msg error";
+            pairValidation.textContent = "Unequal pairs: " + r1.length + " R1, " + r2.length + " R2 files.";
         } else {
-            pairValidation.style.display = "none";
+            pairValidation.className = "validation-msg success";
+            pairValidation.textContent = r1.length + " paired sample(s) detected.";
         }
     }
 
-    /**
-     * Upload all selected FASTQ files via chunked upload.
-     */
     async function uploadFastqFiles() {
-        if (isUploading) return false;
-        isUploading = true;
-        uploadArea.innerHTML = "";
-
+        // Called as part of startBackgroundUploads — uploads all pending FASTQ files
+        if (selectedFiles.length === 0) return;
         await ensureSubmission();
 
-        var toUpload = selectedFiles.filter(function (f) {
-            return !uploadedFiles.includes(f.name);
-        });
-        if (toUpload.length === 0) {
-            isUploading = false;
-            return true;
-        }
+        for (var i = 0; i < selectedFiles.length; i++) {
+            var file = selectedFiles[i];
+            var tracker = uploadTracker[file.name];
+            if (!tracker || tracker.status !== "pending") continue;
 
-        for (var fi = 0; fi < toUpload.length; fi++) {
-            var file = toUpload[fi];
+            tracker.status = "uploading";
+            tracker.controller = new AbortController();
+            tracker.progress = 0;
+            renderFileManagementPanel();
+
             var totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-            var barId = "prog-" + file.name.replace(/\W/g, "_");
-
-            uploadArea.insertAdjacentHTML("beforeend",
-                '<div style="margin-bottom:.4rem;">' +
-                '<div class="rna-text-xs" style="margin-bottom:.15rem;">' + escapeHtml(file.name) + '</div>' +
-                '<div class="rna-progress"><div class="rna-progress-bar animated" id="' + barId + '" style="width:0%"></div></div>' +
-                '</div>'
-            );
-
-            var bar = document.getElementById(barId);
             var success = true;
 
-            for (var i = 0; i < totalChunks; i++) {
-                var start = i * CHUNK_SIZE;
-                var end = Math.min(start + CHUNK_SIZE, file.size);
-                var chunk = file.slice(start, end);
-
-                var fd = new FormData();
-                fd.append("file", chunk);
-                fd.append("filename", file.name);
-                fd.append("chunk_index", i);
-                fd.append("total_chunks", totalChunks);
-                fd.append("submission_id", submissionId);
-
-                var result = await uploadChunkWithRetry(fd);
-
-                if (!result) {
+            for (var c = 0; c < totalChunks; c++) {
+                // Check if aborted before each chunk
+                if (tracker.controller.signal.aborted) {
                     success = false;
                     break;
                 }
-
-                bar.style.width = Math.round(((i + 1) / totalChunks) * 100) + "%";
+                var ok = await uploadChunkWithRetry(file, c, totalChunks, "RAW_FASTQ", tracker.controller);
+                if (!ok) {
+                    success = false;
+                    if (!tracker.controller.signal.aborted) {
+                        showToast("error", "Upload Failed", "Failed to upload " + file.name);
+                    }
+                    break;
+                }
+                tracker.progress = Math.round(((c + 1) / totalChunks) * 100);
+                renderFileManagementPanel();
             }
+
+            // Re-check tracker still exists (file may have been removed)
+            if (!uploadTracker[file.name]) continue;
 
             if (success) {
-                bar.classList.remove("animated");
+                tracker.status = "done";
+                tracker.controller = null;
                 uploadedFiles.push(file.name);
-            } else {
-                bar.style.background = "var(--rna-accent-red)";
-                bar.classList.remove("animated");
+                // Read asset_id from last chunk response
+            } else if (!tracker.controller || !tracker.controller.signal.aborted) {
+                tracker.status = "failed";
+                tracker.controller = null;
             }
+            renderFileManagementPanel();
         }
-
-        isUploading = false;
-        rebuildMetadataTable();
-        validateAll();
-        return uploadedFiles.length === selectedFiles.length;
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  3b. BAM/CRAM FILE SELECTION + CHUNKED UPLOAD (Alignment entry)
-    // ════════════════════════════════════════════════════════════
+    /* ─── Background Upload Orchestrator ─────────────────────────── */
 
-    bamDropZone.addEventListener("click", function () { bamInput.click(); });
-    bamDropZone.addEventListener("dragover", function (e) {
-        e.preventDefault(); bamDropZone.classList.add("drag-over");
-    });
-    bamDropZone.addEventListener("dragleave", function () {
-        bamDropZone.classList.remove("drag-over");
-    });
-    bamDropZone.addEventListener("drop", function (e) {
-        e.preventDefault(); bamDropZone.classList.remove("drag-over");
-        addBamFiles(e.dataTransfer.files);
-    });
-    bamInput.addEventListener("change", function () {
-        addBamFiles(bamInput.files); bamInput.value = "";
-    });
+    function startBackgroundUploads() {
+        if (backgroundUploadPromise) return; // already running
 
-    // Alignment library type card selection
-    var alignLibRadios = document.querySelectorAll('input[name="library_type_alignment"]');
-    var alignLtCards = document.querySelectorAll("#col-alignment .library-type-card");
-    alignLibRadios.forEach(function (radio) {
-        radio.addEventListener("change", function () {
-            alignLtCards.forEach(function (c) { c.classList.remove("selected"); });
-            radio.closest(".library-type-card").classList.add("selected");
+        backgroundUploadPromise = (async function () {
+            try {
+                if (inputDataType === "fastq") {
+                    await uploadFastqFiles();
+                } else if (inputDataType === "alignment") {
+                    await uploadBamFiles();
+                }
+                // Matrix uploads are small and happen at submit time
+            } catch (err) {
+                // Errors are handled per-file
+            } finally {
+                backgroundUploadPromise = null;
+            }
+        })();
+    }
+
+    function areUploadsComplete() {
+        var files = inputDataType === "fastq" ? selectedFiles :
+            inputDataType === "alignment" ? selectedBamFiles : [];
+        for (var i = 0; i < files.length; i++) {
+            var t = uploadTracker[files[i].name];
+            if (t && (t.status === "pending" || t.status === "uploading")) return false;
+        }
+        return true;
+    }
+
+    function getUploadProgress() {
+        var files = inputDataType === "fastq" ? selectedFiles :
+            inputDataType === "alignment" ? selectedBamFiles : [];
+        if (files.length === 0) return 100;
+        var total = 0;
+        for (var i = 0; i < files.length; i++) {
+            var t = uploadTracker[files[i].name];
+            if (!t || t.status === "done") total += 100;
+            else if (t.status === "uploading") total += t.progress;
+            // pending = 0, failed = 0
+        }
+        return Math.round(total / files.length);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       BAM FILE UPLOAD
+       ═══════════════════════════════════════════════════════════════════ */
+
+    function initBamUpload() {
+        bamDropZone.addEventListener("click", function () { bamInput.click(); });
+        bamDropZone.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); bamInput.click(); }
         });
-    });
-    // Set initial selected state
-    (function () {
-        var checked = document.querySelector('input[name="library_type_alignment"]:checked');
-        if (checked) checked.closest(".library-type-card").classList.add("selected");
-    })();
+        bamDropZone.addEventListener("dragover", function (e) {
+            e.preventDefault(); bamDropZone.classList.add("drag-over");
+        });
+        bamDropZone.addEventListener("dragleave", function () {
+            bamDropZone.classList.remove("drag-over");
+        });
+        bamDropZone.addEventListener("drop", function (e) {
+            e.preventDefault(); bamDropZone.classList.remove("drag-over");
+            addBamFiles(e.dataTransfer.files);
+        });
+        bamInput.addEventListener("change", function () {
+            addBamFiles(bamInput.files); bamInput.value = "";
+        });
+    }
 
     function addBamFiles(fileListObj) {
-        for (var i = 0; i < fileListObj.length; i++) {
-            var file = fileListObj[i];
-            if (!selectedBamFiles.some(function (f) { return f.name === file.name; })) {
-                selectedBamFiles.push(file);
-            }
+        var newFiles = [].slice.call(fileListObj).filter(function (f) {
+            var n = f.name.toLowerCase();
+            return n.endsWith(".bam") || n.endsWith(".cram");
+        });
+        if (newFiles.length === 0) {
+            showToast("warning", "Invalid Files", "Please select .bam or .cram files.");
+            return;
         }
+        warnLargeFiles(newFiles);
+        var existing = {};
+        selectedBamFiles.forEach(function (f) { existing[f.name] = true; });
+        newFiles.forEach(function (f) {
+            if (!existing[f.name]) {
+                selectedBamFiles.push(f);
+                existing[f.name] = true;
+                if (!uploadTracker[f.name]) {
+                    uploadTracker[f.name] = { status: "pending", controller: null, assetId: null, progress: 0, error: null };
+                }
+            }
+        });
         renderBamFilePills();
-        rebuildMetadataTable();
-        validateAll();
+        renderFileManagementPanel();
+        if (metadataMode === "manual") rebuildMetadataTable();
+        if (parsedCsvData) renderCsvViewer();
+    }
+
+    async function removeBamFile(index) {
+        var file = selectedBamFiles[index];
+        if (!file) return;
+        var fname = file.name;
+        var tracker = uploadTracker[fname];
+
+        if (tracker) {
+            tracker.status = "removing";
+            renderFileManagementPanel();
+
+            if (tracker.controller) {
+                tracker.controller.abort();
+                tracker.controller = null;
+            }
+
+            if (tracker.assetId) {
+                try {
+                    await fetch("/api/files/" + tracker.assetId + "/", {
+                        method: "DELETE",
+                        headers: { "X-CSRFToken": CSRF },
+                    });
+                } catch (_e) { /* best-effort */ }
+            }
+
+            delete uploadTracker[fname];
+        }
+
+        var upIdx = uploadedBamFiles.indexOf(fname);
+        if (upIdx !== -1) uploadedBamFiles.splice(upIdx, 1);
+
+        selectedBamFiles.splice(index, 1);
+        renderBamFilePills();
+        renderFileManagementPanel();
+        if (metadataMode === "manual") rebuildMetadataTable();
+        if (parsedCsvData) renderCsvViewer();
     }
 
     function renderBamFilePills() {
-        bamFilePills.innerHTML = "";
-        if (selectedBamFiles.length === 0) {
-            bamFileList.style.display = "none";
-            bamDropZone.classList.remove("has-files");
-            return;
-        }
-        bamFileList.style.display = "block";
-        bamDropZone.classList.add("has-files");
-
-        selectedBamFiles.forEach(function (file, idx) {
-            var pill = document.createElement("span");
-            pill.className = "file-pill";
-            pill.innerHTML =
-                '<i class="bi bi-file-earmark-binary"></i> ' +
-                escapeHtml(file.name) +
-                ' <span class="remove-file" data-idx="' + idx + '">&times;</span>';
-            bamFilePills.appendChild(pill);
-        });
-
-        bamFilePills.querySelectorAll(".remove-file").forEach(function (btn) {
-            btn.addEventListener("click", function (e) {
-                e.stopPropagation();
-                var idx = parseInt(btn.dataset.idx, 10);
-                selectedBamFiles.splice(idx, 1);
-                uploadedBamFiles = uploadedBamFiles.filter(function (n) {
-                    return selectedBamFiles.some(function (f) { return f.name === n; });
-                });
-                renderBamFilePills();
-                rebuildMetadataTable();
-                validateAll();
-            });
-        });
+        // BAM file pills removed from UI
     }
 
     async function uploadBamFiles() {
-        if (isUploading) return false;
-        isUploading = true;
-        bamUploadArea.innerHTML = "";
+        if (selectedBamFiles.length === 0) return;
         await ensureSubmission();
 
-        var toUpload = selectedBamFiles.filter(function (f) {
-            return !uploadedBamFiles.includes(f.name);
-        });
-        if (toUpload.length === 0) { isUploading = false; return true; }
+        for (var i = 0; i < selectedBamFiles.length; i++) {
+            var file = selectedBamFiles[i];
+            var tracker = uploadTracker[file.name];
+            if (!tracker || tracker.status !== "pending") continue;
 
-        for (var fi = 0; fi < toUpload.length; fi++) {
-            var file = toUpload[fi];
+            tracker.status = "uploading";
+            tracker.controller = new AbortController();
+            tracker.progress = 0;
+            renderFileManagementPanel();
+
             var totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-            var barId = "bam-prog-" + file.name.replace(/\W/g, "_");
-
-            bamUploadArea.insertAdjacentHTML("beforeend",
-                '<div style="margin-bottom:.4rem;">' +
-                '<div class="rna-text-xs" style="margin-bottom:.15rem;">' + escapeHtml(file.name) + '</div>' +
-                '<div class="rna-progress"><div class="rna-progress-bar animated" id="' + barId + '" style="width:0%"></div></div>' +
-                '</div>'
-            );
-            var bar = document.getElementById(barId);
             var success = true;
 
-            for (var i = 0; i < totalChunks; i++) {
-                var start = i * CHUNK_SIZE;
-                var end = Math.min(start + CHUNK_SIZE, file.size);
-                var chunk = file.slice(start, end);
-
-                var fd = new FormData();
-                fd.append("file", chunk);
-                fd.append("filename", file.name);
-                fd.append("chunk_index", i);
-                fd.append("total_chunks", totalChunks);
-                fd.append("submission_id", submissionId);
-                fd.append("file_role", "ALIGNMENT_BAM");
-
-                var result = await uploadChunkWithRetry(fd);
-
-                if (!result) { success = false; break; }
-                bar.style.width = Math.round(((i + 1) / totalChunks) * 100) + "%";
+            for (var c = 0; c < totalChunks; c++) {
+                if (tracker.controller.signal.aborted) {
+                    success = false;
+                    break;
+                }
+                var ok = await uploadChunkWithRetry(file, c, totalChunks, "ALIGNMENT_BAM", tracker.controller);
+                if (!ok) {
+                    success = false;
+                    if (!tracker.controller.signal.aborted) {
+                        showToast("error", "Upload Failed", "Failed to upload " + file.name);
+                    }
+                    break;
+                }
+                tracker.progress = Math.round(((c + 1) / totalChunks) * 100);
+                renderFileManagementPanel();
             }
+
+            if (!uploadTracker[file.name]) continue;
 
             if (success) {
-                bar.classList.remove("animated");
+                tracker.status = "done";
+                tracker.controller = null;
                 uploadedBamFiles.push(file.name);
-            } else {
-                bar.style.background = "var(--rna-accent-red)";
-                bar.classList.remove("animated");
+            } else if (!tracker.controller || !tracker.controller.signal.aborted) {
+                tracker.status = "failed";
+                tracker.controller = null;
             }
+            renderFileManagementPanel();
         }
-
-        isUploading = false;
-        validateAll();
-        return uploadedBamFiles.length === selectedBamFiles.length;
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  3c. COUNT MATRIX UPLOAD + VALIDATION (Matrix entry)
-    // ════════════════════════════════════════════════════════════
+    /* ═══════════════════════════════════════════════════════════════════
+       COUNT MATRIX UPLOAD
+       ═══════════════════════════════════════════════════════════════════ */
 
-    matrixDropZone.addEventListener("click", function () { matrixInput.click(); });
-    matrixDropZone.addEventListener("dragover", function (e) {
-        e.preventDefault(); matrixDropZone.classList.add("drag-over");
-    });
-    matrixDropZone.addEventListener("dragleave", function () {
-        matrixDropZone.classList.remove("drag-over");
-    });
-    matrixDropZone.addEventListener("drop", function (e) {
-        e.preventDefault(); matrixDropZone.classList.remove("drag-over");
-        if (e.dataTransfer.files.length > 0) setMatrixFile(e.dataTransfer.files[0]);
-    });
-    matrixInput.addEventListener("change", function () {
-        if (matrixInput.files.length > 0) setMatrixFile(matrixInput.files[0]);
-    });
+    function initMatrixUpload() {
+        matrixDropZone.addEventListener("click", function () { matrixInput.click(); });
+        matrixDropZone.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); matrixInput.click(); }
+        });
+        matrixDropZone.addEventListener("dragover", function (e) {
+            e.preventDefault(); matrixDropZone.classList.add("drag-over");
+        });
+        matrixDropZone.addEventListener("dragleave", function () {
+            matrixDropZone.classList.remove("drag-over");
+        });
+        matrixDropZone.addEventListener("drop", function (e) {
+            e.preventDefault(); matrixDropZone.classList.remove("drag-over");
+            if (e.dataTransfer.files.length) setMatrixFile(e.dataTransfer.files[0]);
+        });
+        matrixInput.addEventListener("change", function () {
+            if (matrixInput.files.length) setMatrixFile(matrixInput.files[0]);
+            matrixInput.value = "";
+        });
+    }
 
     function setMatrixFile(file) {
         matrixFile = file;
-        matrixFileName.style.display = "block";
-        matrixFileName.innerHTML =
-            '<i class="bi bi-file-earmark-check" style="color:var(--rna-accent-green);"></i> ' +
-            escapeHtml(file.name);
-        matrixDropZone.classList.add("has-files");
+        matrixFileName.style.display = "";
+        matrixFileName.textContent = "Selected: " + file.name;
+        if (file.size > FILE_SIZE_WARN) {
+            showToast("warning", "Large File Warning", file.name + " exceeds 10 GB and may take a long time to upload.");
+        }
+        showParseOverlay(matrixDropZone);
 
-        // Detect separator
-        var sep = file.name.endsWith(".tsv") ? "\t" : ",";
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            removeParseOverlay(matrixDropZone);
+            var delimiter = file.name.toLowerCase().endsWith(".tsv") ? "\t" : ",";
+            parsedMatrixData = Papa.parse(e.target.result, {
+                header: true, skipEmptyLines: true, delimiter: delimiter,
+            });
+            var v = validateMatrixData();
+            matrixValidation.style.display = "";
+            matrixValidation.className = "validation-msg " + (v.valid ? "success" : "error");
+            matrixValidation.textContent = v.message;
 
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            delimiter: sep === "\t" ? "\t" : undefined,
-            complete: function (results) {
-                if (results.errors.length > 0 && results.data.length === 0) {
-                    matrixPreviewArea.style.display = "block";
-                    matrixPreviewArea.innerHTML =
-                        '<div class="validation-msg error"><i class="bi bi-exclamation-triangle"></i> ' +
-                        'Could not parse file: ' + escapeHtml(results.errors[0].message) + '</div>';
-                    parsedMatrixData = null;
-                    validateAll();
-                    return;
-                }
-
-                parsedMatrixData = {
-                    headers: results.meta.fields,
-                    rows: results.data,
-                };
-
-                // Pre-flight validation
-                var msgs = validateMatrixData(parsedMatrixData);
-                if (msgs.length > 0) {
-                    matrixValidation.className = "validation-msg error";
-                    matrixValidation.innerHTML =
-                        '<i class="bi bi-exclamation-triangle"></i> ' + msgs.join("<br>");
-                    matrixValidation.style.display = "block";
-                } else {
-                    matrixValidation.className = "validation-msg success";
-                    matrixValidation.innerHTML =
-                        '<i class="bi bi-check-circle"></i> Matrix validated: ' +
-                        parsedMatrixData.rows.length + ' genes, ' +
-                        (parsedMatrixData.headers.length - 1) + ' samples.';
-                    matrixValidation.style.display = "block";
-                }
-
+            if (v.valid) {
                 renderMatrixPreview();
-                rebuildMetadataTable();
-                updateColumnMappingOptions();
-                validateAll();
-            },
-        });
+                renderFileManagementPanel();
+                if (metadataMode === "manual") rebuildMetadataTable();
+                if (parsedCsvData) renderCsvViewer();
+            }
+        };
+        reader.readAsText(file);
     }
 
-    function validateMatrixData(data) {
-        var msgs = [];
-        if (!data || !data.rows.length) {
-            msgs.push("Count matrix is empty.");
-            return msgs;
+    function validateMatrixData() {
+        if (!parsedMatrixData || !parsedMatrixData.data || parsedMatrixData.data.length === 0)
+            return { valid: false, message: "Matrix is empty or could not be parsed." };
+
+        var fields = parsedMatrixData.meta.fields;
+        if (fields.length < 2)
+            return { valid: false, message: "Matrix must have at least 2 columns (gene ID + 1 sample)." };
+
+        var sampleCols = fields.slice(1);
+        var bad = 0;
+        var rows = parsedMatrixData.data.slice(0, 20);
+        for (var ri = 0; ri < rows.length; ri++) {
+            for (var ci = 0; ci < sampleCols.length; ci++) {
+                var val = rows[ri][sampleCols[ci]];
+                if (val !== "" && val !== undefined && !Number.isInteger(Number(val))) bad++;
+            }
         }
-        if (data.headers.length < 2) {
-            msgs.push("Count matrix must have at least one gene ID column and one sample column.");
-            return msgs;
-        }
+        if (bad > 0)
+            return { valid: false, message: "Found non-integer values. Please upload raw integer counts (not TPM/FPKM)." };
 
-        // Check first 50 rows for non-numeric sample columns
-        var sampleCols = data.headers.slice(1);
-        var checkRows = data.rows.slice(0, 50);
-        var hasNonNumeric = false;
-        var hasNegative = false;
-        var hasFloat = false;
-
-        checkRows.forEach(function (row) {
-            sampleCols.forEach(function (col) {
-                var val = row[col];
-                if (val === undefined || val === null || val === "") return;
-                var num = Number(val);
-                if (isNaN(num)) hasNonNumeric = true;
-                if (num < 0) hasNegative = true;
-                if (num % 1 !== 0) hasFloat = true;
-            });
-        });
-
-        if (hasNonNumeric) msgs.push("Some sample columns contain non-numeric values. Raw count matrices should contain only integers.");
-        if (hasNegative) msgs.push("Some values are negative. Raw counts should be non-negative integers.");
-        if (hasFloat) msgs.push("Some values are floating-point. This may indicate normalized data (TPM/FPKM). DESeq2 requires raw integer counts.");
-
-        return msgs;
+        return { valid: true, message: "Valid matrix: " + parsedMatrixData.data.length + " genes \u00d7 " + sampleCols.length + " samples." };
     }
 
     function renderMatrixPreview() {
-        if (!parsedMatrixData || !parsedMatrixData.rows.length) {
-            matrixPreviewArea.style.display = "none";
-            return;
-        }
-        matrixPreviewArea.style.display = "block";
-        var headers = parsedMatrixData.headers;
-        var previewRows = parsedMatrixData.rows.slice(0, 5);
-
-        var html = '<div class="csv-example">';
-        html += '<div class="csv-example-header">';
-        html += '<span><i class="bi bi-grid-3x3" style="color:var(--rna-accent-green);"></i> ';
-        html += parsedMatrixData.rows.length + ' genes &times; ' + (headers.length - 1) + ' samples</span></div>';
-        html += '<table><thead><tr>';
-        headers.forEach(function (h) { html += '<th>' + escapeHtml(h) + '</th>'; });
-        html += '</tr></thead><tbody>';
-        previewRows.forEach(function (row) {
-            html += '<tr>';
-            headers.forEach(function (h) { html += '<td>' + escapeHtml(row[h] || '') + '</td>'; });
-            html += '</tr>';
+        if (!parsedMatrixData) return;
+        matrixPreviewArea.style.display = "";
+        var fields = parsedMatrixData.meta.fields;
+        var rows = parsedMatrixData.data.slice(0, 5);
+        var html = '<div class="csv-viewer-table-wrap"><table>';
+        html += "<thead><tr>" + fields.map(function (f) { return "<th>" + escapeHtml(f) + "</th>"; }).join("") + "</tr></thead>";
+        html += "<tbody>";
+        rows.forEach(function (row) {
+            html += "<tr>" + fields.map(function (f) { return "<td>" + escapeHtml(String(row[f] || "")) + "</td>"; }).join("") + "</tr>";
         });
-        if (parsedMatrixData.rows.length > 5) {
-            html += '<tr><td colspan="' + headers.length + '" ' +
-                'style="text-align:center;color:var(--rna-grey-500);font-style:italic;">' +
-                '... ' + (parsedMatrixData.rows.length - 5) + ' more rows</td></tr>';
-        }
-        html += '</tbody></table></div>';
+        html += "</tbody></table></div>";
+        if (parsedMatrixData.data.length > 5)
+            html += '<p class="rna-text-xs rna-text-muted rna-mt-1">Showing 5 of ' + parsedMatrixData.data.length + ' rows.</p>';
         matrixPreviewArea.innerHTML = html;
     }
 
     async function uploadMatrixFile() {
         if (!matrixFile) return true;
         await ensureSubmission();
-
         var totalChunks = Math.ceil(matrixFile.size / CHUNK_SIZE);
-        for (var i = 0; i < totalChunks; i++) {
-            var start = i * CHUNK_SIZE;
-            var end = Math.min(start + CHUNK_SIZE, matrixFile.size);
-            var chunk = matrixFile.slice(start, end);
-
-            var fd = new FormData();
-            fd.append("file", chunk);
-            fd.append("filename", matrixFile.name);
-            fd.append("chunk_index", i);
-            fd.append("total_chunks", totalChunks);
-            fd.append("submission_id", submissionId);
-            fd.append("file_role", "USER_COUNT_MATRIX");
-
-            var result = await uploadChunkWithRetry(fd);
-            if (!result) return false;
+        for (var c = 0; c < totalChunks; c++) {
+            if (!(await uploadChunkWithRetry(matrixFile, c, totalChunks, "USER_COUNT_MATRIX")))
+                return false;
         }
         return true;
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  4. REFERENCE GENOME
-    // ════════════════════════════════════════════════════════════
+    /* ═══════════════════════════════════════════════════════════════════
+       CHUNK UPLOAD ENGINE
+       ═══════════════════════════════════════════════════════════════════ */
 
-    genomeSelect.addEventListener("change", function () {
-        var isCustom = genomeSelect.value === "custom";
-        customGenomeSection.classList.toggle("visible", isCustom);
-        validateAll();
-    });
+    async function ensureSubmission() {
+        if (submissionId) return submissionId;
+        var res = await fetch("/api/submission/create", {
+            method: "POST",
+            headers: { "X-CSRFToken": CSRF },
+        });
+        if (!res.ok) throw new Error("Failed to create submission");
+        var data = await res.json();
+        submissionId = data.submission_id;
+        updateBannerInfo();
+        return submissionId;
+    }
 
-    customGenomeName.addEventListener("input", validateAll);
-
-    customGenomeFasta.addEventListener("change", function () {
-        customGenomeFiles.fasta = customGenomeFasta.files[0] || null;
-        var label = document.getElementById("fasta-file-label");
-        if (label) label.textContent = customGenomeFiles.fasta ? customGenomeFiles.fasta.name : "No file chosen";
-        validateAll();
-    });
-
-    customGenomeAnnotation.addEventListener("change", function () {
-        customGenomeFiles.annotation = customGenomeAnnotation.files[0] || null;
-        var label = document.getElementById("annotation-file-label");
-        if (label) label.textContent = customGenomeFiles.annotation ? customGenomeFiles.annotation.name : "No file chosen";
-        validateAll();
-    });
-
-    /**
-     * Upload custom genome files (FASTA + GTF) via chunked upload.
-     */
-    async function uploadCustomGenome() {
-        await ensureSubmission();
-
-        var filesToUpload = [
-            { file: customGenomeFiles.fasta, role: "CUSTOM_GENOME_FASTA" },
-            { file: customGenomeFiles.annotation, role: "CUSTOM_GENOME_ANNOTATION" },
-        ];
-
-        for (var fi = 0; fi < filesToUpload.length; fi++) {
-            var item = filesToUpload[fi];
-            var totalChunks = Math.ceil(item.file.size / CHUNK_SIZE);
-            for (var i = 0; i < totalChunks; i++) {
-                var start = i * CHUNK_SIZE;
-                var end = Math.min(start + CHUNK_SIZE, item.file.size);
-                var chunk = item.file.slice(start, end);
-
+    async function uploadChunkWithRetry(file, chunkIndex, totalChunks, fileRole, fileController) {
+        for (var attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                var start = chunkIndex * CHUNK_SIZE;
+                var end = Math.min(start + CHUNK_SIZE, file.size);
+                var chunk = file.slice(start, end);
                 var fd = new FormData();
                 fd.append("file", chunk);
-                fd.append("filename", item.file.name);
-                fd.append("chunk_index", i);
+                fd.append("filename", file.name);
+                fd.append("chunk_index", chunkIndex);
                 fd.append("total_chunks", totalChunks);
                 fd.append("submission_id", submissionId);
-                fd.append("file_role", item.role);
+                fd.append("file_role", fileRole);
 
-                var result = await uploadChunkWithRetry(fd);
+                // Use the per-file controller if provided, with a timeout fallback
+                var controller = fileController || new AbortController();
+                var timeoutId = setTimeout(function () { controller.abort(); }, UPLOAD_TIMEOUT);
 
-                if (!result) return false;
+                var res = await fetch("/api/upload/chunk", {
+                    method: "POST",
+                    headers: { "X-CSRFToken": CSRF },
+                    body: fd,
+                    signal: controller.signal,
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!res.ok) throw new Error("HTTP " + res.status);
+
+                var data = await res.json();
+
+                // Capture asset_id from final chunk response
+                if (data.complete && data.asset_id) {
+                    var tracker = uploadTracker[file.name];
+                    if (tracker) tracker.assetId = data.asset_id;
+                }
+
+                return true;
+            } catch (_err) {
+                // If the file-level controller was aborted, don't retry
+                if (fileController && fileController.signal.aborted) return false;
+                if (attempt === MAX_RETRIES - 1) return false;
+                await new Promise(function (r) { setTimeout(r, 1000 * (attempt + 1)); });
+            }
+        }
+        return false;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       REFERENCE GENOME
+       ═══════════════════════════════════════════════════════════════════ */
+
+    function initGenome() {
+        genomeSelect.addEventListener("change", function () {
+            customGenomeSection.classList.toggle("visible", genomeSelect.value === "custom");
+        });
+        customGenomeFasta.addEventListener("change", function () {
+            if (customGenomeFasta.files.length) {
+                var file = customGenomeFasta.files[0];
+                var name = file.name.toLowerCase();
+                var validFasta = name.endsWith(".fa") || name.endsWith(".fasta") ||
+                    name.endsWith(".fa.gz") || name.endsWith(".fasta.gz") ||
+                    name.endsWith(".fa.zip") || name.endsWith(".fasta.zip");
+                if (!validFasta) {
+                    showToast("error", "Invalid File", "Only .fa, .fasta, .fa.gz, .fasta.gz, .fa.zip, or .fasta.zip files are accepted.");
+                    customGenomeFasta.value = "";
+                    customGenomeFiles.fasta = null;
+                    fastaFileLabel.textContent = "No file chosen";
+                    return;
+                }
+                customGenomeFiles.fasta = file;
+                fastaFileLabel.textContent = file.name;
+                if (file.size > FILE_SIZE_WARN) {
+                    showToast("warning", "Large File Warning", file.name + " exceeds 10 GB and may take a long time to upload.");
+                }
+            }
+        });
+        customGenomeAnnotation.addEventListener("change", function () {
+            if (customGenomeAnnotation.files.length) {
+                customGenomeFiles.annotation = customGenomeAnnotation.files[0];
+                annotationFileLabel.textContent = customGenomeAnnotation.files[0].name;
+                if (customGenomeAnnotation.files[0].size > FILE_SIZE_WARN) {
+                    showToast("warning", "Large File Warning", customGenomeAnnotation.files[0].name + " exceeds 10 GB and may take a long time to upload.");
+                }
+            }
+        });
+    }
+
+    function isGenomeValid() {
+        if (inputDataType === "matrix") return true;
+        var val = genomeSelect.value;
+        if (!val) return false;
+        if (val === "custom") {
+            if (!customGenomeName.value.trim()) return false;
+            if (inputDataType === "fastq" && (!customGenomeFiles.fasta || !customGenomeFiles.annotation)) return false;
+            if (inputDataType === "alignment" && !customGenomeFiles.annotation) return false;
+        }
+        return true;
+    }
+
+    async function uploadCustomGenomeFiles() {
+        if (genomeSelect.value !== "custom") return true;
+        await ensureSubmission();
+        if (customGenomeFiles.fasta) {
+            var tc = Math.ceil(customGenomeFiles.fasta.size / CHUNK_SIZE);
+            for (var c = 0; c < tc; c++) {
+                if (!(await uploadChunkWithRetry(customGenomeFiles.fasta, c, tc, "CUSTOM_GENOME_FASTA")))
+                    return false;
+            }
+        }
+        if (customGenomeFiles.annotation) {
+            var tc2 = Math.ceil(customGenomeFiles.annotation.size / CHUNK_SIZE);
+            for (var c2 = 0; c2 < tc2; c2++) {
+                if (!(await uploadChunkWithRetry(customGenomeFiles.annotation, c2, tc2, "CUSTOM_GENOME_ANNOTATION")))
+                    return false;
             }
         }
         return true;
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  5. METADATA MODE + CSV PARSING (PapaParse)
-    // ════════════════════════════════════════════════════════════
+    /* ═══════════════════════════════════════════════════════════════════
+       METADATA TOGGLE
+       ═══════════════════════════════════════════════════════════════════ */
 
-    function getMetadataMode() {
-        var active = metaToggle.querySelector(".meta-toggle-btn.active");
-        return active ? active.dataset.mode : "upload";
+    function initMetadataToggle() {
+        var cards = metaToggle.querySelectorAll(".library-type-card");
+        cards.forEach(function (card) {
+            card.addEventListener("click", function () {
+                var radio = card.querySelector('input[type="radio"]');
+                if (!radio) return;
+                var newMode = radio.value;
+                if (newMode === metadataMode) return; // no change
+                radio.checked = true;
+                cards.forEach(function (c) { c.classList.remove("selected"); });
+                card.classList.add("selected");
+
+                // Reset data from previous mode to prevent conflicts
+                if (metadataMode === "upload") {
+                    // Leaving CSV mode: clear CSV data
+                    csvFile = null;
+                    parsedCsvData = null;
+                    if (csvFileName) { csvFileName.style.display = "none"; csvFileName.innerHTML = ""; }
+                    if (csvInput) csvInput.value = "";
+                    if (csvViewerTable) csvViewerTable.innerHTML = "";
+                } else if (metadataMode === "manual") {
+                    // Leaving manual mode: reset to defaults
+                    manualColumns = ["condition"];
+                    columnSelectableValues = { condition: [] };
+                    if (metadataBody) metadataBody.innerHTML = "";
+                    renderColumnChips();
+                    renderConditionChips();
+                    updateConditionTargetDropdown();
+                }
+                // Reset shared state
+                columnMapping = { primary_group: "", batch_effect: "", covariates: [] };
+                contrasts = [];
+                if (primaryGroupSelect) primaryGroupSelect.value = "";
+                if (batchEffectSelect) batchEffectSelect.value = "";
+                if (contrastSection) contrastSection.style.display = "none";
+                if (contrastList) contrastList.innerHTML = "";
+                if (columnValidationMsg) columnValidationMsg.style.display = "none";
+
+                metadataMode = newMode;
+                syncMetadataView();
+            });
+        });
     }
 
-    metaToggle.querySelectorAll(".meta-toggle-btn").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-            metaToggle.querySelectorAll(".meta-toggle-btn").forEach(function (b) {
-                b.classList.remove("active");
-            });
-            btn.classList.add("active");
+    /** Single source of truth for Step 4 right-panel visibility.
+     *  Called on mode switch, CSV load, and manual table rebuild. */
+    function syncMetadataView() {
+        var isUpload = metadataMode === "upload";
+        var isManual = metadataMode === "manual";
+        var hasCsvData = !!(parsedCsvData && parsedCsvData.data.length > 0);
+        var hasSamples = extractSampleNames().length > 0;
 
-            var mode = btn.dataset.mode;
-            metaUploadPanel.style.display = mode === "upload" ? "" : "none";
-            metaManualPanel.style.display = mode === "manual" ? "" : "none";
-            manualPanel.style.display = mode === "manual" ? "" : "none";
+        /* Left panel: only one mode's controls visible */
+        metaUploadPanel.style.display = isUpload ? "" : "none";
+        metaManualPanel.style.display = isManual ? "" : "none";
 
-            // Reset parsed data and contrasts when switching modes
-            if (mode === "upload") {
-                parsedCsvData = null;
-                csvPreviewArea.style.display = "none";
+        /* Right panel: hide everything first */
+        csvViewerSection.style.display = "none";
+        manualMetadataPanel.style.display = "none";
+        if (metaPlaceholderCard) metaPlaceholderCard.style.display = "none";
+
+        if (isUpload) {
+            if (hasCsvData) {
+                csvViewerSection.style.display = "";
+                showRolesContrastRow();
+            } else {
+                if (metaPlaceholderCard) metaPlaceholderCard.style.display = "";
+                hideRolesContrastRow();
             }
-            if (mode === "manual") {
-                rebuildMetadataTable();
+        } else if (isManual) {
+            manualMetadataPanel.style.display = "";
+            rebuildMetadataTable();
+            if (hasSamples) {
+                showRolesContrastRow();
+            } else {
+                if (metaPlaceholderCard) metaPlaceholderCard.style.display = "none";
+                hideRolesContrastRow();
             }
+        }
+    }
 
-            // Reset column mapping when mode changes
-            columnMapping = { primary_group: null, batch_effect: null, additional_covariates: [] };
-            contrasts = [];
-            updateColumnMappingOptions();
-            validateAll();
+    /* ═══════════════════════════════════════════════════════════════════
+       CSV METADATA UPLOAD & PREVIEW
+       ═══════════════════════════════════════════════════════════════════ */
+
+    function initCsvUpload() {
+        csvDropZone.addEventListener("click", function () { csvInput.click(); });
+        csvDropZone.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); csvInput.click(); }
         });
-    });
+        csvDropZone.addEventListener("dragover", function (e) {
+            e.preventDefault(); csvDropZone.classList.add("drag-over");
+        });
+        csvDropZone.addEventListener("dragleave", function () { csvDropZone.classList.remove("drag-over"); });
+        csvDropZone.addEventListener("drop", function (e) {
+            e.preventDefault(); csvDropZone.classList.remove("drag-over");
+            if (e.dataTransfer.files.length) setCsvFile(e.dataTransfer.files[0]);
+        });
+        csvInput.addEventListener("change", function () {
+            if (csvInput.files.length) setCsvFile(csvInput.files[0]);
+            csvInput.value = "";
+        });
+    }
 
-    // ── CSV Drop Zone ──
-    csvDropZone.addEventListener("click", function () { csvInput.click(); });
-    csvDropZone.addEventListener("dragover", function (e) {
-        e.preventDefault();
-        csvDropZone.classList.add("drag-over");
-    });
-    csvDropZone.addEventListener("dragleave", function () {
-        csvDropZone.classList.remove("drag-over");
-    });
-    csvDropZone.addEventListener("drop", function (e) {
-        e.preventDefault();
-        csvDropZone.classList.remove("drag-over");
-        if (e.dataTransfer.files.length > 0) setCsvFile(e.dataTransfer.files[0]);
-    });
-    csvInput.addEventListener("change", function () {
-        if (csvInput.files.length > 0) setCsvFile(csvInput.files[0]);
-    });
+    function clearCsvFile() {
+        csvFile = null;
+        parsedCsvData = null;
+        csvFileName.style.display = "none";
+        csvInput.value = "";
+        if (csvViewerTable) csvViewerTable.innerHTML = "";
+        syncMetadataView();
+    }
 
-    /**
-     * Set a CSV file and parse it in-browser with PapaParse.
-     * Extracts column headers instantly for the mapping UI.
-     */
     function setCsvFile(file) {
         csvFile = file;
-        csvFileName.style.display = "block";
-        csvFileName.innerHTML =
-            '<i class="bi bi-file-earmark-check" style="color:var(--rna-accent-green);"></i> ' +
-            escapeHtml(file.name);
-        csvDropZone.classList.add("has-files");
+        csvFileName.style.display = "";
+        csvFileName.innerHTML = '<i class="bi bi-file-earmark-check"></i> <span>' + escapeHtml(file.name) + '</span>' +
+            ' <button type="button" class="btn-csv-remove" id="csv-remove-btn" title="Remove CSV">' +
+            '<svg class="csv-trash-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>' +
+            '<path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>' +
+            '</svg></button>';
+        var removeBtn = $("csv-remove-btn");
+        if (removeBtn) removeBtn.addEventListener("click", clearCsvFile);
+        showParseOverlay(csvDropZone);
 
-        // Parse CSV in browser using PapaParse
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            dynamicTyping: false,
-            complete: function (results) {
-                if (results.errors.length > 0 && results.data.length === 0) {
-                    csvPreviewArea.style.display = "block";
-                    csvPreviewArea.innerHTML =
-                        '<div class="validation-msg error"><i class="bi bi-exclamation-triangle"></i> ' +
-                        'Could not parse CSV: ' + escapeHtml(results.errors[0].message) + '</div>';
-                    parsedCsvData = null;
-                    updateColumnMappingOptions();
-                    validateAll();
-                    return;
-                }
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            removeParseOverlay(csvDropZone);
+            var delimiter = file.name.toLowerCase().endsWith(".tsv") ? "\t" : ",";
+            parsedCsvData = Papa.parse(e.target.result, {
+                header: true, skipEmptyLines: true, delimiter: delimiter,
+            });
+            if (parsedCsvData.errors.length > 0) {
+                showToast("error", "CSV Parse Error", parsedCsvData.errors[0].message);
+                return;
+            }
+            /* Token 3: Auto-strip FASTQ-related extensions from sample column values */
+            var sampleCol = parsedCsvData.meta.fields.find(function (f) {
+                return f.toLowerCase() === "sample";
+            });
 
-                // Validate that the first column is named "sample"
-                var firstCol = (results.meta.fields && results.meta.fields[0] || "").trim().toLowerCase();
-                if (firstCol !== "sample") {
-                    csvPreviewArea.style.display = "block";
-                    csvPreviewArea.innerHTML =
-                        '<div class="validation-msg error"><i class="bi bi-exclamation-triangle"></i> ' +
-                        'The first column of the metadata CSV must be named <strong>"sample"</strong>. ' +
-                        'Found: <strong>"' + escapeHtml(results.meta.fields[0] || "") + '"</strong>.</div>';
-                    parsedCsvData = null;
-                    updateColumnMappingOptions();
-                    validateAll();
-                    return;
-                }
-
-                parsedCsvData = {
-                    headers: results.meta.fields,
-                    rows: results.data,
-                };
-                renderCsvPreview();
-                columnMapping = { primary_group: null, batch_effect: null, additional_covariates: [] };
-                contrasts = [];
-                updateColumnMappingOptions();
-                validateAll();
-            },
-        });
+            if (!sampleCol) {
+                showToast("warning", "Missing 'sample' Column",
+                    "Your CSV does not have a column named 'sample'. " +
+                    "The first column must be named 'sample' to match uploaded file names.");
+            } else {
+                parsedCsvData.data.forEach(function (row) {
+                    if (row[sampleCol] && /\.(fastq|fq)(\.gz)?$/i.test(row[sampleCol])) {
+                        row[sampleCol] = row[sampleCol].replace(/\.(fastq|fq)(\.gz)?$/i, "");
+                    }
+                });
+            }
+            renderCsvViewer();
+            updateColumnMappingOptions();
+            syncMetadataView();
+        };
+        reader.readAsText(file);
     }
 
-    /**
-     * Render a compact summary in the card (no full table inside the card).
-     * Shows sample match status.
-     */
     function renderCsvPreview() {
-        if (!parsedCsvData || !parsedCsvData.rows.length) {
-            csvPreviewArea.style.display = "none";
-            return;
-        }
-
-        csvPreviewArea.style.display = "block";
-        var headers = parsedCsvData.headers;
-        var rows = parsedCsvData.rows;
-        var sampleNames = getSampleNames();
-        var filteredRows = getFilteredCsvRows();
-
-        // Check for unmatched samples (uploaded files with no metadata row)
-        var unmatchedSamples = [];
-        if (sampleNames.length > 0) {
-            var sampleCol = headers[0];
-            var metaIds = new Set();
-            filteredRows.forEach(function (row) {
-                metaIds.add((row[sampleCol] || "").trim());
-            });
-            sampleNames.forEach(function (name) {
-                var stem = stripExtension(name);
-                if (!metaIds.has(name) && !metaIds.has(stem)) {
-                    unmatchedSamples.push(name);
-                }
-            });
-        }
-
-        var msgHtml;
-        if (unmatchedSamples.length > 0) {
-            msgHtml =
-                '<div class="validation-msg error">' +
-                '<i class="bi bi-exclamation-triangle"></i> ' +
-                filteredRows.length + ' of ' + sampleNames.length +
-                ' samples matched. <strong>Unmatched samples:</strong> ' +
-                unmatchedSamples.map(escapeHtml).join(', ') +
-                '. Ensure the <code>sample</code> column contains the filename stem ' +
-                '(without <code>.fastq.gz</code> / <code>.fq.gz</code> extension).' +
-                '</div>';
-        } else if (sampleNames.length > 0) {
-            msgHtml =
-                '<div class="validation-msg success">' +
-                '<i class="bi bi-check-circle"></i> All ' + sampleNames.length +
-                ' samples matched. ' + headers.length + ' columns detected. ' +
-                'See <strong>Metadata Preview</strong> below.' +
-                '</div>';
-        } else {
-            msgHtml =
-                '<div class="validation-msg success">' +
-                '<i class="bi bi-check-circle"></i> Parsed: ' +
-                headers.length + ' columns, ' + rows.length + ' rows. ' +
-                'Upload files to verify sample matching. See <strong>Metadata Preview</strong> below.' +
-                '</div>';
-        }
-
-        csvPreviewArea.innerHTML = msgHtml;
-
-        // Render the full viewer section below the 4-card grid
-        renderCsvViewer();
+        /* Preview now handled by the right-panel CSV viewer table */
     }
 
-    /**
-     * Strip common FASTQ / BAM / matrix extensions from a filename to get
-     * the canonical sample stem used for matching against metadata.
-     */
-    function stripExtension(name) {
-        return name
-            .replace(/\.(fq|fastq)(\.gz)?$/i, "")
-            .replace(/\.(bam|cram)$/i, "")
-            .replace(/\.(csv|tsv|txt)$/i, "");
-    }
-
-    /**
-     * Match sample names from uploaded files against metadata CSV rows.
-     * Returns filtered rows where the sample column value matches an uploaded sample.
-     *
-     * Matching rules (strict):
-     *   - Exact match: metadata value === sample name from getSampleNames()
-     *   - Stem match:  metadata value === filename stripped of extension
-     *   - For paired-end FASTQ, getSampleNames() already returns the prefix
-     *     (before _R1/_R2), so both the prefix and the prefix with extension
-     *     stripped will be checked.
-     *
-     * If no files are uploaded yet, returns all rows (preview mode).
-     */
     function getFilteredCsvRows() {
-        if (!parsedCsvData || !parsedCsvData.rows.length) return [];
-
-        var sampleNames = getSampleNames();
-        if (!sampleNames.length) return parsedCsvData.rows;
-
-        var sampleCol = parsedCsvData.headers[0];
-
-        // Build a lookup set of acceptable sample identifiers
-        var acceptedIds = new Set();
-        sampleNames.forEach(function (name) {
-            acceptedIds.add(name);
-            acceptedIds.add(stripExtension(name));
+        if (!parsedCsvData) return [];
+        var sampleNames = extractSampleNames();
+        if (sampleNames.length === 0) return parsedCsvData.data;
+        var sampleCol = parsedCsvData.meta.fields.find(function (f) {
+            return f.toLowerCase() === "sample";
         });
-
-        return parsedCsvData.rows.filter(function (row) {
-            var metaId = (row[sampleCol] || "").trim();
-            if (!metaId) return false;
-            return acceptedIds.has(metaId);
+        if (!sampleCol) return parsedCsvData.data;
+        return parsedCsvData.data.filter(function (row) {
+            return sampleNames.indexOf(row[sampleCol]) !== -1;
         });
     }
 
-    /**
-     * Render the full-width metadata viewer section below the 4-card grid.
-     * Shows matched rows (10 visible, scrollable) and an info bar.
-     */
     function renderCsvViewer() {
-        if (!csvViewerSection) return;
-        if (!parsedCsvData || !parsedCsvData.rows.length || getMetadataMode() !== "upload") {
-            csvViewerSection.style.display = "none";
-            return;
+        if (!parsedCsvData) return;
+        var sampleNames = extractSampleNames();
+        var filtered = getFilteredCsvRows();
+        var total = parsedCsvData.data.length;
+        var matched = filtered.length;
+
+        /* Token 2: Show validation error when uploaded files exist but 0 CSV rows match */
+        if (sampleNames.length > 0 && matched === 0) {
+            showToast("error", "No Matches Found",
+                "None of the sample names in your CSV matched the uploaded file names. " +
+                "Please verify that the 'sample' column values match your file names (without extensions).");
         }
 
-        var filteredRows = getFilteredCsvRows();
-        var totalRows = parsedCsvData.rows.length;
-        var headers = parsedCsvData.headers;
-        var sampleNames = getSampleNames();
-
-        csvViewerSection.style.display = "";
-
-        // Info bar
-        var infoHtml = '<span><i class="bi bi-file-earmark-spreadsheet"></i> ' +
-            escapeHtml(csvFile ? csvFile.name : "metadata.csv") + '</span>';
         if (sampleNames.length > 0) {
-            infoHtml += '<span class="matched-badge"><i class="bi bi-funnel"></i> ' +
-                filteredRows.length + ' matched</span>';
-        }
-        infoHtml += '<span class="total-badge">' + totalRows + ' total rows &middot; ' +
-            headers.length + ' columns</span>';
-        csvViewerInfo.innerHTML = infoHtml;
-
-        // Table
-        var html = '<table><thead><tr>';
-        headers.forEach(function (h) {
-            html += '<th>' + escapeHtml(h) + '</th>';
-        });
-        html += '</tr></thead><tbody>';
-
-        filteredRows.forEach(function (row) {
-            html += '<tr>';
-            headers.forEach(function (h) {
-                html += '<td title="' + escapeHtml(row[h] || '') + '">' +
-                    escapeHtml(row[h] || '') + '</td>';
-            });
-            html += '</tr>';
-        });
-
-        if (filteredRows.length === 0) {
-            html += '<tr><td colspan="' + headers.length +
-                '" style="text-align:center;color:var(--rna-grey-500);font-style:italic;padding:1.5rem;">' +
-                'No matching samples found. Upload files above or check that the first CSV column ' +
-                'contains sample identifiers matching your filenames.</td></tr>';
+            csvViewerInfo.innerHTML =
+                '<span class="matched-badge"><i class="bi bi-check-circle"></i> ' + matched + ' matched</span>' +
+                '<span class="total-badge">' + total + ' total rows</span>' +
+                (matched < total ? '<span class="rna-text-xs rna-text-muted">' + (total - matched) + ' unmatched</span>' : '');
+        } else {
+            csvViewerInfo.innerHTML =
+                '<span class="total-badge">' + total + ' rows loaded</span>' +
+                '<span class="rna-text-xs rna-text-muted">Upload files to match samples</span>';
         }
 
+        /* Build full data table in right panel */
+        var fields = parsedCsvData.meta.fields;
+        var displayRows = filtered.length > 0 ? filtered : parsedCsvData.data;
+        var html = '<table>';
+        html += '<thead><tr>' + fields.map(function (f) { return '<th>' + escapeHtml(f) + '</th>'; }).join('') + '</tr></thead>';
+        html += '<tbody>';
+        displayRows.forEach(function (row) {
+            html += '<tr>' + fields.map(function (f) { return '<td>' + escapeHtml(String(row[f] || '')) + '</td>'; }).join('') + '</tr>';
+        });
         html += '</tbody></table>';
-        csvViewerTable.innerHTML = html;
+        if (csvViewerTable) csvViewerTable.innerHTML = html;
     }
 
-    /**
-     * Upload the metadata CSV via chunked upload.
-     */
     async function uploadCsvFile() {
         if (!csvFile) return true;
         await ensureSubmission();
-
-        var totalChunks = Math.ceil(csvFile.size / CHUNK_SIZE);
-        for (var i = 0; i < totalChunks; i++) {
-            var start = i * CHUNK_SIZE;
-            var end = Math.min(start + CHUNK_SIZE, csvFile.size);
-            var chunk = csvFile.slice(start, end);
-
-            var fd = new FormData();
-            fd.append("file", chunk);
-            fd.append("filename", csvFile.name);
-            fd.append("chunk_index", i);
-            fd.append("total_chunks", totalChunks);
-            fd.append("submission_id", submissionId);
-            fd.append("file_role", "METADATA_CSV");
-
-            var result = await uploadChunkWithRetry(fd);
-
-            if (!result) return false;
+        var tc = Math.ceil(csvFile.size / CHUNK_SIZE);
+        for (var c = 0; c < tc; c++) {
+            if (!(await uploadChunkWithRetry(csvFile, c, tc, "METADATA_CSV")))
+                return false;
         }
         return true;
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  6. MANUAL METADATA BUILDER (Dynamic Columns)
-    // ════════════════════════════════════════════════════════════
+    /* ═══════════════════════════════════════════════════════════════════
+       MANUAL METADATA BUILDER
+       ═══════════════════════════════════════════════════════════════════ */
 
-    // Add a new column to the manual metadata table
-    addColumnBtn.addEventListener("click", function () {
-        var name = columnNameInput.value.trim();
-        if (!name) return;
-        // Prevent duplicates (case-insensitive check)
-        var lower = name.toLowerCase();
-        if (manualColumns.some(function (c) { return c.toLowerCase() === lower; })) return;
-        manualColumns.push(name);
-        columnNameInput.value = "";
-        renderColumnChips();
-        syncConditionTargetDropdown();
-        rebuildMetadataTable();
-        updateColumnMappingOptions();
-        validateAll();
-    });
+    function initManualMetadata() {
+        addColumnBtn.addEventListener("click", function () {
+            var name = columnNameInput.value.trim().toLowerCase().replace(/\s+/g, "_");
+            if (!name) return;
+            if (manualColumns.indexOf(name) !== -1) {
+                showToast("warning", "Duplicate Column", 'Column "' + name + '" already exists.');
+                return;
+            }
+            manualColumns.push(name);
+            columnSelectableValues[name] = [];
+            columnNameInput.value = "";
+            renderColumnChips();
+            updateConditionTargetDropdown();
+            rebuildMetadataTable();
+            updateColumnMappingOptions();
+        });
+        columnNameInput.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") { e.preventDefault(); addColumnBtn.click(); }
+        });
 
-    columnNameInput.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            addColumnBtn.click();
-        }
-    });
-
-    // ── Condition Value Management (per-column) ──
-    if (addConditionValueBtn && conditionValueInput && conditionTargetSelect) {
-        addConditionValueBtn.addEventListener("click", function () {
-            var targetCol = conditionTargetSelect.value;
-            if (!targetCol) return;
+        addConditionBtn.addEventListener("click", function () {
+            var col = conditionTargetColumn.value;
             var val = conditionValueInput.value.trim();
-            if (!val) return;
-            if (!columnSelectableValues[targetCol]) columnSelectableValues[targetCol] = [];
-            var existing = columnSelectableValues[targetCol];
-            if (existing.some(function (v) { return v.toLowerCase() === val.toLowerCase(); })) return;
-            existing.push(val);
+            if (!col || !val) return;
+            if (!columnSelectableValues[col]) columnSelectableValues[col] = [];
+            if (columnSelectableValues[col].indexOf(val) !== -1) {
+                showToast("warning", "Duplicate Value", 'Value "' + val + '" already exists for "' + col + '".');
+                return;
+            }
+            columnSelectableValues[col].push(val);
             conditionValueInput.value = "";
             renderConditionChips();
             rebuildMetadataTable();
-            validateAll();
         });
-
         conditionValueInput.addEventListener("keydown", function (e) {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                addConditionValueBtn.click();
-            }
+            if (e.key === "Enter") { e.preventDefault(); addConditionBtn.click(); }
         });
+
+        renderColumnChips();
+        updateConditionTargetDropdown();
     }
 
-    /**
-     * Sync the condition target column dropdown with manualColumns.
-     */
-    function syncConditionTargetDropdown() {
-        if (!conditionTargetSelect) return;
-        var prev = conditionTargetSelect.value;
-        conditionTargetSelect.innerHTML = "";
-        manualColumns.forEach(function (c) {
-            var opt = document.createElement("option");
-            opt.value = c;
-            opt.textContent = c;
-            conditionTargetSelect.appendChild(opt);
-        });
-        if (manualColumns.includes(prev)) {
-            conditionTargetSelect.value = prev;
-        }
-        // Re-render chips to match the new selection
-        renderConditionChips();
-    }
+    function renderColumnChips() {
+        columnChips.innerHTML = manualColumns.map(function (col) {
+            var isProtected = col === "condition";
+            return '<span class="group-chip ' + (isProtected ? "protected" : "") + '">' +
+                escapeHtml(col) +
+                (isProtected ? "" : ' <span class="remove-group" data-col="' + escapeHtml(col) + '">&times;</span>') +
+                '</span>';
+        }).join("");
 
-    // Update chips when user switches the target column dropdown
-    if (conditionTargetSelect) {
-        conditionTargetSelect.addEventListener("change", function () {
-            renderConditionChips();
+        columnChips.querySelectorAll(".remove-group").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var col = btn.dataset.col;
+                manualColumns = manualColumns.filter(function (c) { return c !== col; });
+                delete columnSelectableValues[col];
+                renderColumnChips();
+                updateConditionTargetDropdown();
+                rebuildMetadataTable();
+                updateColumnMappingOptions();
+            });
         });
     }
 
     function renderConditionChips() {
-        conditionChipsEl.innerHTML = "";
-        var selectedCol = conditionTargetSelect ? conditionTargetSelect.value : null;
-        var allEntries = [];
-
-        if (selectedCol) {
-            // Show only chips for the currently selected target column
-            var vals = columnSelectableValues[selectedCol] || [];
-            vals.forEach(function (val, idx) {
-                allEntries.push({ col: selectedCol, val: val, idx: idx });
-            });
-        } else {
-            // Fallback: show all if no column is selected
-            Object.keys(columnSelectableValues).forEach(function (col) {
-                columnSelectableValues[col].forEach(function (val, idx) {
-                    allEntries.push({ col: col, val: val, idx: idx });
-                });
+        var html = "";
+        for (var col in columnSelectableValues) {
+            if (!columnSelectableValues.hasOwnProperty(col)) continue;
+            columnSelectableValues[col].forEach(function (val) {
+                html += '<span class="group-chip condition-chip">' +
+                    '<span class="chip-col-label">' + escapeHtml(col) + ':</span> ' + escapeHtml(val) +
+                    ' <span class="remove-group" data-col="' + escapeHtml(col) + '" data-val="' + escapeHtml(val) + '">&times;</span>' +
+                    '</span>';
             });
         }
-
-        allEntries.forEach(function (entry) {
-            var chip = document.createElement("span");
-            chip.className = "group-chip condition-chip";
-            chip.innerHTML =
-                escapeHtml(entry.val) +
-                ' <span class="chip-col-label">(' + escapeHtml(entry.col) + ')</span>' +
-                ' <span class="remove-group" data-col="' + escapeHtml(entry.col) +
-                '" data-idx="' + entry.idx + '">&times;</span>';
-            conditionChipsEl.appendChild(chip);
-        });
-
-        conditionChipsEl.querySelectorAll(".remove-group").forEach(function (btn) {
+        conditionChips.innerHTML = html;
+        conditionChips.querySelectorAll(".remove-group").forEach(function (btn) {
             btn.addEventListener("click", function () {
                 var col = btn.dataset.col;
-                var removedIdx = parseInt(btn.dataset.idx, 10);
+                var val = btn.dataset.val;
                 if (columnSelectableValues[col]) {
-                    columnSelectableValues[col].splice(removedIdx, 1);
-                    if (columnSelectableValues[col].length === 0) {
-                        delete columnSelectableValues[col];
-                    }
+                    columnSelectableValues[col] = columnSelectableValues[col].filter(function (v) { return v !== val; });
                 }
                 renderConditionChips();
                 rebuildMetadataTable();
-                validateAll();
+                var pgCol = primaryGroupSelect.value;
+                if (pgCol) asyncCheckContrastVisibility(pgCol);
             });
         });
     }
 
-    function renderColumnChips() {
-        columnChips.innerHTML = "";
-        manualColumns.forEach(function (name, idx) {
-            var chip = document.createElement("span");
-            chip.className = "group-chip";
-            var isProtected = name.toLowerCase() === "condition";
-            if (isProtected) {
-                chip.classList.add("protected");
-                chip.innerHTML = escapeHtml(name);
-            } else {
-                chip.innerHTML =
-                    escapeHtml(name) +
-                    ' <span class="remove-group" data-idx="' + idx + '">&times;</span>';
-            }
-            columnChips.appendChild(chip);
-        });
-
-        columnChips.querySelectorAll(".remove-group").forEach(function (btn) {
-            btn.addEventListener("click", function () {
-                var removedIdx = parseInt(btn.dataset.idx, 10);
-                var removed = manualColumns[removedIdx];
-                manualColumns.splice(removedIdx, 1);
-                // Clear mapping references to the removed column
-                if (columnMapping.primary_group === removed) columnMapping.primary_group = null;
-                if (columnMapping.batch_effect === removed) columnMapping.batch_effect = null;
-                columnMapping.additional_covariates = columnMapping.additional_covariates
-                    .filter(function (c) { return c !== removed; });
-                // Also remove selectable values for the removed column
-                delete columnSelectableValues[removed];
-                renderColumnChips();
-                syncConditionTargetDropdown();
-                renderConditionChips();
-                rebuildMetadataTable();
-                updateColumnMappingOptions();
-                validateAll();
-            });
-        });
+    function updateConditionTargetDropdown() {
+        conditionTargetColumn.innerHTML = manualColumns.map(function (col) {
+            return '<option value="' + escapeHtml(col) + '">' + escapeHtml(col) + '</option>';
+        }).join("");
     }
 
-    /**
-     * Extract unique sample names from uploaded/selected files.
-     * Paired-end ⇒ one row per sample prefix.
-     * Alignment entry ⇒ BAM filenames (sans extension).
-     * Matrix entry ⇒ column headers from count matrix (excluding first col).
-     */
-    function getSampleNames() {
-        if (inputDataType === "matrix") {
-            if (parsedMatrixData && parsedMatrixData.headers.length > 1) {
-                return parsedMatrixData.headers.slice(1);
-            }
-            return [];
-        }
-
-        if (inputDataType === "alignment") {
-            var bamNames = uploadedBamFiles.length > 0
-                ? uploadedBamFiles
-                : selectedBamFiles.map(function (f) { return f.name; });
-            return bamNames.map(function (n) {
-                return n.replace(/\.(bam|cram)$/i, "");
-            });
-        }
-
-        // FASTQ entry
-        var names = uploadedFiles.length > 0
-            ? uploadedFiles
-            : selectedFiles.map(function (f) { return f.name; });
-
-        if (getLibraryType() === "paired") {
-            var prefixes = new Set();
-            var re = /^(.+?)(?:_R[12]|_[12])\.(?:fq|fastq)\.gz$/i;
-            names.forEach(function (n) {
-                var m = re.exec(n);
-                if (m) prefixes.add(m[1]);
-                else prefixes.add(n);
-            });
-            return Array.from(prefixes);
-        }
-
-        return names;
-    }
-
-    /**
-     * Rebuild the manual metadata table with dynamic columns.
-     * Each sample gets a row, each user-defined column gets a text input cell.
-     */
     function rebuildMetadataTable() {
-        if (getMetadataMode() !== "manual") return;
+        var samples = extractSampleNames();
 
-        var samples = getSampleNames();
-        var cols = manualColumns;
-
-        // Build dynamic header row
-        metadataHeaderRow.innerHTML = "<th>Sample Name</th>";
-        cols.forEach(function (col) {
-            metadataHeaderRow.innerHTML += '<th>' + escapeHtml(col) + '</th>';
-        });
-
-        // Preserve existing cell values before rebuilding
-        var prevValues = {};
-        metadataBody.querySelectorAll("tr").forEach(function (tr) {
-            var sampleCode = tr.querySelector("code");
-            if (!sampleCode) return;
-            var sampleName = sampleCode.textContent;
-            prevValues[sampleName] = {};
-            tr.querySelectorAll(".meta-cell-input").forEach(function (inp) {
-                prevValues[sampleName][inp.dataset.column] = inp.value;
-            });
-        });
-
-        metadataBody.innerHTML = "";
+        metadataHeaderRow.innerHTML = "<th>Sample Name</th>" +
+            manualColumns.map(function (col) { return "<th>" + escapeHtml(col) + "</th>"; }).join("");
 
         if (samples.length === 0) {
+            metadataBody.innerHTML = "";
             noFilesHint.style.display = "";
             return;
         }
         noFilesHint.style.display = "none";
 
-        samples.forEach(function (name) {
-            var tr = document.createElement("tr");
-
-            // Sample Name (read-only)
-            var tdName = document.createElement("td");
-            tdName.innerHTML = '<code style="font-size:.75rem;">' + escapeHtml(name) + '</code>';
-            tr.appendChild(tdName);
-
-            // Dynamic column cells
-            cols.forEach(function (col) {
-                var td = document.createElement("td");
-                var selectableVals = columnSelectableValues[col];
-                var hasSelectable = selectableVals && selectableVals.length > 0;
-
-                if (hasSelectable) {
-                    var select = document.createElement("select");
-                    select.className = "rna-input rna-select meta-cell-input";
-                    select.dataset.sample = name;
-                    select.dataset.column = col;
-                    var emptyOpt = document.createElement("option");
-                    emptyOpt.value = "";
-                    emptyOpt.textContent = "-- Select --";
-                    select.appendChild(emptyOpt);
-                    selectableVals.forEach(function (v) {
-                        var opt = document.createElement("option");
-                        opt.value = v;
-                        opt.textContent = v;
-                        select.appendChild(opt);
-                    });
-                    if (prevValues[name] && prevValues[name][col] !== undefined) {
-                        select.value = prevValues[name][col];
-                    }
-                    select.addEventListener("change", function () {
-                        updateColumnMappingOptions();
-                        validateAll();
-                    });
-                    td.appendChild(select);
-                } else {
-                    var input = document.createElement("input");
-                    input.type = "text";
-                    input.className = "rna-input meta-cell-input";
-                    input.placeholder = col;
-                    input.dataset.sample = name;
-                    input.dataset.column = col;
-                    if (prevValues[name] && prevValues[name][col] !== undefined) {
-                        input.value = prevValues[name][col];
-                    }
-                    input.addEventListener("input", function () {
-                        updateColumnMappingOptions();
-                        validateAll();
-                    });
-                    td.appendChild(input);
-                }
-                tr.appendChild(td);
+        // Preserve existing cell values
+        var existing = {};
+        metadataBody.querySelectorAll("tr").forEach(function (tr) {
+            var sn = tr.dataset.sample;
+            if (!sn) return;
+            tr.querySelectorAll("[data-col]").forEach(function (el) {
+                if (!existing[sn]) existing[sn] = {};
+                existing[sn][el.dataset.col] = el.value;
             });
-
-            metadataBody.appendChild(tr);
         });
 
+        metadataBody.innerHTML = samples.map(function (sample) {
+            var row = '<tr data-sample="' + escapeHtml(sample) + '"><td>' + escapeHtml(sample) + '</td>';
+            manualColumns.forEach(function (col) {
+                var prev = (existing[sample] && existing[sample][col]) || "";
+                var vals = columnSelectableValues[col] || [];
+                if (vals.length > 0) {
+                    row += '<td><select class="rna-input rna-select meta-cell-input" data-col="' + escapeHtml(col) + '">' +
+                        '<option value="">--</option>' +
+                        vals.map(function (v) {
+                            return '<option value="' + escapeHtml(v) + '"' + (v === prev ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
+                        }).join("") +
+                        '</select></td>';
+                } else {
+                    row += '<td><input type="text" class="rna-input meta-cell-input" data-col="' + escapeHtml(col) + '" value="' + escapeHtml(prev) + '"></td>';
+                }
+            });
+            row += '</tr>';
+            return row;
+        }).join("");
+
+        // Attach async change listeners for metadata cells
+        metadataBody.querySelectorAll(".meta-cell-input").forEach(function (el) {
+            el.addEventListener("change", onManualMetadataChange);
+            if (el.tagName === "INPUT") {
+                el.addEventListener("input", onManualMetadataChange);
+            }
+        });
+
+        showRolesContrastRow();
         updateColumnMappingOptions();
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  7. COLUMN ROLE ASSIGNMENT (Mapping UI)
-    // ════════════════════════════════════════════════════════════
-
-    /**
-     * Get the list of mappable column names from current metadata.
-     * For CSV: all headers except the first (sample ID) column.
-     * For manual: all user-defined columns.
-     */
-    function getMetadataColumns() {
-        if (getMetadataMode() === "upload" && parsedCsvData) {
-            // First column is the sample identifier – skip it
-            return parsedCsvData.headers.slice(1);
-        }
-        if (getMetadataMode() === "manual") {
-            return manualColumns.slice();
-        }
-        return [];
+    /* Async handler: re-evaluate contrast section when manual metadata changes */
+    function onManualMetadataChange() {
+        updateColumnMappingOptions();
+        var col = primaryGroupSelect.value;
+        if (col) asyncCheckContrastVisibility(col);
     }
 
-    /**
-     * Get all metadata rows as an array of objects.
-     * For CSV: directly from parsed data.
-     * For manual: read from the editable table inputs.
-     */
-    function getMetadataRows() {
-        if (getMetadataMode() === "upload" && parsedCsvData) {
-            return getFilteredCsvRows();
-        }
-        if (getMetadataMode() === "manual") {
-            var rows = [];
-            metadataBody.querySelectorAll("tr").forEach(function (tr) {
-                var row = {};
-                var code = tr.querySelector("code");
-                if (code) row["_sample_name"] = code.textContent;
-                tr.querySelectorAll(".meta-cell-input").forEach(function (inp) {
-                    row[inp.dataset.column] = inp.value.trim();
-                });
-                rows.push(row);
+    /* ═══════════════════════════════════════════════════════════════════
+       SAMPLE NAME EXTRACTION
+       ═══════════════════════════════════════════════════════════════════ */
+
+    function extractSampleNames() {
+        if (inputDataType === "fastq") {
+            var names = {};
+            selectedFiles.forEach(function (f) {
+                var stem;
+                if (libraryType === "paired") {
+                    var m = f.name.match(/^(.+?)(?:_R[12]|_[12])\.(?:fq|fastq)\.gz$/i);
+                    stem = m ? m[1] : f.name.replace(/\.(?:fq|fastq)\.gz$/i, "");
+                } else {
+                    stem = f.name.replace(/\.(?:fq|fastq)\.gz$/i, "");
+                }
+                names[stem] = true;
             });
-            return rows;
+            return Object.keys(names);
+        }
+        if (inputDataType === "alignment") {
+            return selectedBamFiles.map(function (f) {
+                return f.name.replace(/\.(?:bam|cram)$/i, "");
+            });
+        }
+        if (inputDataType === "matrix" && parsedMatrixData) {
+            return parsedMatrixData.meta.fields.slice(1);
         }
         return [];
     }
 
-    /**
-     * Refresh all column mapping dropdown options based on current metadata columns.
-     * Called whenever metadata changes (CSV parsed, columns added/removed, table edited).
-     */
-    function updateColumnMappingOptions() {
-        var cols = getMetadataColumns();
-        if (cols.length === 0) {
-            columnMappingSection.style.display = "none";
-            contrastSection.style.display = "none";
-            rolesContrastRow.style.display = "none";
-            return;
-        }
+    /* ═══════════════════════════════════════════════════════════════════
+       COLUMN MAPPING (Roles)
+       ═══════════════════════════════════════════════════════════════════ */
+
+    function showRolesContrastRow() {
         columnMappingSection.style.display = "";
-        rolesContrastRow.style.display = "";
-
-        // ── Primary Group dropdown ──
-        var prevPrimary = columnMapping.primary_group;
-        primaryGroupSelect.innerHTML = '<option value="">-- Select primary group column --</option>';
-        cols.forEach(function (c) {
-            var opt = document.createElement("option");
-            opt.value = c;
-            opt.textContent = c;
-            primaryGroupSelect.appendChild(opt);
-        });
-        if (prevPrimary && cols.includes(prevPrimary)) {
-            primaryGroupSelect.value = prevPrimary;
-        } else {
-            columnMapping.primary_group = null;
-        }
-
-        // ── Batch Effect dropdown ──
-        var prevBatch = columnMapping.batch_effect;
-        batchEffectSelect.innerHTML = '<option value="">None</option>';
-        cols.forEach(function (c) {
-            var opt = document.createElement("option");
-            opt.value = c;
-            opt.textContent = c;
-            batchEffectSelect.appendChild(opt);
-        });
-        if (prevBatch && cols.includes(prevBatch)) {
-            batchEffectSelect.value = prevBatch;
-        } else {
-            columnMapping.batch_effect = null;
-        }
-
-        // ── Additional Covariates checkboxes ──
-        covariatesList.innerHTML = "";
-        cols.forEach(function (c) {
-            var label = document.createElement("label");
-            label.className = "covariate-check-label";
-            var cb = document.createElement("input");
-            cb.type = "checkbox";
-            cb.value = c;
-            cb.checked = columnMapping.additional_covariates.includes(c);
-            cb.addEventListener("change", function () {
-                syncCovariatesFromCheckboxes();
-                validateColumnSelection();
-                validateAll();
-            });
-            label.appendChild(cb);
-            label.appendChild(document.createTextNode(" " + c));
-            covariatesList.appendChild(label);
-        });
-
-        onPrimaryGroupChange();
-        validateColumnSelection();
+        updateColumnMappingOptions();
     }
 
-    primaryGroupSelect.addEventListener("change", function () {
-        columnMapping.primary_group = primaryGroupSelect.value || null;
-        onPrimaryGroupChange();
-        validateColumnSelection();
-        validateAll();
-    });
+    function hideRolesContrastRow() {
+        columnMappingSection.style.display = "none";
+        contrastSection.style.display = "none";
+    }
 
-    batchEffectSelect.addEventListener("change", function () {
-        columnMapping.batch_effect = batchEffectSelect.value || null;
-        validateColumnSelection();
-        validateAll();
-    });
+    function updateColumnMappingOptions() {
+        var columns = getMetadataColumns();
+        var pgVal = primaryGroupSelect.value;
+        var beVal = batchEffectSelect.value;
 
-    function syncCovariatesFromCheckboxes() {
-        columnMapping.additional_covariates = [];
-        covariatesList.querySelectorAll("input[type=checkbox]:checked").forEach(function (cb) {
-            columnMapping.additional_covariates.push(cb.value);
+        primaryGroupSelect.innerHTML = '<option value="">-- Select primary group column --</option>' +
+            columns.map(function (c) {
+                return '<option value="' + escapeHtml(c) + '"' + (c === pgVal ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
+            }).join("");
+
+        var exclude = [primaryGroupSelect.value].filter(Boolean);
+        batchEffectSelect.innerHTML = '<option value="">None</option>' +
+            columns.filter(function (c) { return exclude.indexOf(c) === -1; }).map(function (c) {
+                return '<option value="' + escapeHtml(c) + '"' + (c === beVal ? ' selected' : '') + '>' + escapeHtml(c) + '</option>';
+            }).join("");
+
+        var selectedCovs = [].slice.call(covariatesList.querySelectorAll("input:checked")).map(function (x) { return x.value; });
+        var excludeAll = [primaryGroupSelect.value, batchEffectSelect.value].filter(Boolean);
+        covariatesList.innerHTML = columns.filter(function (c) { return excludeAll.indexOf(c) === -1; }).map(function (c) {
+            return '<label class="covariate-check-label"><input type="checkbox" value="' + escapeHtml(c) + '"' +
+                (selectedCovs.indexOf(c) !== -1 ? ' checked' : '') + '> ' + escapeHtml(c) + '</label>';
+        }).join("");
+    }
+
+    function getMetadataColumns() {
+        if (metadataMode === "upload" && parsedCsvData) {
+            return parsedCsvData.meta.fields.filter(function (f) { return f.toLowerCase() !== "sample"; });
+        }
+        if (metadataMode === "manual") return manualColumns.slice();
+        return [];
+    }
+
+    function initColumnMapping() {
+        primaryGroupSelect.addEventListener("change", function () {
+            columnMapping.primary_group = primaryGroupSelect.value;
+            onPrimaryGroupChange();
+            updateColumnMappingOptions();
+            validateColumnSelection();
+        });
+        batchEffectSelect.addEventListener("change", function () {
+            columnMapping.batch_effect = batchEffectSelect.value;
+            updateColumnMappingOptions();
         });
     }
 
-    /**
-     * When the primary_group column changes, check the number of unique values.
-     * If >2, show the contrast builder so users can define pairwise comparisons.
-     */
     function onPrimaryGroupChange() {
-        if (!columnMapping.primary_group) {
-            contrastSection.style.display = "none";
-            contrasts = [];
-            return;
-        }
-
-        var uniqueValues = getUniqueColumnValues(columnMapping.primary_group);
-
-        if (uniqueValues.length > 2) {
-            contrastSection.style.display = "";
-            // Auto-seed one contrast if empty
-            if (contrasts.length === 0 && uniqueValues.length >= 2) {
-                contrasts.push([uniqueValues[1], uniqueValues[0]]);
-            }
-            renderContrastRows(uniqueValues);
-        } else {
-            contrastSection.style.display = "none";
-            contrasts = [];
-        }
+        var col = primaryGroupSelect.value;
+        if (!col) { contrastSection.style.display = "none"; return; }
+        asyncCheckContrastVisibility(col);
     }
 
-    /**
-     * Extract sorted unique non-empty values from a metadata column.
-     */
+    /* ─── Async Contrast Visibility Check ─────────────────── */
+    let _contrastCheckPending = null;
+
+    function asyncCheckContrastVisibility(col) {
+        if (_contrastCheckPending) clearTimeout(_contrastCheckPending);
+        _contrastCheckPending = setTimeout(function () {
+            _contrastCheckPending = null;
+            var values = getUniqueColumnValues(col);
+            if (values.length > 2) {
+                contrastSection.style.display = "";
+                if (contrasts.length === 0 && values.length >= 2)
+                    contrasts = [[values[1] || "", values[0] || ""]];
+                renderContrastRows(values);
+            } else {
+                contrastSection.style.display = "none";
+                contrasts = [];
+            }
+        }, 150);
+    }
+
     function getUniqueColumnValues(colName) {
-        var rows = getMetadataRows();
-        var values = new Set();
-        rows.forEach(function (r) {
-            var v = r[colName];
-            if (v && String(v).trim()) values.add(String(v).trim());
-        });
-        return Array.from(values).sort();
+        var seen = {};
+        var result = [];
+        if (metadataMode === "upload" && parsedCsvData) {
+            getFilteredCsvRows().forEach(function (row) {
+                if (row[colName] && !seen[row[colName]]) { seen[row[colName]] = true; result.push(row[colName]); }
+            });
+        } else if (metadataMode === "manual") {
+            (columnSelectableValues[colName] || []).forEach(function (v) {
+                if (!seen[v]) { seen[v] = true; result.push(v); }
+            });
+            metadataBody.querySelectorAll('[data-col="' + colName + '"]').forEach(function (el) {
+                if (el.value && !seen[el.value]) { seen[el.value] = true; result.push(el.value); }
+            });
+        }
+        return result;
     }
 
-    /**
-     * Validate all assigned columns for missing values (NAs) and zero variance.
-     * Show per-column error messages.
-     */
     function validateColumnSelection() {
-        var msgs = [];
-        var rows = getMetadataRows();
-        if (rows.length === 0) {
-            columnValidationMsg.style.display = "none";
-            return;
-        }
-
-        // Gather all assigned columns
-        var assignedCols = [];
-        if (columnMapping.primary_group) assignedCols.push(columnMapping.primary_group);
-        if (columnMapping.batch_effect) assignedCols.push(columnMapping.batch_effect);
-        columnMapping.additional_covariates.forEach(function (c) { assignedCols.push(c); });
-
-        assignedCols.forEach(function (col) {
-            var values = rows.map(function (r) { return (r[col] || "").trim(); });
-            var hasNA = values.some(function (v) {
-                return v === "" || v.toUpperCase() === "NA";
-            });
-            var uniqueNonEmpty = new Set(values.filter(function (v) {
-                return v !== "" && v.toUpperCase() !== "NA";
-            }));
-            var zeroVar = uniqueNonEmpty.size <= 1;
-
-            if (hasNA) {
-                msgs.push(
-                    '<i class="bi bi-exclamation-triangle"></i> Column <strong>' +
-                    escapeHtml(col) + '</strong> contains missing values (empty or NA).'
-                );
-            }
-            if (zeroVar) {
-                msgs.push(
-                    '<i class="bi bi-exclamation-triangle"></i> Column <strong>' +
-                    escapeHtml(col) + '</strong> has zero variance (only one unique value).'
-                );
-            }
-        });
-
-        // Check for duplicate role assignment
-        var seen = new Set();
-        assignedCols.forEach(function (c) {
-            if (seen.has(c)) {
-                msgs.push(
-                    '<i class="bi bi-exclamation-triangle"></i> Column <strong>' +
-                    escapeHtml(c) + '</strong> is assigned to multiple roles.'
-                );
-            }
-            seen.add(c);
-        });
-
-        if (msgs.length > 0) {
-            columnValidationMsg.className = "validation-msg error";
-            columnValidationMsg.innerHTML = msgs.join("<br>");
-            columnValidationMsg.style.display = "block";
-        } else if (assignedCols.length > 0) {
-            columnValidationMsg.className = "validation-msg success";
-            columnValidationMsg.innerHTML =
-                '<i class="bi bi-check-circle"></i> All selected columns pass validation.';
-            columnValidationMsg.style.display = "block";
+        var col = primaryGroupSelect.value;
+        if (!col) { columnValidationMsg.style.display = "none"; return; }
+        var values = getUniqueColumnValues(col);
+        columnValidationMsg.style.display = "";
+        if (values.length < 2) {
+            columnValidationMsg.className = "validation-msg error rna-mt-2";
+            columnValidationMsg.textContent = '"' + col + '" has fewer than 2 distinct values. DESeq2 needs at least 2 groups.';
         } else {
-            columnValidationMsg.style.display = "none";
+            columnValidationMsg.className = "validation-msg success rna-mt-2";
+            columnValidationMsg.textContent = values.length + " groups: " + values.join(", ");
         }
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  8. DYNAMIC CONTRAST BUILDER
-    // ════════════════════════════════════════════════════════════
+    /* ═══════════════════════════════════════════════════════════════════
+       CONTRAST BUILDER
+       ═══════════════════════════════════════════════════════════════════ */
 
-    addContrastBtn.addEventListener("click", function () {
-        var values = getUniqueColumnValues(columnMapping.primary_group);
-        if (values.length >= 2) {
-            contrasts.push([values[1] || values[0], values[0]]);
-            renderContrastRows(values);
-        }
-    });
-
-    /**
-     * Render contrast definition rows. Each row has a Target (numerator)
-     * dropdown, a "vs" label, a Reference (denominator) dropdown, and
-     * a remove button.
-     */
-    function renderContrastRows(uniqueValues) {
-        contrastList.innerHTML = "";
-
-        contrasts.forEach(function (pair, idx) {
-            var row = document.createElement("div");
-            row.className = "contrast-row";
-
-            // ── Target (numerator) dropdown ──
-            var targetLabel = document.createElement("span");
-            targetLabel.className = "contrast-label";
-            targetLabel.textContent = "Target:";
-
-            var targetSel = document.createElement("select");
-            targetSel.className = "rna-input rna-select contrast-select";
-            uniqueValues.forEach(function (v) {
-                var opt = document.createElement("option");
-                opt.value = v;
-                opt.textContent = v;
-                if (v === pair[0]) opt.selected = true;
-                targetSel.appendChild(opt);
-            });
-            targetSel.addEventListener("change", function () {
-                contrasts[idx][0] = targetSel.value;
-            });
-
-            // ── "vs" label ──
-            var vsLabel = document.createElement("span");
-            vsLabel.className = "contrast-vs";
-            vsLabel.textContent = "vs";
-
-            // ── Reference (denominator) dropdown ──
-            var refLabel = document.createElement("span");
-            refLabel.className = "contrast-label";
-            refLabel.textContent = "Ref:";
-
-            var refSel = document.createElement("select");
-            refSel.className = "rna-input rna-select contrast-select";
-            uniqueValues.forEach(function (v) {
-                var opt = document.createElement("option");
-                opt.value = v;
-                opt.textContent = v;
-                if (v === pair[1]) opt.selected = true;
-                refSel.appendChild(opt);
-            });
-            refSel.addEventListener("change", function () {
-                contrasts[idx][1] = refSel.value;
-            });
-
-            // ── Remove button ──
-            var removeBtn = document.createElement("button");
-            removeBtn.type = "button";
-            removeBtn.className = "btn-rna btn-rna-danger btn-rna-sm contrast-remove";
-            removeBtn.innerHTML = '<i class="bi bi-trash"></i>';
-            removeBtn.addEventListener("click", function () {
-                contrasts.splice(idx, 1);
-                renderContrastRows(uniqueValues);
-            });
-
-            row.appendChild(targetLabel);
-            row.appendChild(targetSel);
-            row.appendChild(vsLabel);
-            row.appendChild(refLabel);
-            row.appendChild(refSel);
-            row.appendChild(removeBtn);
-            contrastList.appendChild(row);
+    function initContrasts() {
+        addContrastBtn.addEventListener("click", function () {
+            contrasts.push(["", ""]);
+            renderContrastRows(getUniqueColumnValues(primaryGroupSelect.value));
         });
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  9. THRESHOLD LIVE PREVIEW
-    // ════════════════════════════════════════════════════════════
+    function renderContrastRows(values) {
+        if (!values) values = getUniqueColumnValues(primaryGroupSelect.value);
+        var opts = values.map(function (v) { return '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; }).join("");
+
+        contrastList.innerHTML = contrasts.map(function (pair, i) {
+            return '<div class="contrast-row">' +
+                '<span class="contrast-label">Target:</span>' +
+                '<select class="rna-input rna-select contrast-select contrast-target" data-idx="' + i + '"><option value="">--</option>' + opts + '</select>' +
+                '<span class="contrast-vs">vs</span>' +
+                '<span class="contrast-label">Ref:</span>' +
+                '<select class="rna-input rna-select contrast-select contrast-ref" data-idx="' + i + '"><option value="">--</option>' + opts + '</select>' +
+                '<button type="button" class="btn-rna btn-rna-danger btn-rna-sm contrast-remove" data-idx="' + i + '"><i class="bi bi-trash"></i></button>' +
+                '</div>';
+        }).join("");
+
+        contrastList.querySelectorAll(".contrast-target").forEach(function (sel) {
+            var idx = parseInt(sel.dataset.idx);
+            if (contrasts[idx]) sel.value = contrasts[idx][0];
+            sel.addEventListener("change", function () { contrasts[parseInt(sel.dataset.idx)][0] = sel.value; });
+        });
+        contrastList.querySelectorAll(".contrast-ref").forEach(function (sel) {
+            var idx = parseInt(sel.dataset.idx);
+            if (contrasts[idx]) sel.value = contrasts[idx][1];
+            sel.addEventListener("change", function () { contrasts[parseInt(sel.dataset.idx)][1] = sel.value; });
+        });
+        contrastList.querySelectorAll(".contrast-remove").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                contrasts.splice(parseInt(btn.dataset.idx), 1);
+                renderContrastRows(values);
+            });
+        });
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       THRESHOLDS
+       ═══════════════════════════════════════════════════════════════════ */
+
+    function initThresholds() {
+        var update = function () { updateThresholdPreview(); };
+        adjPvalue.addEventListener("input", update);
+        minLog2fc.addEventListener("input", update);
+        maxLog2fc.addEventListener("input", update);
+        update();
+    }
 
     function updateThresholdPreview() {
-        var maxVal = Math.max(
+        var fc = Math.max(
             Math.abs(parseFloat(minLog2fc.value) || 1),
             Math.abs(parseFloat(maxLog2fc.value) || 1)
         );
-        fcPreview.textContent = maxVal.toFixed(1);
-        pvalPreview.textContent = parseFloat(adjPvalue.value || 0.05).toFixed(2);
+        fcPreview.textContent = fc.toFixed(1);
+        pvalPreview.textContent = parseFloat(adjPvalue.value) || 0.05;
     }
 
-    adjPvalue.addEventListener("input", updateThresholdPreview);
-    minLog2fc.addEventListener("input", updateThresholdPreview);
-    maxLog2fc.addEventListener("input", updateThresholdPreview);
-
-    // ════════════════════════════════════════════════════════════
-    //  9b. CARD LOCK / UNLOCK (LEFT-TO-RIGHT PROGRESSION)
-    // ════════════════════════════════════════════════════════════
-
-    /**
-     * Enforce left-to-right card progression:
-     *   FASTQ mode:     Upload → Genome → Metadata → Thresholds
-     *   Alignment mode:  Upload → Genome → Metadata → Thresholds
-     *   Matrix mode:     Upload → Metadata → Thresholds  (genome hidden)
-     *
-     * A card is unlocked only when the previous card's required input is satisfied.
-     */
-    function updateCardLocks() {
-        // Step 1: Is the upload column satisfied?
-        var uploadDone = false;
-        if (inputDataType === "fastq") {
-            uploadDone = getLibraryType() !== null && selectedFiles.length > 0;
-        } else if (inputDataType === "alignment") {
-            uploadDone = selectedBamFiles.length > 0;
-        } else {
-            uploadDone = parsedMatrixData !== null && parsedMatrixData.rows.length > 0;
-        }
-
-        // Step 2: Is the genome column satisfied? (skipped in matrix mode)
-        var genomeDone = inputDataType === "matrix" ? true : isGenomeValid();
-
-        // Step 3: Is metadata satisfied?
-        var metadataDone = isMetadataValid();
-
-        // Apply lock states
-        if (colGenome) colGenome.classList.toggle("locked", !uploadDone);
-        if (colMetadata) colMetadata.classList.toggle("locked", !(uploadDone && genomeDone));
-        if (colThresholds) colThresholds.classList.toggle("locked", !(uploadDone && genomeDone && metadataDone));
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  10. FORM VALIDATION
-    // ════════════════════════════════════════════════════════════
+    /* ═══════════════════════════════════════════════════════════════════
+       VALIDATION (Step 5 Summary)
+       ═══════════════════════════════════════════════════════════════════ */
 
     function validateAll() {
-        var isFilesValid;
-        if (inputDataType === "fastq") {
-            isFilesValid = selectedFiles.length > 0;
-        } else if (inputDataType === "alignment") {
-            isFilesValid = selectedBamFiles.length > 0;
-        } else {
-            isFilesValid = parsedMatrixData !== null &&
-                parsedMatrixData.rows.length > 0 &&
-                validateMatrixData(parsedMatrixData).length === 0;
-        }
-
-        var checks = {
-            files: isFilesValid,
-            metadata: isMetadataValid(),
-            mapping: isMappingValid(),
+        var setValid = function (el, valid) {
+            if (!el) return;
+            el.classList.remove("valid", "invalid");
+            el.classList.add(valid ? "valid" : "invalid");
+            var icon = el.querySelector("i");
+            if (icon) icon.className = "bi " + (valid ? "bi-check-circle-fill" : "bi-x-circle");
         };
 
-        // Conditional checks
-        if (inputDataType === "fastq") {
-            checks.library = getLibraryType() !== null;
-            checks.genome = isGenomeValid();
-        } else if (inputDataType === "alignment") {
-            checks.genome = isGenomeValid();
-        }
+        var nameValid = !!submissionNameInput.value.trim();
+        setValid(valName, nameValid);
 
-        setValIndicator(valFiles, checks.files);
-        setValIndicator(valMetadata, checks.metadata);
-        setValIndicator(valMapping, checks.mapping);
+        var libValid = inputDataType === "matrix" || !!libraryType;
+        setValid(valLibrary, libValid);
+        if (valLibrary) valLibrary.style.display = inputDataType === "matrix" ? "none" : "";
 
-        if (inputDataType === "fastq") {
-            setValIndicator(valLibrary, checks.library);
-            setValIndicator(valGenome, checks.genome);
-        } else if (inputDataType === "alignment") {
-            setValIndicator(valGenome, checks.genome);
-        }
+        var filesValid = false;
+        if (inputDataType === "fastq") filesValid = selectedFiles.length > 0 || uploadedFiles.length > 0;
+        else if (inputDataType === "alignment") filesValid = selectedBamFiles.length > 0 || uploadedBamFiles.length > 0;
+        else if (inputDataType === "matrix") filesValid = !!parsedMatrixData;
+        setValid(valFiles, filesValid);
 
-        var allValid = Object.values(checks).every(Boolean);
-        submitBtn.disabled = !allValid;
+        var genValid = isGenomeValid();
+        setValid(valGenome, genValid);
+        if (valGenome) valGenome.style.display = inputDataType === "matrix" ? "none" : "";
 
-        // Update card lock/blur states (left-to-right progression)
-        updateCardLocks();
+        var metaValid = isMetadataValid();
+        setValid(valMetadata, metaValid);
 
-        // Re-render the CSV viewer and preview whenever validation runs
-        // (files/metadata may have changed affecting sample matching)
-        renderCsvPreview();
+        var mapValid = isMappingValid();
+        setValid(valMapping, mapValid);
+
+        submitBtn.disabled = !(nameValid && libValid && filesValid && genValid && metaValid && mapValid);
     }
 
-    function setValIndicator(el, valid) {
-        el.classList.toggle("valid", valid);
-        el.classList.toggle("invalid", !valid);
-    }
-
-    function isGenomeValid() {
-        if (!genomeSelect.value) return false;
-        if (genomeSelect.value === "custom") {
-            return (
-                customGenomeName.value.trim().length > 0 &&
-                customGenomeFiles.fasta !== null &&
-                customGenomeFiles.annotation !== null
-            );
-        }
-        return true;
-    }
-
-    /**
-     * Metadata is "valid" if data has been provided (CSV parsed or manual table populated).
-     * For upload mode: every uploaded sample must have a matching row in the CSV.
-     * For matrix entry: additionally cross-validate sample names in metadata vs count matrix.
-     */
     function isMetadataValid() {
-        var mode = getMetadataMode();
-        if (mode === "upload") {
-            if (!parsedCsvData || parsedCsvData.rows.length === 0) return false;
-
-            var sampleNames = getSampleNames();
-            if (sampleNames.length > 0) {
-                var filteredRows = getFilteredCsvRows();
-                var sampleCol = parsedCsvData.headers[0];
-                var metaIds = new Set();
-                filteredRows.forEach(function (row) {
-                    metaIds.add((row[sampleCol] || "").trim());
-                });
-                // Every uploaded sample must have a metadata row
-                var allMatched = sampleNames.every(function (name) {
-                    return metaIds.has(name) || metaIds.has(stripExtension(name));
-                });
-                if (!allMatched) return false;
-            }
-
-            // For matrix entry: each metadata row's sample ID must appear in count matrix columns
-            if (inputDataType === "matrix" && parsedMatrixData) {
-                var matrixSamples = new Set(parsedMatrixData.headers.slice(1));
-                var col = parsedCsvData.headers[0];
-                var allFound = parsedCsvData.rows.every(function (row) {
-                    return matrixSamples.has((row[col] || "").trim());
-                });
-                if (!allFound) return false;
-            }
-            return true;
+        if (metadataMode === "upload") {
+            return !!(parsedCsvData && parsedCsvData.data.length > 0);
         }
-        // Manual mode: need at least one column and table cells with data
-        if (manualColumns.length === 0) return false;
-        var rows = metadataBody.querySelectorAll("tr");
-        if (rows.length === 0) {
-            if (inputDataType === "fastq") return selectedFiles.length === 0;
-            if (inputDataType === "alignment") return selectedBamFiles.length === 0;
-            if (inputDataType === "matrix") return !parsedMatrixData;
-            return true;
-        }
-        var hasValue = false;
-        rows.forEach(function (tr) {
-            tr.querySelectorAll(".meta-cell-input").forEach(function (inp) {
-                if (inp.value.trim()) hasValue = true;
-            });
-        });
-        return hasValue;
-    }
-
-    /**
-     * Column mapping is "valid" when:
-     *  1. A primary_group column is assigned.
-     *  2. No assigned column has NAs or zero variance.
-     *  3. No column is assigned to multiple roles.
-     *  4. If >2 groups, at least one contrast is defined.
-     */
-    function isMappingValid() {
-        if (!columnMapping.primary_group) return false;
-
-        // Collect all assigned columns and check for overlapping roles
-        var assigned = [columnMapping.primary_group];
-        if (columnMapping.batch_effect) {
-            if (assigned.includes(columnMapping.batch_effect)) return false;
-            assigned.push(columnMapping.batch_effect);
-        }
-        for (var i = 0; i < columnMapping.additional_covariates.length; i++) {
-            var c = columnMapping.additional_covariates[i];
-            if (assigned.includes(c)) return false;
-            assigned.push(c);
-        }
-
-        // Validate each assigned column for NAs and zero variance
         var rows = getMetadataRows();
-        if (rows.length === 0) return false;
-
-        for (var j = 0; j < assigned.length; j++) {
-            var col = assigned[j];
-            var values = rows.map(function (r) { return (r[col] || "").trim(); });
-            var hasNA = values.some(function (v) {
-                return v === "" || v.toUpperCase() === "NA";
-            });
-            if (hasNA) return false;
-            var unique = new Set(values.filter(function (v) {
-                return v !== "" && v.toUpperCase() !== "NA";
-            }));
-            if (unique.size <= 1) return false;
-        }
-
-        // If primary_group has >2 levels, at least one contrast must be defined
-        var uniqueGroups = getUniqueColumnValues(columnMapping.primary_group);
-        if (uniqueGroups.length > 2 && contrasts.length === 0) return false;
-
-        // Each contrast must have distinct target and reference
-        for (var k = 0; k < contrasts.length; k++) {
-            if (contrasts[k][0] === contrasts[k][1]) return false;
-        }
-
-        return true;
+        return rows.length > 0 && rows.some(function (r) {
+            return Object.keys(r).some(function (k) { return k !== "sample" && r[k]; });
+        });
     }
 
-    // ════════════════════════════════════════════════════════════
-    //  11. PIPELINE SUBMISSION
-    // ════════════════════════════════════════════════════════════
+    function isMappingValid() {
+        return !!primaryGroupSelect.value;
+    }
 
-    submitBtn.addEventListener("click", async function () {
+    function getMetadataRows() {
+        var rows = [];
+        metadataBody.querySelectorAll("tr").forEach(function (tr) {
+            var sample = tr.dataset.sample;
+            if (!sample) return;
+            var row = { sample: sample };
+            tr.querySelectorAll("[data-col]").forEach(function (el) {
+                row[el.dataset.col] = el.value || "";
+            });
+            rows.push(row);
+        });
+        return rows;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       METADATA PAYLOAD BUILDER
+       ═══════════════════════════════════════════════════════════════════ */
+
+    function buildMetadataPayload() {
+        var samples;
+        if (metadataMode === "upload" && parsedCsvData) {
+            samples = getFilteredCsvRows();
+            if (samples.length === 0) samples = parsedCsvData.data;
+        } else {
+            samples = getMetadataRows();
+        }
+
+        var covariates = [].slice.call(covariatesList.querySelectorAll("input:checked"))
+            .map(function (x) { return x.value; });
+
+        var mapping = { primary_group: primaryGroupSelect.value };
+        if (batchEffectSelect.value) mapping.batch_effect = batchEffectSelect.value;
+        if (covariates.length > 0) mapping.covariates = covariates;
+
+        return {
+            samples: samples,
+            column_mapping: mapping,
+            contrasts: contrasts.filter(function (c) { return c[0] && c[1]; }),
+            quant_level: quantLevel.value,
+        };
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       SUBMIT PIPELINE
+       ═══════════════════════════════════════════════════════════════════ */
+
+    /* ─── Upload Modal Helpers ──────────────────────────────────── */
+
+    function showUploadModal() {
+        if (!uploadModalBackdrop) return;
+        uploadModalBackdrop.classList.add("open");
+    }
+
+    function hideUploadModal() {
+        if (!uploadModalBackdrop) return;
+        uploadModalBackdrop.classList.remove("open");
+    }
+
+    function setModalStep(stepId, state, detail) {
+        var el = uploadModalBody.querySelector('[data-step="' + stepId + '"]');
+        if (!el) return;
+        var icon = el.querySelector(".ums-icon");
+        var detailEl = el.querySelector(".ums-detail");
+        icon.className = "ums-icon " + state;
+        var iconMap = { pending: "bi-circle", active: "bi-arrow-repeat rna-processing", done: "bi-check-circle-fill", error: "bi-x-circle-fill" };
+        icon.innerHTML = '<i class="bi ' + (iconMap[state] || iconMap.pending) + '"></i>';
+        if (detail && detailEl) detailEl.textContent = detail;
+    }
+
+    function renderUploadModalSteps() {
+        var steps = [
+            { id: "create", label: "Creating submission session" },
+            { id: "files", label: "Uploading data files" },
+        ];
+        if (metadataMode === "upload" && csvFile) steps.push({ id: "csv", label: "Uploading metadata CSV" });
+        if (genomeSelect.value === "custom") steps.push({ id: "genome", label: "Uploading custom genome files" });
+        steps.push({ id: "submit", label: "Submitting pipeline job" });
+
+        uploadModalBody.innerHTML = steps.map(function (s) {
+            return '<div class="upload-modal-step" data-step="' + s.id + '">' +
+                '<span class="ums-icon pending"><i class="bi bi-circle"></i></span>' +
+                '<span class="ums-label">' + escapeHtml(s.label) + '</span>' +
+                '<span class="ums-detail"></span></div>';
+        }).join("");
+    }
+
+    function updateModalUploadProgress() {
+        var pct = getUploadProgress();
+        var el = uploadModalBody.querySelector('[data-step="files"]');
+        if (!el) return;
+        var detailEl = el.querySelector(".ums-detail");
+        if (detailEl) detailEl.textContent = pct + "% complete";
+
+        // Update or create progress bar in modal
+        var progBar = el.querySelector(".upload-modal-progress-bar");
+        if (!progBar) {
+            var wrap = document.createElement("div");
+            wrap.className = "upload-modal-progress";
+            wrap.innerHTML = '<div class="rna-progress" style="height:4px;margin-top:6px;"><div class="rna-progress-bar upload-modal-progress-bar" style="width:0%"></div></div>';
+            el.appendChild(wrap);
+            progBar = wrap.querySelector(".upload-modal-progress-bar");
+        }
+        progBar.style.width = pct + "%";
+    }
+
+    async function waitForUploads() {
+        // If uploads haven't started yet, start them now
+        if (!backgroundUploadPromise) {
+            startBackgroundUploads();
+        }
+
+        // Poll until complete
+        while (!areUploadsComplete()) {
+            updateModalUploadProgress();
+            await new Promise(function (r) { setTimeout(r, 500); });
+        }
+        updateModalUploadProgress();
+    }
+
+    async function submitPipeline() {
+        if (isSubmitting) return;
+        isSubmitting = true;
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Uploading files...';
+        submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Launching\u2026';
+
+        renderUploadModalSteps();
+        showUploadModal();
 
         try {
-            // 1. Upload data files based on entry point
-            if (inputDataType === "fastq") {
-                var fastqOk = await uploadFastqFiles();
-                if (!fastqOk) { resetSubmitBtn(); return; }
-            } else if (inputDataType === "alignment") {
-                var bamOk = await uploadBamFiles();
-                if (!bamOk) { resetSubmitBtn(); return; }
-            } else if (inputDataType === "matrix") {
-                var matrixOk = await uploadMatrixFile();
-                if (!matrixOk) { resetSubmitBtn(); return; }
+            // Step: Create submission session
+            setModalStep("create", "active");
+            await ensureSubmission();
+            setModalStep("create", "done", "Session " + submissionId.substring(0, 8) + "\u2026");
+
+            // Step: Wait for background file uploads to finish
+            setModalStep("files", "active");
+
+            if (!areUploadsComplete()) {
+                // Files are still uploading in the background — show progress
+                setModalStep("files", "active", "Waiting for uploads\u2026");
+                await waitForUploads();
             }
 
-            // 2. Upload custom genome if needed (fastq & alignment only)
-            if (inputDataType !== "matrix" && genomeSelect.value === "custom") {
-                submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Uploading genome...';
-                var genomeOk = await uploadCustomGenome();
-                if (!genomeOk) { resetSubmitBtn(); return; }
+            // Check for any failed uploads
+            var hasFailed = false;
+            var files = inputDataType === "fastq" ? selectedFiles :
+                inputDataType === "alignment" ? selectedBamFiles : [];
+            for (var fi = 0; fi < files.length; fi++) {
+                var t = uploadTracker[files[fi].name];
+                if (t && t.status === "failed") { hasFailed = true; break; }
+            }
+            if (hasFailed) throw new Error("Some file uploads failed. Please remove failed files and try again.");
+
+            // Handle matrix upload (small, done inline)
+            if (inputDataType === "matrix" && matrixFile) {
+                if (!(await uploadMatrixFile())) throw new Error("Matrix file upload failed.");
+            }
+            setModalStep("files", "done");
+
+            // Step: Upload CSV if applicable
+            if (metadataMode === "upload" && csvFile) {
+                setModalStep("csv", "active");
+                if (!(await uploadCsvFile())) throw new Error("Metadata CSV upload failed.");
+                setModalStep("csv", "done");
             }
 
-            // 3. CSV metadata is parsed client-side by PapaParse and included
-            //    in the metadata_payload — no file upload needed.
+            // Step: Upload custom genome if applicable
+            if (genomeSelect.value === "custom") {
+                setModalStep("genome", "active");
+                if (!(await uploadCustomGenomeFiles())) throw new Error("Custom genome file upload failed.");
+                setModalStep("genome", "done");
+            }
 
-            // 4. Build and send the pipeline payload
-            submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Starting pipeline...';
+            // Step: Submit pipeline
+            setModalStep("submit", "active");
+
+            var strandVal = inputDataType === "alignment"
+                ? ($("strandedness-alignment") || {}).value || "unstranded"
+                : ($("strandedness") || {}).value || "unstranded";
+
+            var libType = inputDataType === "alignment"
+                ? (document.querySelector('input[name="library_type_alignment"]:checked') || {}).value || "single"
+                : libraryType;
 
             var payload = {
                 submission_id: submissionId,
+                submission_name: submissionNameInput.value.trim(),
                 input_data_type: inputDataType,
-                metadata_mode: getMetadataMode(),
+                assay_type: inputDataType === "fastq" ? assayType : "standard_rna",
+                library_type: libType,
+                strandedness: strandVal,
+                reference_genome: inputDataType === "matrix" ? "" : genomeSelect.value,
+                custom_genome_name: genomeSelect.value === "custom" ? customGenomeName.value.trim() : "",
+                quant_level: quantLevel.value,
+                metadata_mode: metadataMode,
                 adjusted_pvalue: parseFloat(adjPvalue.value) || 0.05,
                 min_log2fc: parseFloat(minLog2fc.value) || -1.0,
                 max_log2fc: parseFloat(maxLog2fc.value) || 1.0,
                 metadata_payload: buildMetadataPayload(),
             };
 
-            // Add fields specific to entry points
-            if (inputDataType === "fastq") {
-                payload.library_type = getLibraryType();
-                payload.strandedness = document.getElementById("strandedness").value;
-                payload.reference_genome = genomeSelect.value;
-                payload.quant_level = quantLevel.value;
-                payload.assay_type = assayType;
-                if (genomeSelect.value === "custom") {
-                    payload.custom_genome_name = customGenomeName.value.trim();
-                }
-            } else if (inputDataType === "alignment") {
-                var alignLibChecked = document.querySelector('input[name="library_type_alignment"]:checked');
-                payload.library_type = alignLibChecked ? alignLibChecked.value : "single";
-                payload.strandedness = strandednessAlignment.value;
-                payload.reference_genome = genomeSelect.value;
-                payload.quant_level = quantLevel.value;
-                if (genomeSelect.value === "custom") {
-                    payload.custom_genome_name = customGenomeName.value.trim();
-                }
-            }
-            // matrix entry: no library_type, strandedness, genome needed
-
             var res = await fetch("/api/pipeline/core", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-CSRFToken": CSRF,
-                },
+                headers: { "X-CSRFToken": CSRF, "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });
 
-            if (res.ok) {
-                var data = await res.json();
+            var data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Pipeline submission failed.");
+
+            setModalStep("submit", "done");
+
+            // Show queued state
+            uploadModalBody.innerHTML =
+                '<div class="upload-modal-queued">' +
+                '<div class="umq-icon"><i class="bi bi-check-circle-fill"></i></div>' +
+                '<h4>Job Queued!</h4>' +
+                '<p>Redirecting to processing view\u2026</p></div>';
+
+            setTimeout(function () {
                 window.location.href = "/processing/" + data.job_id + "/";
-            } else {
-                var errData = null;
-                try { errData = await res.json(); } catch (e) { /* ignore */ }
-                var errMsg = (errData && errData.error) ? errData.error : "Pipeline submission failed.";
-                alert(errMsg);
-                resetSubmitBtn();
-            }
+            }, 1800);
+
         } catch (err) {
-            alert("Network error: " + err.message);
-            resetSubmitBtn();
+            hideUploadModal();
+            showToast("error", "Submission Error", err.message);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> Submit &amp; Launch';
+            isSubmitting = false;
         }
-    });
-
-    function resetSubmitBtn() {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="bi bi-rocket-takeoff"></i> Start Pipeline';
     }
 
-    /**
-     * Build the complete metadata payload for the backend.
-     * Includes sample data, column mapping, and contrasts.
-     */
-    function buildMetadataPayload() {
-        var mode = getMetadataMode();
-        var samples;
-
-        if (mode === "upload" && parsedCsvData) {
-            samples = getFilteredCsvRows();
-        } else {
-            samples = getMetadataRows();
-        }
-
-        return {
-            samples: samples,
-            column_mapping: {
-                primary_group: columnMapping.primary_group,
-                batch_effect: columnMapping.batch_effect || null,
-                additional_covariates: columnMapping.additional_covariates.slice(),
-            },
-            contrasts: contrasts.length > 0 ? contrasts.map(function (c) { return c.slice(); }) : [],
-        };
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  12. UTILITIES
-    // ════════════════════════════════════════════════════════════
+    /* ═══════════════════════════════════════════════════════════════════
+       UTILITIES
+       ═══════════════════════════════════════════════════════════════════ */
 
     function escapeHtml(str) {
         var div = document.createElement("div");
-        div.appendChild(document.createTextNode(str));
+        div.appendChild(document.createTextNode(String(str)));
         return div.innerHTML;
     }
 
-    // ── Initialize ──
-    updateThresholdPreview();
-    renderColumnChips();
-    syncConditionTargetDropdown();
-    renderConditionChips();
-    applyEntryPointVisibility();
-    updateCardLocks();
-    updateAssayHelpText();
+    /* ═══════════════════════════════════════════════════════════════════
+       INITIALIZATION
+       ═══════════════════════════════════════════════════════════════════ */
+
+    /** Token 6: Reset all form state to clean defaults on page load/reload. */
+    function resetFormState() {
+        submissionId = null;
+        inputDataType = "fastq";
+        assayType = "standard_rna";
+        libraryType = "single";
+        metadataMode = "upload";
+
+        selectedFiles = [];
+        uploadedFiles = [];
+        selectedBamFiles = [];
+        uploadedBamFiles = [];
+        matrixFile = null;
+        parsedMatrixData = null;
+        csvFile = null;
+        parsedCsvData = null;
+        manualColumns = ["condition"];
+        columnSelectableValues = { condition: [] };
+        columnMapping = { primary_group: "", batch_effect: "", covariates: [] };
+        contrasts = [];
+        customGenomeFiles = { fasta: null, annotation: null };
+        currentStep = 1;
+        isSubmitting = false;
+        uploadTracker = {};
+        backgroundUploadPromise = null;
+
+        /* Clear DOM artefacts */
+        if (csvFileName) { csvFileName.style.display = "none"; csvFileName.innerHTML = ""; }
+        if (csvInput) csvInput.value = "";
+        if (csvViewerTable) csvViewerTable.innerHTML = "";
+        if (csvViewerSection) csvViewerSection.style.display = "none";
+        if (contrastSection) contrastSection.style.display = "none";
+        if (contrastList) contrastList.innerHTML = "";
+        if (columnMappingSection) columnMappingSection.style.display = "none";
+        if (submissionNameInput) submissionNameInput.value = "";
+        if (filePills) filePills.innerHTML = "";
+        if (fileList) fileList.innerHTML = "";
+        if (bamFilePills) bamFilePills.innerHTML = "";
+        if (bamFileList) bamFileList.innerHTML = "";
+        if (matrixFileName) { matrixFileName.style.display = "none"; matrixFileName.innerHTML = ""; }
+        if (columnValidationMsg) columnValidationMsg.style.display = "none";
+    }
+
+    /* ─── Tooltip Fixed-Position Helper ──────────────────────── */
+    function initTooltipPositioning() {
+        document.addEventListener("mouseenter", function (e) {
+            var tip = e.target.closest(".input-tip");
+            if (!tip) return;
+            var tipText = tip.querySelector(".tip-text");
+            if (!tipText) return;
+            var rect = tip.getBoundingClientRect();
+            var tipW = 270;
+            var left = rect.right + 10;
+            var top = rect.top + rect.height / 2;
+            // Flip to left side if it would overflow viewport
+            if (left + tipW > window.innerWidth - 8) {
+                left = rect.left - tipW - 10;
+                tipText.classList.add("tip-flip-left");
+            } else {
+                tipText.classList.remove("tip-flip-left");
+            }
+            tipText.style.left = left + "px";
+            tipText.style.top = top + "px";
+            tipText.style.transform = "translateY(-50%)";
+        }, true);
+    }
+
+    function init() {
+        resetFormState();
+        initEntryPoints();
+        initAssayType();
+        initLibraryType();
+        initFastqUpload();
+        initBamUpload();
+        initMatrixUpload();
+        initGenome();
+        initMetadataToggle();
+        initCsvUpload();
+        initManualMetadata();
+        initColumnMapping();
+        initContrasts();
+        initThresholds();
+        initStepNavigation();
+
+        wizardNext.addEventListener("click", nextStep);
+        wizardBack.addEventListener("click", prevStep);
+        submitBtn.addEventListener("click", submitPipeline);
+
+        initTooltipPositioning();
+
+        applyEntryPointVisibility();
+        updateWizardProgress();
+        updateWizardNav();
+        updateBannerInfo();
+    }
+
+    /* Handle bfcache (back/forward) restoration */
+    window.addEventListener("pageshow", function (e) {
+        if (e.persisted) resetFormState();
+    });
+
+    /* ─── Cleanup on page unload ───────────────────────── */
+    // When the user reloads or navigates away mid-upload, delete the
+    // submission and all its uploaded files on the server.
+    window.addEventListener("beforeunload", function () {
+        if (!submissionId || isSubmitting) return; // nothing to clean up, or already submitted
+        var payload = JSON.stringify({ submission_id: submissionId });
+        navigator.sendBeacon(
+            "/api/submission/delete",
+            new Blob([payload], { type: "application/json" })
+        );
+    });
+
+    /* ─── Banner Info (Dev/Prod) ────────────────────────── */
+
+    function updateBannerInfo() {
+        if (!bannerInfo) return;
+
+        if (!IS_PRODUCTION) {
+            // Dev: always show Submission ID if available
+            if (submissionId) {
+                bannerInfo.style.display = "";
+                bannerInfo.innerHTML = '<span class="banner-tag"><i class="bi bi-bug"></i> ID: ' + escapeHtml(submissionId.substring(0, 8)) + '\u2026</span>';
+            } else {
+                bannerInfo.style.display = "";
+                bannerInfo.innerHTML = '<span class="banner-tag"><i class="bi bi-bug"></i> Dev Mode</span>';
+            }
+        } else {
+            // Prod: show Submission Name only after Step 1
+            if (currentStep > 1 && submissionNameInput.value.trim()) {
+                bannerInfo.style.display = "";
+                bannerInfo.innerHTML = '<span class="banner-tag"><i class="bi bi-journal-text"></i> ' + escapeHtml(submissionNameInput.value.trim()) + '</span>';
+            } else {
+                bannerInfo.style.display = "none";
+            }
+        }
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+    } else {
+        init();
+    }
 })();

@@ -1,13 +1,85 @@
 """Genome resolution: pre-indexed genomes, custom genomes, miRBase, BWA, Bismark."""
 
 import glob
+import gzip
 import logging
 import os
+import shutil
+import zipfile
 
 from pipeline.tasks._constants import _GENOME_BASE, _GENOME_FOLDER_MAP, _MIRBASE_SPECIES_MAP
 from pipeline.tasks._helpers import _q, _run
 
 logger = logging.getLogger(__name__)
+
+
+def _decompress_if_needed(filepath, submission=None):
+    """Decompress a .zip or .gz file in-place, returning the extracted path.
+
+    - .fa.zip / .fasta.zip  → extracts the first .fa/.fasta file from the ZIP
+    - .fa.gz  / .fasta.gz   → gunzips to the uncompressed equivalent
+    - .gtf.gz / .gff.gz     → gunzips to the uncompressed equivalent
+
+    If the file is already uncompressed, returns it unchanged.
+    Updates the FileAsset.local_path if *submission* is provided.
+    """
+    if not filepath or not os.path.isfile(filepath):
+        return filepath
+
+    lower = filepath.lower()
+    extracted_path = None
+
+    if lower.endswith(".zip"):
+        dest_dir = os.path.dirname(filepath)
+        try:
+            with zipfile.ZipFile(filepath, "r") as zf:
+                # Find the target file inside the archive
+                members = zf.namelist()
+                target = None
+                for name in members:
+                    nl = name.lower()
+                    if nl.endswith((".fa", ".fasta", ".fna", ".gtf", ".gff", ".gff3")):
+                        target = name
+                        break
+                if target is None:
+                    raise RuntimeError(
+                        f"ZIP archive does not contain a recognised "
+                        f"genome/annotation file: {os.path.basename(filepath)}"
+                    )
+                zf.extract(target, dest_dir)
+                extracted_path = os.path.join(dest_dir, target)
+        except zipfile.BadZipFile:
+            raise RuntimeError(
+                f"File is not a valid ZIP archive: {os.path.basename(filepath)}"
+            )
+
+    elif lower.endswith(".gz"):
+        # Strip the .gz suffix to get the output filename
+        out_path = filepath[:-3]
+        if os.path.isfile(out_path):
+            extracted_path = out_path
+        else:
+            try:
+                with gzip.open(filepath, "rb") as f_in, open(out_path, "wb") as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+                extracted_path = out_path
+            except (gzip.BadGzipFile, OSError) as exc:
+                raise RuntimeError(
+                    f"Failed to decompress {os.path.basename(filepath)}: {exc}"
+                )
+
+    if extracted_path and extracted_path != filepath:
+        logger.info("Decompressed %s → %s", filepath, extracted_path)
+        # Update the FileAsset record so downstream code uses the new path
+        if submission is not None:
+            from pipeline.models import FileAsset
+
+            FileAsset.objects.filter(
+                submission=submission, local_path=filepath,
+            ).update(local_path=extracted_path)
+        return extracted_path
+
+    return filepath
 
 
 def _genome_paths(genome_key):
@@ -70,7 +142,7 @@ def _resolve_genome(genome_key, work_dir, submission=None, **kwargs):
             if gtf_asset and os.path.isfile(gtf_asset.local_path):
                 genome_gtf = gtf_asset.local_path
 
-        # Fallback: glob the custom_genome directory
+        # Fallback: glob the custom_genome directory (include compressed)
         if not genome_fasta or not genome_gtf:
             custom_dir = os.path.join(work_dir, "custom_genome")
             if not genome_fasta:
@@ -78,6 +150,10 @@ def _resolve_genome(genome_key, work_dir, submission=None, **kwargs):
                     glob.glob(os.path.join(custom_dir, "*.fa"))
                     + glob.glob(os.path.join(custom_dir, "*.fasta"))
                     + glob.glob(os.path.join(custom_dir, "*.fna"))
+                    + glob.glob(os.path.join(custom_dir, "*.fa.zip"))
+                    + glob.glob(os.path.join(custom_dir, "*.fasta.zip"))
+                    + glob.glob(os.path.join(custom_dir, "*.fa.gz"))
+                    + glob.glob(os.path.join(custom_dir, "*.fasta.gz"))
                 )
                 genome_fasta = fasta_files[0] if fasta_files else None
             if not genome_gtf:
@@ -85,8 +161,15 @@ def _resolve_genome(genome_key, work_dir, submission=None, **kwargs):
                     glob.glob(os.path.join(custom_dir, "*.gtf"))
                     + glob.glob(os.path.join(custom_dir, "*.gff"))
                     + glob.glob(os.path.join(custom_dir, "*.gff3"))
+                    + glob.glob(os.path.join(custom_dir, "*.gtf.gz"))
+                    + glob.glob(os.path.join(custom_dir, "*.gff.gz"))
+                    + glob.glob(os.path.join(custom_dir, "*.gff3.gz"))
                 )
                 genome_gtf = gtf_files[0] if gtf_files else None
+
+        # Decompress .zip / .gz files so tools receive plain-text input
+        genome_fasta = _decompress_if_needed(genome_fasta, submission=submission)
+        genome_gtf = _decompress_if_needed(genome_gtf, submission=submission)
 
         # Index building is handled as a tracked step in _route_fastq()
         hisat2_idx = None

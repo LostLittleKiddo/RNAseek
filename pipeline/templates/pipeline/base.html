@@ -27,6 +27,7 @@
 
     <!-- CSRF token for JS -->
     <meta name="csrf-token" content="{{ csrf_token }}">
+    <meta name="rnaseek-is-production" content="{% if is_production %}1{% else %}0{% endif %}">
 </head>
 
 <body>

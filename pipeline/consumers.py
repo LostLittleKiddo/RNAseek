@@ -2,6 +2,7 @@ import json
 import uuid
 
 from channels.generic.websocket import AsyncWebsocketConsumer
+from django.db import models
 
 from pipeline.middleware import SESSION_COOKIE_NAME
 
@@ -56,7 +57,10 @@ class PipelineProgressConsumer(AsyncWebsocketConsumer):
         @database_sync_to_async
         def check_ownership():
             return AnalysisJob.objects.filter(
-                job_id=self.job_id, session_id=session_uuid
+                job_id=self.job_id,
+            ).filter(
+                models.Q(session_id=session_uuid)
+                | models.Q(parent_submission__session_id=session_uuid)
             ).exists()
 
         return await check_ownership()

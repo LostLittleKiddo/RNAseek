@@ -3,16 +3,47 @@
 
 {% block title %}RNAseek – Active Workspaces{% endblock %}
 
+{% block extra_css %}
+<style>
+    .ws-table-wrap .rna-table {
+        table-layout: fixed;
+    }
+
+    .ws-table-wrap .rna-table thead th,
+    .ws-table-wrap .rna-table tbody td {
+        text-align: left;
+    }
+
+    .ws-table-wrap .rna-table thead th.ws-col-status,
+    .ws-table-wrap .rna-table tbody td.ws-col-status {
+        text-align: center;
+    }
+
+    .ws-table-wrap .rna-table thead th.ws-col-action,
+    .ws-table-wrap .rna-table tbody td.ws-col-action {
+        text-align: right;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
-    <div class="rna-flex rna-flex-between" style="align-items: flex-end; margin-bottom: .5rem;">
+
+    <!-- ═══ Welcome Banner (matches Submission page) ═══ -->
+    <div class="dash-welcome-banner rna-mb-3" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
-            <h1 class="rna-section-title rna-mb-1">Active Workspaces</h1>
-            <p class="rna-section-subtitle" style="margin-bottom: 0;">All analysis jobs tied to your 14-day session.</p>
+            <p class="dash-greeting">Active Workspaces</p>
+            <h1 class="dash-tagline">RNAseek &mdash; Analysis Dashboard</h1>
         </div>
-        <a href="{% url 'new_submission' %}" class="btn-rna btn-rna-primary btn-rna-sm">
-            <i class="bi bi-plus-circle"></i> New Analysis
-        </a>
+        <div style="display:flex; align-items:center; gap:.75rem;">
+            {% if not is_production %}
+            <span class="banner-tag"><i class="bi bi-bug"></i> Dev Mode</span>
+            {% endif %}
+            <a href="{% url 'new_submission' %}" class="btn-rna btn-rna-light btn-rna-sm"
+                style="background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff;">
+                <i class="bi bi-plus-circle"></i> New Analysis
+            </a>
+        </div>
     </div>
 
     <!-- 14-day warning -->
@@ -26,32 +57,38 @@
 
     <!-- Jobs Table -->
     <div class="rna-card">
-        <div class="rna-card-body" style="padding: 0; overflow-x: auto;">
+        <div class="rna-card-body ws-table-wrap" style="padding: 0; overflow-x: auto;">
             {% if jobs %}
             <table class="rna-table" id="jobs-table">
                 <colgroup>
-                    <col style="width: 20%;">
-                    <col style="width: 18%;">
-                    <col style="width: 22%;">
-                    <col style="width: 16%;">
-                    <col style="width: 24%;">
+                    {% if not is_production %}
+                    <col style="width: 14%;">{% endif %}
+                    <col style="width: {% if not is_production %}22{% else %}30{% endif %}%;">
+                    <col style="width: {% if not is_production %}16{% else %}20{% endif %}%;">
+                    <col style="width: {% if not is_production %}20{% else %}22{% endif %}%;">
+                    <col style="width: 14%;">
+                    <col style="width: 14%;">
                 </colgroup>
                 <thead>
                     <tr>
-                        <th>Job ID</th>
+                        {% if not is_production %}<th>Job ID</th>{% endif %}
+                        <th>Submission Name</th>
                         <th>Module</th>
                         <th>Created</th>
-                        <th>Status</th>
-                        <th style="text-align: right;">Action</th>
+                        <th class="ws-col-status">Status</th>
+                        <th class="ws-col-action">Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for job in jobs %}
                     <tr>
+                        {% if not is_production %}
                         <td><code style="font-size: .78rem;">{{ job.job_id|truncatechars:13 }}</code></td>
+                        {% endif %}
+                        <td>{{ job.parent_submission__submission_name|default:"—" }}</td>
                         <td>{{ job.module_name }}</td>
                         <td>{{ job.created_at|date:"M d, Y H:i" }}</td>
-                        <td>
+                        <td class="ws-col-status">
                             <span class="rna-badge rna-badge-{{ job.status|lower }}">
                                 {% if job.status == "RUNNING" %}
                                 <i class="bi bi-arrow-repeat rna-processing" style="margin-right: .25rem;"></i>
@@ -65,7 +102,7 @@
                                 {{ job.status }}
                             </span>
                         </td>
-                        <td style="text-align: right;">
+                        <td class="ws-col-action">
                             {% if job.status == "SUCCESS" %}
                             <a href="{% url 'core_hub' job.job_id %}" class="btn-rna btn-rna-teal btn-rna-sm"
                                 style="min-width: auto; padding: .25rem .75rem;">

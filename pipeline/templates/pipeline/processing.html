@@ -266,21 +266,34 @@
 
         /* Map failed pipeline step to a user-friendly diagnostic hint */
         function getFailureSuggestion(failedStep, errorMsg) {
+            var msg = (errorMsg || "").toLowerCase();
+
+            /* Detect specific error patterns first */
+            if (msg.indexOf("not a valid zip") !== -1 || msg.indexOf("badzipfile") !== -1) {
+                return "The uploaded file is not a valid ZIP archive. Please re-download and re-upload the FASTA file.";
+            }
+            if (msg.indexOf("decompress") !== -1 || msg.indexOf("badgzipfile") !== -1) {
+                return "The uploaded compressed file appears to be corrupt. Please re-download it and try again.";
+            }
+            if (msg.indexOf("does not contain a recognised") !== -1) {
+                return "The ZIP archive does not contain a FASTA or annotation file. Ensure you are uploading the correct file.";
+            }
+            if (msg.indexOf("full rank") !== -1) {
+                return "The experimental design is confounded \u2014 batch and condition variables are perfectly correlated. Remove or adjust one of the variables.";
+            }
+            if (msg.indexOf("no overlapping sample") !== -1) {
+                return "Metadata sample names do not match the FASTQ file names. Ensure consistent naming between your metadata and uploaded files.";
+            }
+
             var hints = {
-                hisat2_build: "The HISAT2 index build failed. Check that your custom FASTA file is valid and not corrupted.",
+                hisat2_build: "The HISAT2 index build failed. Check that your custom FASTA file is valid, properly formatted, and not corrupted or truncated.",
                 fastqc: "FastQC quality check failed. One or more FASTQ files may be corrupted or empty.",
                 trimmomatic: "Adapter trimming failed. Your FASTQ files may have an unexpected format or be truncated.",
                 hisat2: "Alignment to the reference genome failed. Ensure the correct genome was selected and FASTQ files are properly formatted.",
                 featurecounts: "Gene quantification failed. The GTF annotation may not match the reference genome, or BAM files may be malformed.",
-                multiqc: "QC report aggregation failed. This is usually non-critical — try re-running the analysis.",
+                multiqc: "QC report aggregation failed. This is usually non-critical \u2014 try re-running the analysis.",
                 deseq2: "Statistical analysis (DESeq2) failed. Common causes: too few samples, metadata sample names not matching FASTQ file names, or a confounded experimental design."
             };
-            if (errorMsg && errorMsg.toLowerCase().indexOf("full rank") !== -1) {
-                return "The experimental design is confounded — batch and condition variables are perfectly correlated. Remove or adjust one of the variables.";
-            }
-            if (errorMsg && errorMsg.toLowerCase().indexOf("no overlapping sample") !== -1) {
-                return "Metadata sample names do not match the FASTQ file names. Ensure consistent naming between your metadata and uploaded files.";
-            }
             return hints[failedStep] || "An unexpected error occurred. Review your input files and metadata, then try again.";
         }
 
@@ -353,6 +366,9 @@
         }
 
         /* ── WebSocket connection ── */
+        var wsRetries = 0;
+        var MAX_WS_RETRIES = 3;
+
         function connectWebSocket() {
             var protocol = location.protocol === "https:" ? "wss:" : "ws:";
             var wsUrl = protocol + "//" + location.host + "/ws/pipeline/" + JOB_ID + "/";
@@ -367,6 +383,7 @@
 
             ws.onopen = function () {
                 statusLabel.textContent = "Connected (live updates)";
+                wsRetries = 0;
             };
 
             ws.onmessage = function (event) {
@@ -379,8 +396,13 @@
 
             ws.onclose = function () {
                 if (!terminated) {
-                    /* Fall back to polling if WS drops */
-                    poll();
+                    if (wsRetries < MAX_WS_RETRIES) {
+                        wsRetries++;
+                        setTimeout(connectWebSocket, 2000 * wsRetries);
+                    } else {
+                        /* Fall back to polling if WS drops */
+                        poll();
+                    }
                 }
             };
 
@@ -389,8 +411,14 @@
             };
         }
 
-        /* Start: try WebSocket first, fall back to polling */
-        connectWebSocket();
+        /* Start: fetch current state immediately, then open WebSocket for live updates */
+        fetch("/api/jobs/" + JOB_ID + "/", { headers: { "X-CSRFToken": CSRF } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) { handleStatus(data); })
+            .catch(function () { /* ignore – WS or polling will pick it up */ })
+            .finally(function () {
+                if (!terminated) connectWebSocket();
+            });
     })();
 </script>
 {% endblock %}

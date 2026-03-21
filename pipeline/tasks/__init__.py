@@ -48,6 +48,7 @@ from pipeline.tasks._helpers import (  # noqa: F401
 
 # ── Genome ──
 from pipeline.tasks._genome import (  # noqa: F401
+    _decompress_if_needed,
     _genome_paths,
     _resolve_bismark_genome,
     _resolve_bwa_index,

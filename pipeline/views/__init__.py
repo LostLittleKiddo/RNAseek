@@ -14,6 +14,8 @@ from pipeline.views.api import (            # noqa: F401
     ChunkUploadView,
     CorePipelineView,
     CreateSubmissionView,
+    DeleteSubmissionView,
+    FileAssetDeleteView,
     FileDownloadView,
     JobStatusView,
     ModuleRunView,

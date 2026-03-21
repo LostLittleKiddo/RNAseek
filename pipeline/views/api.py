@@ -4,15 +4,40 @@ import json
 import mimetypes
 import os
 import re as re_mod
+import shutil
 
 from django.conf import settings
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 
 from pipeline.models import AnalysisJob, AnalysisSubmission, FileAsset
 from pipeline.tasks import run_core_pipeline
 from pipeline.tasks.core import run_tier2_module
+
+
+class FileAssetDeleteView(View):
+    """Delete a user-uploaded FileAsset and its file on disk."""
+
+    http_method_names = ["delete"]
+
+    def delete(self, request, asset_id):
+        session_obj = request.session_obj
+        try:
+            asset = FileAsset.objects.get(
+                id=asset_id, session=session_obj, is_user_uploaded=True
+            )
+        except (FileAsset.DoesNotExist, ValueError):
+            return JsonResponse({"error": "Asset not found."}, status=404)
+
+        # Remove the file from disk if it exists
+        if asset.local_path and os.path.isfile(asset.local_path):
+            os.remove(asset.local_path)
+
+        asset.delete()
+        return JsonResponse({"status": "deleted"})
 
 
 class CreateSubmissionView(View):
@@ -27,6 +52,48 @@ class CreateSubmissionView(View):
         return JsonResponse({
             "submission_id": str(submission.submission_id),
         })
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class DeleteSubmissionView(View):
+    """Delete an AnalysisSubmission, its file assets, and upload directory.
+
+    Uses csrf_exempt because navigator.sendBeacon (fired on page unload)
+    cannot attach custom headers.  Session ownership is verified via the
+    HttpOnly Session_ID cookie (SameSite=Lax prevents cross-site POSTs).
+    """
+
+    http_method_names = ["post"]
+
+    def post(self, request):
+        session_obj = request.session_obj
+        body = json.loads(request.body) if request.body else {}
+        submission_id = body.get("submission_id", "")
+
+        if not submission_id:
+            return JsonResponse({"error": "Missing submission_id."}, status=400)
+
+        try:
+            submission = AnalysisSubmission.objects.get(
+                submission_id=submission_id, session=session_obj
+            )
+        except (AnalysisSubmission.DoesNotExist, ValueError):
+            return JsonResponse({"error": "Submission not found."}, status=404)
+
+        # Delete files on disk for all user-uploaded assets
+        for asset in submission.file_assets.filter(is_user_uploaded=True):
+            if asset.local_path and os.path.isfile(asset.local_path):
+                os.remove(asset.local_path)
+
+        # Remove the upload directory
+        upload_dir = submission.upload_dir
+        if os.path.isdir(upload_dir):
+            shutil.rmtree(upload_dir)
+
+        # Cascade-delete the submission (also deletes FileAsset rows)
+        submission.delete()
+
+        return JsonResponse({"status": "deleted"})
 
 
 class ChunkUploadView(View):
@@ -74,6 +141,16 @@ class ChunkUploadView(View):
         # Sanitise the filename to prevent path traversal
         safe_name = os.path.basename(filename)
 
+        # Validate FASTA file extension for custom genome uploads
+        if file_role == FileAsset.FileRole.CUSTOM_GENOME_FASTA:
+            lower_name = safe_name.lower()
+            allowed = (".fa", ".fasta", ".fa.gz", ".fasta.gz", ".fa.zip", ".fasta.zip")
+            if not lower_name.endswith(allowed):
+                return JsonResponse(
+                    {"error": "Only .fa, .fasta, .fa.gz, .fasta.gz, .fa.zip, or .fasta.zip files are accepted for reference FASTA."},
+                    status=400,
+                )
+
         # Route files to subdirectories within the submission folder
         if file_role in (
             FileAsset.FileRole.CUSTOM_GENOME_FASTA,
@@ -99,20 +176,25 @@ class ChunkUploadView(View):
                 f.write(chunk)
 
         is_last = chunk_index + 1 >= total_chunks
+        asset_id = None
         if is_last:
-            FileAsset.objects.create(
+            asset = FileAsset.objects.create(
                 session=session_obj,
                 submission=submission,
                 file_role=file_role,
                 local_path=dest_path,
                 is_user_uploaded=True,
             )
+            asset_id = str(asset.id)
 
-        return JsonResponse({
+        resp = {
             "status": "ok",
             "chunk": chunk_index,
             "complete": is_last,
-        })
+        }
+        if asset_id:
+            resp["asset_id"] = asset_id
+        return JsonResponse(resp)
 
 
 class CorePipelineView(View):
@@ -337,6 +419,7 @@ class CorePipelineView(View):
             )
 
         # ── Persist payload ──
+        submission.submission_name = body.get("submission_name", "")[:200]
         submission.input_data_type = input_data_type
         submission.library_type = library_type
         submission.strandedness = strandedness
@@ -371,6 +454,7 @@ class CorePipelineView(View):
 
         job = AnalysisJob.objects.create(
             session=session_obj,
+            parent_submission=submission,
             module_name="CORE_PIPELINE",
             step_progress={
                 "pipeline_steps": steps,

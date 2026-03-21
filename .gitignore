@@ -76,7 +76,7 @@ desktop.ini
 
 # ── Logs ──
 *.log
-celerybeat-schedule
+celerybeat-schedule*
 celerybeat.pid
 
 # ── Node (if any frontend tooling is added later) ──
