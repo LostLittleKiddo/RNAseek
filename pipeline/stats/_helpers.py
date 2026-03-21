@@ -7,7 +7,8 @@ import re
 
 import numpy as np
 
-from pipeline.stats._r_bridge import _converter, _ensure_rpy2, localconverter, importr, ro
+import pipeline.stats._r_bridge as _rb
+from pipeline.stats._r_bridge import _ensure_rpy2
 
 logger = logging.getLogger(__name__)
 
@@ -100,14 +101,14 @@ def _combat_seq(counts_df, metadata, batch_col, group_col):
         )
         return counts_df
 
-    with localconverter(_converter):
-        sva = importr("sva")
+    with _rb.localconverter(_rb._converter):
+        sva = _rb.importr("sva")
 
-        count_matrix_r = ro.r["as.matrix"](counts_df.values)
-        batch_r = ro.IntVector(
+        count_matrix_r = _rb.ro.r["as.matrix"](counts_df.values)
+        batch_r = _rb.ro.IntVector(
             metadata[batch_col].astype("category").cat.codes.values + 1
         )
-        group_r = ro.IntVector(
+        group_r = _rb.ro.IntVector(
             metadata[group_col].astype("category").cat.codes.values + 1
         )
 

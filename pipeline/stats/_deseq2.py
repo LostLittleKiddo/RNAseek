@@ -6,14 +6,8 @@ import re
 
 import numpy as np
 
-from pipeline.stats._r_bridge import (
-    _R_CORES,
-    _converter,
-    _ensure_rpy2,
-    importr,
-    localconverter,
-    ro,
-)
+import pipeline.stats._r_bridge as _rb
+from pipeline.stats._r_bridge import _R_CORES, _ensure_rpy2
 
 logger = logging.getLogger(__name__)
 
@@ -84,35 +78,35 @@ def _r_string_vector(items):
 def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
                 stats_dir, norm_output, adj_pvalue_cutoff,
                 min_log2fc, max_log2fc):
-    _ensure_rpy2()
     """Run DESeq2 with a dynamically constructed formula and extract contrasts.
 
     Returns a list of result file paths.
     """
+    _ensure_rpy2()
     import pandas as pd
 
     primary_group = column_mapping["primary_group"]
     formula_str = _build_formula_string(column_mapping)
     logger.info("DESeq2 design formula: %s", formula_str)
 
-    with localconverter(_converter):
-        deseq2 = importr("DESeq2")
-        base = importr("base")
+    with _rb.localconverter(_rb._converter):
+        deseq2 = _rb.importr("DESeq2")
+        base = _rb.importr("base")
 
         try:
-            biocparallel = importr("BiocParallel")
-            ro.r('register(MulticoreParam(%d))' % _R_CORES)
+            biocparallel = _rb.importr("BiocParallel")
+            _rb.ro.r('register(MulticoreParam(%d))' % _R_CORES)
             logger.info("BiocParallel: using %d cores", _R_CORES)
         except Exception:
             logger.info("BiocParallel not available — DESeq2 will run single-threaded")
 
         # ── Prepare count matrix in R ──
-        count_matrix_r = ro.r["as.matrix"](counts_df.values.astype(int))
-        ro.r.assign("count_matrix", count_matrix_r)
-        ro.r(
+        count_matrix_r = _rb.ro.r["as.matrix"](counts_df.values.astype(int))
+        _rb.ro.r.assign("count_matrix", count_matrix_r)
+        _rb.ro.r(
             'rownames(count_matrix) <- c(%s)' % _r_string_vector(counts_df.index.tolist())
         )
-        ro.r(
+        _rb.ro.r(
             'colnames(count_matrix) <- c(%s)' % _r_string_vector(counts_df.columns.tolist())
         )
 
@@ -132,16 +126,16 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
         # Reverse lookup: original -> sanitized
         primary_level_map = {v: k for k, v in level_maps.get(primary_group, {}).items()}
 
-        ro.r.assign("col_data", col_data)
+        _rb.ro.r.assign("col_data", col_data)
 
         for c in formula_cols:
-            ro.r('col_data$%s <- as.factor(col_data$%s)' % (c, c))
+            _rb.ro.r('col_data$%s <- as.factor(col_data$%s)' % (c, c))
 
         # ── Run DESeq2 ──
-        ro.r('design_formula <- as.formula("%s")' % formula_str)
+        _rb.ro.r('design_formula <- as.formula("%s")' % formula_str)
 
         try:
-            ro.r('''
+            _rb.ro.r('''
                 dds <- DESeqDataSetFromMatrix(
                     countData = count_matrix,
                     colData = col_data,
@@ -163,7 +157,7 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
                 logger.warning(
                     "DESeq2 dispersion fit failed — falling back to gene-wise estimates."
                 )
-                ro.r('''
+                _rb.ro.r('''
                     dds <- DESeqDataSetFromMatrix(
                         countData = count_matrix,
                         colData = col_data,
@@ -180,10 +174,10 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
                 ) from exc
 
         # ── Extract normalized counts ──
-        ro.r('norm_counts <- counts(dds, normalized = TRUE)')
-        ro.r('norm_df <- as.data.frame(norm_counts)')
-        ro.r('norm_df$gene_id <- rownames(norm_df)')
-        norm_df = ro.r("norm_df")
+        _rb.ro.r('norm_counts <- counts(dds, normalized = TRUE)')
+        _rb.ro.r('norm_df <- as.data.frame(norm_counts)')
+        _rb.ro.r('norm_df$gene_id <- rownames(norm_df)')
+        norm_df = _rb.ro.r("norm_df")
         norm_df.to_csv(norm_output, index=False)
 
         # ── Extract DEG results ──
@@ -200,7 +194,7 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
                 safe_reference = primary_level_map.get(reference, reference)
 
                 try:
-                    ro.r(
+                    _rb.ro.r(
                         'res <- results(dds, contrast=c(%s, %s, %s))'
                         % (
                             _r_string_vector([primary_group]),
@@ -208,10 +202,10 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
                             _r_string_vector([safe_reference]),
                         )
                     )
-                    ro.r('res_df <- as.data.frame(res)')
-                    ro.r('res_df$gene_id <- rownames(res_df)')
+                    _rb.ro.r('res_df <- as.data.frame(res)')
+                    _rb.ro.r('res_df$gene_id <- rownames(res_df)')
 
-                    res_df = ro.r("res_df")
+                    res_df = _rb.ro.r("res_df")
                     res_df["contrast"] = contrast_label
                     res_df["significant"] = (
                         (res_df["padj"] <= adj_pvalue_cutoff)
@@ -240,11 +234,11 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
         else:
             deg_path = os.path.join(stats_dir, "deg_results.csv")
 
-            ro.r('res <- results(dds)')
-            ro.r('res_df <- as.data.frame(res)')
-            ro.r('res_df$gene_id <- rownames(res_df)')
+            _rb.ro.r('res <- results(dds)')
+            _rb.ro.r('res_df <- as.data.frame(res)')
+            _rb.ro.r('res_df$gene_id <- rownames(res_df)')
 
-            res_df = ro.r("res_df")
+            res_df = _rb.ro.r("res_df")
             res_df["significant"] = (
                 (res_df["padj"] <= adj_pvalue_cutoff)
                 & (

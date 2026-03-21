@@ -12,14 +12,8 @@ import os
 
 import pandas as pd
 
-from pipeline.stats._r_bridge import (
-    _R_CORES,
-    _converter,
-    _ensure_rpy2,
-    importr,
-    localconverter,
-    ro,
-)
+import pipeline.stats._r_bridge as _rb
+from pipeline.stats._r_bridge import _R_CORES, _ensure_rpy2
 
 logger = logging.getLogger(__name__)
 
@@ -180,13 +174,13 @@ def _run_methylkit_r(cov_files, sample_ids, treatments, stats_dir,
       6. Export results as CSV
     """
     _ensure_rpy2()
-    methylkit = importr("methylKit")
+    methylkit = _rb.importr("methylKit")
 
-    with localconverter(_converter):
+    with _rb.localconverter(_rb._converter):
         # Build R vectors for file paths, sample IDs, treatment
-        file_list = ro.StrVector(cov_files)
-        id_list = ro.StrVector(sample_ids)
-        treatment_vec = ro.IntVector(treatments)
+        file_list = _rb.ro.StrVector(cov_files)
+        id_list = _rb.ro.StrVector(sample_ids)
+        treatment_vec = _rb.ro.IntVector(treatments)
 
         # 1. Read coverage files
         obj_list = methylkit.methRead(
@@ -202,9 +196,9 @@ def _run_methylkit_r(cov_files, sample_ids, treatments, stats_dir,
         filtered_list = methylkit.filterByCoverage(
             obj_list,
             lo_count=10,
-            lo_perc=ro.NULL,
-            hi_count=ro.NULL,
-            hi_perc=ro.FloatVector([99.9]),
+            lo_perc=_rb.ro.NULL,
+            hi_count=_rb.ro.NULL,
+            hi_perc=_rb.ro.FloatVector([99.9]),
         )
 
         # 3. Normalize coverage across samples
@@ -222,8 +216,8 @@ def _run_methylkit_r(cov_files, sample_ids, treatments, stats_dir,
         )
 
         # 6. Extract results to data frame
-        r_base = importr("base")
-        r_utils = importr("utils")
+        r_base = _rb.importr("base")
+        r_utils = _rb.importr("utils")
 
         # Get the full results as a data.frame
         diff_df = r_base.as_data_frame(diff_meth)
