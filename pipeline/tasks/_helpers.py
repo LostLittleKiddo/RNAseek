@@ -139,15 +139,20 @@ def _emit_progress(job):
             return
 
         group_name = f"pipeline_{job.job_id}"
+        payload = {
+            "job_id": str(job.job_id),
+            "status": job.status,
+            "step_progress": job.step_progress,
+        }
+        # Include error detail so the frontend can show it immediately
+        if job.status == "FAILED" and job.result_payload:
+            payload["error"] = job.result_payload.get("error", "")
+
         async_to_sync(channel_layer.group_send)(
             group_name,
             {
                 "type": "pipeline.progress",
-                "data": {
-                    "job_id": str(job.job_id),
-                    "status": job.status,
-                    "step_progress": job.step_progress,
-                },
+                "data": payload,
             },
         )
     except Exception:

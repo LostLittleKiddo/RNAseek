@@ -419,6 +419,7 @@ class CorePipelineView(View):
             )
 
         # ── Persist payload ──
+        submission.submission_name = body.get("submission_name", "")[:200]
         submission.input_data_type = input_data_type
         submission.library_type = library_type
         submission.strandedness = strandedness
@@ -453,6 +454,7 @@ class CorePipelineView(View):
 
         job = AnalysisJob.objects.create(
             session=session_obj,
+            parent_submission=submission,
             module_name="CORE_PIPELINE",
             step_progress={
                 "pipeline_steps": steps,

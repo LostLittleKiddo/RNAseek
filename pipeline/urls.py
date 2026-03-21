@@ -38,5 +38,5 @@ urlpatterns = [
     path("api/files/<uuid:asset_id>/", FileAssetDeleteView.as_view(), name="file_asset_delete"),
     path("api/session/assets", SessionAssetsView.as_view(), name="session_assets"),
     path("api/download/<uuid:asset_id>", FileDownloadView.as_view(), name="file_download"),
-    path("api/modules/<str:module_name>/run", ModuleRunView.as_view(), name="module_run"),
+    path("api/submissions/<uuid:submission_id>/modules/<str:module_name>/run", ModuleRunView.as_view(), name="module_run"),
 ]

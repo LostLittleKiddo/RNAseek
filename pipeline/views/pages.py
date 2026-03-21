@@ -18,11 +18,20 @@ class WorkspacesView(TemplateView):
     template_name = "pipeline/workspaces.html"
 
     def get_context_data(self, **kwargs):
+        from django.conf import settings
+
         ctx = super().get_context_data(**kwargs)
         session_obj = self.request.session_obj
+        ctx["is_production"] = settings.IS_PRODUCTION
         ctx["jobs"] = list(
-            session_obj.analysis_jobs.order_by("-created_at").values(
-                "job_id", "module_name", "status", "created_at"
+            session_obj.analysis_jobs.filter(
+                is_core_pipeline=True,
+            ).order_by("-created_at").values(
+                "job_id",
+                "module_name",
+                "status",
+                "created_at",
+                "parent_submission__submission_name",
             )
         )
         return ctx
@@ -33,8 +42,11 @@ class NewSubmissionView(TemplateView):
     nav_step = 1
 
     def get_context_data(self, **kwargs):
+        from django.conf import settings
+
         ctx = super().get_context_data(**kwargs)
         ctx["nav_step"] = self.nav_step
+        ctx["is_production"] = settings.IS_PRODUCTION
         ctx["genome_choices"] = [
             {"group": "Vertebrates", "options": [
                 {"value": "hg38", "label": "Human (GRCh38 / hg38)"},
