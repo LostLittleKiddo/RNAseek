@@ -1,7 +1,6 @@
 from django.urls import path
 
 from pipeline.views import (
-    AdvancedView,
     ChunkUploadView,
     CoreHubView,
     CorePipelineView,
@@ -27,7 +26,6 @@ urlpatterns = [
     path("analysis_submission/new/", NewSubmissionView.as_view(), name="new_submission"),
     path("processing/<uuid:job_id>/", ProcessingView.as_view(), name="processing"),
     path("hub/<uuid:job_id>/", CoreHubView.as_view(), name="core_hub"),
-    path("advanced/<uuid:job_id>/", AdvancedView.as_view(), name="advanced"),
 
     # API endpoints
     path("api/submission/create", CreateSubmissionView.as_view(), name="create_submission"),

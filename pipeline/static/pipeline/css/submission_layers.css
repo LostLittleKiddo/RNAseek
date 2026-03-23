@@ -176,6 +176,7 @@
     padding-right: .5rem;
     overflow-y: auto;
     padding-bottom: 48px;
+    zoom: 0.8;
 }
 
 .wizard-split-right {
@@ -709,7 +710,8 @@ main {
     color: var(--rna-teal);
 }
 
-.input-tip .tip-text {
+.input-tip .tip-text,
+.tip-text-clone {
     position: fixed;
     width: 270px;
     padding: .65rem .85rem;
@@ -728,7 +730,8 @@ main {
     white-space: normal;
 }
 
-.input-tip .tip-text::after {
+.input-tip .tip-text::after,
+.tip-text-clone::after {
     content: '';
     position: absolute;
     top: 50%;
@@ -739,12 +742,15 @@ main {
 }
 
 .input-tip:hover .tip-text {
-    opacity: 1;
-    visibility: visible;
+    /* Visibility handled by JS clone on <body> to escape
+       overflow/zoom containers — keep original hidden */
+    opacity: 0;
+    visibility: hidden;
 }
 
 /* Flipped tooltip (renders to the left when near viewport edge) */
-.tip-text.tip-flip-left::after {
+.tip-text.tip-flip-left::after,
+.tip-text-clone.tip-flip-left::after {
     right: auto;
     left: 100%;
     border-right-color: transparent;
@@ -1057,7 +1063,8 @@ main {
 }
 
 .csv-viewer-table-wrap {
-    max-height: calc(6 * 36px + 36px);
+    flex: 1 1 0;
+    min-height: 0;
     overflow: auto;
     border: 1px solid var(--rna-grey-200);
     border-radius: var(--rna-radius-sm);
@@ -1617,6 +1624,7 @@ main {
         position: static;
         max-height: none;
         padding-right: 0;
+        zoom: 1;
     }
 
     .radio-card-group {
@@ -1917,6 +1925,8 @@ main {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 /* ═══════════════════════════════════════════════════════════════════

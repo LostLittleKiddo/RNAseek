@@ -1,7 +1,7 @@
 # RNAseek — Project Progress
 
 > **Blueprint version:** 1.2 (Target: March 31, 2026)  
-> **Audit date:** March 20, 2026  
+> **Audit date:** March 23, 2026  
 
 ---
 
@@ -199,11 +199,11 @@
 
 ### Tier 4: Advanced Spatial Spokes
 
-| Feature                               | Status | Notes                                                                                                                                    |
-| ------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Trajectory Inference (scanpy)**     | ❌      | No backend. `scanpy` installed but unused for trajectory/PAGA. Frontend UI exists (root cell selector, run button, plot placeholder).    |
-| **Spatial Mapping (Tangram)**         | ❌      | No backend. `tangram-sc` commented out in `requirements.txt`. Frontend UI exists (template selector, H&E uploader, run button).          |
-| **Spatial Autocorrelation (Squidpy)** | ❌      | No backend. `squidpy` commented out in `requirements.txt`. Frontend UI exists (gene search, run button, Moran's I download placeholder). |
+| Feature                               | Status | Notes                                                                                                                                                  |
+| ------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Trajectory Inference (scanpy)**     | ❌      | No backend. `scanpy` installed but unused for trajectory/PAGA. Locked spoke card in Core Hub Single-Cell tab; standalone `advanced.html` page removed. |
+| **Spatial Mapping (Tangram)**         | ❌      | No backend. `tangram-sc` commented out in `requirements.txt`. Locked spoke card in Core Hub Single-Cell tab; standalone `advanced.html` page removed.  |
+| **Spatial Autocorrelation (Squidpy)** | ❌      | No backend. `squidpy` commented out in `requirements.txt`. Locked spoke card in Core Hub Single-Cell tab; standalone `advanced.html` page removed.     |
 
 ---
 
@@ -219,12 +219,12 @@
 
 ### 8.2 CI/CD & Observability
 
-| Feature                  | Status | Notes                                                                                                                                                                                                                               |
-| ------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **GitHub Actions E2E**   | ✅      | `.github/workflows/e2e.yml`: Miniconda setup, bioinformatics tool verification, yeast HISAT2 index build, migrations, `test_e2e.py` on synthetic sacCer3 dataset                                                                    |
-| **Test suite**           | ✅      | 8 test files: `test_entry_points.py` (32 tests), `test_stage2.py` (26 tests), `test_assay_tracks.py` (~40 tests), `test_wgcna.py` (24 tests), `test_upload_api.py`, `test_hisat2_pipeline.py`, `test_dev_dataset.py`, `test_e2e.py` |
-| **Prometheus & Grafana** | ❌      | Blueprint requires Celery queue depth and worker RAM monitoring — no monitoring infrastructure exists                                                                                                                               |
-| **`.gitignore`**         | ✅      | Blocks `.fastq.gz`, `.bam`, `.cram`, `.sam`, `.h5ad`, `.ht2`, `.RData` to prevent repo bloat                                                                                                                                        |
+| Feature                  | Status | Notes                                                                                                                                                                                                                                                         |
+| ------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **GitHub Actions E2E**   | ✅      | `.github/workflows/e2e.yml`: Miniconda setup, bioinformatics tool verification, yeast HISAT2 index build, migrations, `test_e2e.py` on synthetic sacCer3 dataset                                                                                              |
+| **Test suite**           | ✅      | 9 test files: `test_entry_points.py` (32 tests), `test_stage2.py` (26 tests), `test_assay_tracks.py` (~40 tests), `test_wgcna.py` (24 tests), `test_genome_indices.py`, `test_upload_api.py`, `test_hisat2_pipeline.py`, `test_dev_dataset.py`, `test_e2e.py` |
+| **Prometheus & Grafana** | ❌      | Blueprint requires Celery queue depth and worker RAM monitoring — no monitoring infrastructure exists                                                                                                                                                         |
+| **`.gitignore`**         | ✅      | Blocks `.fastq.gz`, `.bam`, `.cram`, `.sam`, `.h5ad`, `.ht2`, `.RData` to prevent repo bloat                                                                                                                                                                  |
 
 ### 8.3 Docker & Deployment
 
@@ -245,29 +245,29 @@
 
 | Page                      | Status | Notes                                                                                                                                                                                                                                                                  |
 | ------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`base.html`**           | ✅      | Navbar (logo, nav links, 4-step workflow indicator, session badge), footer (14-day retention notice), CSRF meta tag, font/icon imports                                                                                                                                 |
+| **`base.html`**           | ✅      | Navbar (logo, nav links, 3-step workflow indicator: Upload → Processing → Core Hub, session badge), footer (14-day retention notice), CSRF meta tag, font/icon imports                                                                                                 |
 | **`home.html`**           | ✅      | Hero slideshow (3 images), 4 action buttons, "How It Works" 4-card flow, capabilities grid, 12-module grid, reference genomes table. Slideshow auto-rotate JS not implemented (static dots exist).                                                                     |
 | **`tutorials.html`**      | ✅      | File format guide, metadata mapping example, pipeline workflow text flow, reference genomes table                                                                                                                                                                      |
 | **`new_submission.html`** | ✅      | 5-step wizard: submission name → entry point + assay type → file upload (FASTQ/BAM/Matrix drop zones) → genome selection (11 built-in + custom) → metadata (CSV upload or manual builder, column mapping, contrast builder) → statistical parameters → review + submit |
 | **`processing.html`**     | ✅      | Dynamic step cards from `pipeline_steps` context, progress bar, WebSocket connection with HTTP polling fallback, error overlay with pattern-matched diagnostic hints, success redirect to Core Hub                                                                     |
 | **`core_hub.html`**       | ✅      | 3-tab layout (Overview                                                                                                                                                                                                                                                 | Modules | Single-Cell): Tab 1 has downloads + 5 Plotly plots, Tab 2 has 11 module cards with status badges (Running/Completed/Failed) and inline result panel, Tab 3 has deconvolution gateway + 3 locked advanced spoke cards. Module jobs loaded from server context. |
 | **`workspaces.html`**     | ✅      | Jobs table with real data (submission name, module, status badges, action links), dev mode badge, 14-day retention warning, empty state                                                                                                                                |
-| **`advanced.html`**       | 🚧      | **UI complete:** 3 spoke workspaces (Trajectory, Spatial Mapping, Autocorrelation) with input controls and plot placeholders. **No backend:** All 3 require deconvolution `.h5ad` output that doesn't exist yet.                                                       |
+| **`advanced.html`**       | ✅      | **Removed.** Standalone Tier 4 spoke page deleted. Spoke cards now live exclusively in the Core Hub Single-Cell tab as locked module cards that unlock after deconvolution.                                                                                            |
 
 ### JavaScript
 
-| File                                  | Status | Notes                                                                                                                                                                                                                                                                                                                                                       |
-| ------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`pipeline_setup.js`** (~1600 lines) | ✅      | 5-step wizard navigation, entry point selector, assay type selector, library type toggle, FASTQ/BAM/Matrix drop zones, chunked upload with retry, paired-end validation, CSV metadata upload with PapaParse, manual metadata builder, column mapping, contrast builder, per-step validation, toast notifications                                            |
-| **`core_hub.js`** (~600 lines)        | ✅      | Tab switching (Overview/Modules/Single-Cell), Plotly resize on tab change, module status badge rendering from server JSON, module card click (completed shows result panel, others open config modal), 5 Plotly rendering functions, module submission + polling with badge updates, deconvolution gateway + polling + spoke unlock, download link handlers |
+| File                                  | Status | Notes                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`pipeline_setup.js`** (~1600 lines) | ✅      | 5-step wizard navigation, entry point selector, assay type selector, library type toggle, FASTQ/BAM/Matrix drop zones, chunked upload with retry, paired-end validation, CSV metadata upload with PapaParse, manual metadata builder, column mapping, contrast builder, per-step validation, toast notifications, body-cloned tooltip positioning (escapes overflow/zoom) |
+| **`core_hub.js`** (~600 lines)        | ✅      | Tab switching (Overview/Modules/Single-Cell), Plotly resize on tab change, module status badge rendering from server JSON, module card click (completed shows result panel, others open config modal), 5 Plotly rendering functions, module submission + polling with badge updates, deconvolution gateway + polling + spoke unlock, download link handlers               |
 
 ### CSS
 
-| File                                     | Status | Notes                                                                                                                                                                                            |
-| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **`variables.css`**                      | ✅      | Full design token system (navy-teal-mint palette, gradients, typography, border radii, shadows)                                                                                                  |
-| **`global.css`** (~600 lines)            | ✅      | Complete component library: navbar, footer, buttons, cards, module cards, grids, forms, badges, modals, progress bars, tab bar, module status badges (running/done/failed), responsive utilities |
-| **`submission_layers.css`** (~800 lines) | ✅      | 5-step wizard layout, step indicators, radio cards, drop zones, file management panel, metadata table, validation messages, toast animations                                                     |
+| File                                     | Status | Notes                                                                                                                                                                                             |
+| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`variables.css`**                      | ✅      | Full design token system (navy-teal-mint palette, gradients, typography, border radii, shadows)                                                                                                   |
+| **`global.css`** (~600 lines)            | ✅      | Complete component library: navbar, footer, buttons, cards, module cards, grids, forms, badges, modals, progress bars, tab bar, module status badges (running/done/failed), responsive utilities  |
+| **`submission_layers.css`** (~800 lines) | ✅      | 5-step wizard layout, step indicators, radio cards, drop zones, file management panel, metadata table, validation messages, toast animations, wizard-panel zoom (0.8), body-cloned tooltip styles |
 
 ---
 
@@ -315,8 +315,7 @@ All 11 genomes have HISAT2 indices (`.ht2`), FASTA, and GTF annotation files. Pr
 | `test_upload_api.py`      | —     | Upload API tests                                                                                                                                                                                              |
 | `test_hisat2_pipeline.py` | —     | HISAT2 alignment integration                                                                                                                                                                                  |
 | `test_dev_dataset.py`     | —     | Dev dataset validation                                                                                                                                                                                        |
-| `test_e2e.py`             | —     | Full E2E: synthetic yeast FASTQ → Stage 1 → Stage 2 (used in CI)                                                                                                                                              |
-
+| `test_e2e.py`             | —     | Full E2E: synthetic yeast FASTQ → Stage 1 → Stage 2 (used in CI)                                                                                                                                              |  | `test_genome_indices.py` | — | Genome index resolution and pre-built index verification |
 ---
 
 ## Summary by Blueprint Phase

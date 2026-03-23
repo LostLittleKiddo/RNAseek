@@ -152,17 +152,3 @@ class CoreHubView(TemplateView):
         return ctx
 
 
-class AdvancedView(TemplateView):
-    template_name = "pipeline/advanced.html"
-    nav_step = 4
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        session_obj = self.request.session_obj
-        job = get_object_or_404(
-            AnalysisJob, job_id=kwargs["job_id"], session=session_obj
-        )
-        ctx["job"] = job
-        ctx["job_id"] = str(job.job_id)
-        ctx["nav_step"] = self.nav_step
-        return ctx

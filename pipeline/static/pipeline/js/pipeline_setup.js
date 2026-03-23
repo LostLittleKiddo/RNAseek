@@ -2133,25 +2133,59 @@
 
     /* ─── Tooltip Fixed-Position Helper ──────────────────────── */
     function initTooltipPositioning() {
-        document.addEventListener("mouseenter", function (e) {
-            var tip = e.target.closest(".input-tip");
-            if (!tip) return;
+        /* Move the tooltip bubble to <body> on hover so it escapes
+           any overflow:hidden / zoom containers and always renders
+           on top at true viewport coordinates. */
+        var activeClone = null;
+        var activeTip = null;
+
+        function showTooltip(tip) {
             var tipText = tip.querySelector(".tip-text");
             if (!tipText) return;
+            hideTooltip();
+
+            activeClone = tipText.cloneNode(true);
+            activeClone.classList.add("tip-text-clone");
+            activeClone.style.position = "fixed";
+            activeClone.style.opacity = "1";
+            activeClone.style.visibility = "visible";
+            activeClone.style.pointerEvents = "none";
+            activeClone.style.zIndex = "100000";
+            document.body.appendChild(activeClone);
+            activeTip = tip;
+
             var rect = tip.getBoundingClientRect();
             var tipW = 270;
             var left = rect.right + 10;
             var top = rect.top + rect.height / 2;
-            // Flip to left side if it would overflow viewport
+
             if (left + tipW > window.innerWidth - 8) {
                 left = rect.left - tipW - 10;
-                tipText.classList.add("tip-flip-left");
+                activeClone.classList.add("tip-flip-left");
             } else {
-                tipText.classList.remove("tip-flip-left");
+                activeClone.classList.remove("tip-flip-left");
             }
-            tipText.style.left = left + "px";
-            tipText.style.top = top + "px";
-            tipText.style.transform = "translateY(-50%)";
+            activeClone.style.left = left + "px";
+            activeClone.style.top = top + "px";
+            activeClone.style.transform = "translateY(-50%)";
+        }
+
+        function hideTooltip() {
+            if (activeClone) {
+                activeClone.remove();
+                activeClone = null;
+                activeTip = null;
+            }
+        }
+
+        document.addEventListener("mouseenter", function (e) {
+            var tip = e.target.closest(".input-tip");
+            if (tip) showTooltip(tip);
+        }, true);
+
+        document.addEventListener("mouseleave", function (e) {
+            var tip = e.target.closest(".input-tip");
+            if (tip && tip === activeTip) hideTooltip();
         }, true);
     }
 

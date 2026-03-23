@@ -1,7 +1,6 @@
 """Pipeline views package — re-exports all views for backward compatibility."""
 
 from pipeline.views.pages import (          # noqa: F401
-    AdvancedView,
     CoreHubView,
     HomeView,
     NewSubmissionView,
