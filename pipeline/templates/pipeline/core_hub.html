@@ -20,15 +20,11 @@
                             style="color: rgba(255,255,255,.9);">{{ job_id|truncatechars:13 }}</code></span>
                 </div>
             </div>
-            <a href="{% url 'workspaces' %}" class="btn-rna btn-rna-light btn-rna-sm"
-                style="background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff;">
-                <i class="bi bi-arrow-left"></i> Back to Workspaces
-            </a>
         </div>
     </div>
 
     <!-- ═══ Tab Bar ═══ -->
-    <div class="rna-tab-bar rna-mt-3">
+    <div class="rna-tab-bar rna-mt-3" style="display: flex; align-items: center;">
         <button class="rna-tab active" data-tab="overview">
             <i class="bi bi-bar-chart-line"></i> Overview
         </button>
@@ -38,160 +34,367 @@
         <button class="rna-tab" data-tab="singlecell">
             <i class="bi bi-layers"></i> Single-Cell
         </button>
+        <a href="{% url 'workspaces' %}" class="btn-rna btn-rna-sm ms-auto"
+            style="background: #059696; border: 1px solid #059696; color: #ffffff; margin-left: auto; font-weight: 500;">
+            <i class="bi bi-arrow-left"></i> Back to Workspaces
+        </a>
     </div>
 
     <!-- ═══════════════════════════════════════════════ -->
-    <!-- TAB 1: Overview (Downloads + Core Plots)       -->
+    <!-- TAB 1: Overview – Command Center Layout        -->
     <!-- ═══════════════════════════════════════════════ -->
-    <div class="rna-tab-panel active" id="tab-overview">
+    <style>
+        /* ── Command Center Grid ── */
+        .cmd-center {
+            display: grid;
+            grid-template-columns: 25% 1fr;
+            gap: 1.25rem;
+            margin-top: 1.5rem;
+        }
 
-        <!-- Downloads -->
-        <div class="rna-card rna-mt-3 rna-mb-3">
-            <div class="rna-card-header">
-                <i class="bi bi-download"></i>&ensp;Downloads &amp; QC Reports
+        @media (max-width: 1024px) {
+            .cmd-center {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ── Visualization Pills ── */
+        .viz-pills {
+            display: flex;
+            gap: .5rem;
+            padding: 0;
+            margin: 0 0 1.25rem;
+            list-style: none;
+            flex-wrap: wrap;
+        }
+
+        .viz-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .45rem .9rem;
+            font-family: var(--rna-font-heading);
+            font-size: .8rem;
+            font-weight: 600;
+            color: var(--rna-grey-600);
+            background: var(--rna-grey-100);
+            border: 1px solid var(--rna-grey-200);
+            border-radius: 999px;
+            cursor: pointer;
+            transition: all .2s ease;
+            white-space: nowrap;
+        }
+
+        .viz-pill:hover {
+            color: var(--rna-teal);
+            border-color: var(--rna-teal-light);
+            background: rgba(5, 154, 152, .06);
+        }
+
+        .viz-pill.active {
+            color: #fff;
+            background: var(--rna-teal);
+            border-color: var(--rna-teal);
+        }
+
+        /* ── Theater Panes ── */
+        .viz-theater-pane {
+            display: none;
+        }
+
+        .viz-theater-pane.active {
+            display: block;
+        }
+
+        /* ── Pane Header Row ── */
+        .viz-pane-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: .75rem;
+            flex-wrap: wrap;
+        }
+
+        .viz-pane-header .viz-pane-info {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .viz-pane-header .viz-pane-title {
+            font-family: var(--rna-font-heading);
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--rna-navy);
+            margin: 0 0 .35rem;
+        }
+
+        /* ── Download Figure Button ── */
+        .btn-rna-figure {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .4rem .85rem;
+            font-size: .78rem;
+            font-weight: 600;
+            color: var(--rna-navy);
+            background: rgba(2, 66, 110, .06);
+            border: 1px solid rgba(2, 66, 110, .18);
+            border-radius: var(--rna-radius-sm);
+            cursor: pointer;
+            transition: all .2s ease;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .btn-rna-figure:hover {
+            background: var(--rna-navy);
+            color: #fff;
+            border-color: var(--rna-navy);
+        }
+
+        /* ── Dashed Plot Placeholder ── */
+        .viz-plot-stage {
+            width: 100%;
+            min-height: 450px;
+            background: #fff;
+            border: 2px dashed var(--rna-grey-300);
+            border-radius: var(--rna-radius-lg);
+            overflow: hidden;
+            position: relative;
+            color: var(--rna-grey-400);
+            font-size: .82rem;
+        }
+
+        .viz-plot-stage>span {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        /* Once Plotly renders, remove dashed border */
+        .viz-plot-stage .js-plotly-plot,
+        .viz-plot-stage .plot-container,
+        .viz-plot-stage .svg-container {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .viz-plot-stage.has-plot {
+            border-style: solid;
+            border-color: var(--rna-grey-200);
+        }
+    </style>
+
+    <div class="rna-tab-panel active" id="tab-overview">
+        <div class="cmd-center">
+
+            <!-- ──────── LEFT: Sidebar – Downloads & QC ──────── -->
+            <div class="cmd-sidebar">
+                <div class="rna-card" style="position: sticky; top: 1.5rem; height: max-content;">
+                    <div class="rna-card-header">
+                        <i class="bi bi-download"></i>&ensp;Downloads &amp; QC Reports
+                    </div>
+                    <div class="rna-card-body" style="padding: 0;">
+                        <div class="rna-download-item">
+                            <div class="file-info">
+                                <i class="bi bi-file-earmark-binary"></i>
+                                <div>
+                                    <div class="file-name">Aligned Reads (.bam)</div>
+                                    <div class="file-desc">Sorted and indexed BAM files aligned against the reference
+                                        genome</div>
+                                </div>
+                            </div>
+                            <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="ALIGNMENT_BAM"
+                                title="Download"><i class="bi bi-download"></i></button>
+                        </div>
+                        <div class="rna-download-item">
+                            <div class="file-info">
+                                <i class="bi bi-file-earmark-spreadsheet"></i>
+                                <div>
+                                    <div class="file-name">Raw Count Matrix (.csv)</div>
+                                    <div class="file-desc">Genes &times; Samples raw read counts</div>
+                                </div>
+                            </div>
+                            <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="COUNT_MATRIX"
+                                title="Download"><i class="bi bi-download"></i></button>
+                        </div>
+                        <div class="rna-download-item">
+                            <div class="file-info">
+                                <i class="bi bi-file-earmark-spreadsheet"></i>
+                                <div>
+                                    <div class="file-name">Normalized Count Matrix (.csv)</div>
+                                    <div class="file-desc">Library-size normalized &amp; batch-corrected matrix</div>
+                                </div>
+                            </div>
+                            <button class="rna-icon-btn rna-icon-btn-download download-btn"
+                                data-asset="NORMALIZED_COUNTS" title="Download"><i class="bi bi-download"></i></button>
+                        </div>
+                        <div class="rna-download-item">
+                            <div class="file-info">
+                                <i class="bi bi-file-earmark-spreadsheet"></i>
+                                <div>
+                                    <div class="file-name">Differential Expression Table (.csv)</div>
+                                    <div class="file-desc">Log2FC, p-values, FDR, and gene descriptions</div>
+                                </div>
+                            </div>
+                            <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="DEG_TABLE"
+                                title="Download"><i class="bi bi-download"></i></button>
+                        </div>
+                        <div class="rna-download-item">
+                            <div class="file-info">
+                                <i class="bi bi-file-earmark-richtext"></i>
+                                <div>
+                                    <div class="file-name">MultiQC Report (.html)</div>
+                                    <div class="file-desc">Aggregated FastQC, HISAT2, featureCounts logs</div>
+                                </div>
+                            </div>
+                            <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="MULTIQC_REPORT"
+                                title="Download"><i class="bi bi-download"></i></button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="rna-card-body" style="padding: 0;">
-                <div class="rna-download-item">
-                    <div class="file-info">
-                        <i class="bi bi-file-earmark-binary"></i>
-                        <div>
-                            <div class="file-name">Aligned Reads (.bam)</div>
-                            <div class="file-desc">Sorted and indexed BAM files aligned against the reference genome
+
+            <!-- ──────── RIGHT: Main Stage – Visualization Theater ──────── -->
+            <div class="cmd-stage">
+                <div class="rna-card">
+                    <div class="rna-card-header">
+                        <i class="bi bi-bar-chart-line"></i>&ensp;Core Visualizations
+                    </div>
+                    <div class="rna-card-body">
+
+                        <!-- Navigation Pills -->
+                        <ul class="viz-pills" id="viz-pills">
+                            <li class="viz-pill active" data-viz="pca">
+                                <i class="bi bi-scatter-chart"></i> PCA Plot
+                            </li>
+                            <li class="viz-pill" data-viz="umap">
+                                <i class="bi bi-scatter-chart"></i> UMAP Plot
+                            </li>
+                            <li class="viz-pill" data-viz="volcano">
+                                <i class="bi bi-fire"></i> Volcano Plot
+                            </li>
+                            <li class="viz-pill" data-viz="ma">
+                                <i class="bi bi-bar-chart-line"></i> MA Plot
+                            </li>
+                            <li class="viz-pill" data-viz="heatmap">
+                                <i class="bi bi-grid-3x3"></i> Top DEG Heatmap
+                            </li>
+                        </ul>
+
+                        <!-- ── PCA Pane ── -->
+                        <div class="viz-theater-pane active" id="viz-pane-pca">
+                            <div class="viz-pane-header">
+                                <div class="viz-pane-info">
+                                    <h3 class="viz-pane-title">PCA Plot</h3>
+                                    <p class="rna-text-sm rna-text-muted" style="margin: 0;">
+                                        Principal Component Analysis reduces high-dimensional gene expression data into
+                                        two axes that
+                                        capture the largest variance. Samples that cluster together share similar
+                                        expression profiles.
+                                    </p>
+                                </div>
+                                <button class="btn-rna-figure" data-figure="pca-plot">
+                                    <i class="bi bi-download"></i> Download Interactive Figure
+                                </button>
+                            </div>
+                            <div class="viz-plot-stage rna-plot-container" id="pca-plot">
+                                <span class="rna-text-sm rna-text-muted">PCA visualization loads here</span>
                             </div>
                         </div>
-                    </div>
-                    <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="ALIGNMENT_BAM"
-                        title="Download"><i class="bi bi-download"></i></button>
-                </div>
-                <div class="rna-download-item">
-                    <div class="file-info">
-                        <i class="bi bi-file-earmark-spreadsheet"></i>
-                        <div>
-                            <div class="file-name">Raw Count Matrix (.csv)</div>
-                            <div class="file-desc">Genes &times; Samples raw read counts</div>
+
+                        <!-- ── UMAP Pane ── -->
+                        <div class="viz-theater-pane" id="viz-pane-umap">
+                            <div class="viz-pane-header">
+                                <div class="viz-pane-info">
+                                    <h3 class="viz-pane-title">UMAP Plot</h3>
+                                    <p class="rna-text-sm rna-text-muted" style="margin: 0;">
+                                        UMAP preserves local neighborhood structure and highlights clusters of similar
+                                        samples more
+                                        sharply than PCA, especially in datasets with complex structure.
+                                    </p>
+                                </div>
+                                <button class="btn-rna-figure" data-figure="umap-plot">
+                                    <i class="bi bi-download"></i> Download Interactive Figure
+                                </button>
+                            </div>
+                            <div class="viz-plot-stage rna-plot-container" id="umap-plot">
+                                <span class="rna-text-sm rna-text-muted">UMAP visualization loads here</span>
+                            </div>
                         </div>
-                    </div>
-                    <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="COUNT_MATRIX"
-                        title="Download"><i class="bi bi-download"></i></button>
-                </div>
-                <div class="rna-download-item">
-                    <div class="file-info">
-                        <i class="bi bi-file-earmark-spreadsheet"></i>
-                        <div>
-                            <div class="file-name">Normalized Count Matrix (.csv)</div>
-                            <div class="file-desc">Library-size normalized &amp; batch-corrected matrix</div>
+
+                        <!-- ── Volcano Pane ── -->
+                        <div class="viz-theater-pane" id="viz-pane-volcano">
+                            <div class="viz-pane-header">
+                                <div class="viz-pane-info">
+                                    <h3 class="viz-pane-title">Volcano Plot</h3>
+                                    <p class="rna-text-sm rna-text-muted" style="margin: 0;">
+                                        Each dot is a gene. Genes in the upper-left (blue, downregulated) and
+                                        upper-right (red,
+                                        upregulated) corners are the most biologically interesting. Dashed lines mark
+                                        your chosen thresholds.
+                                    </p>
+                                </div>
+                                <button class="btn-rna-figure" data-figure="volcano-plot">
+                                    <i class="bi bi-download"></i> Download Interactive Figure
+                                </button>
+                            </div>
+                            <div class="viz-plot-stage rna-plot-container" id="volcano-plot">
+                                <span class="rna-text-sm rna-text-muted">Volcano plot loads here</span>
+                            </div>
                         </div>
-                    </div>
-                    <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="NORMALIZED_COUNTS"
-                        title="Download"><i class="bi bi-download"></i></button>
-                </div>
-                <div class="rna-download-item">
-                    <div class="file-info">
-                        <i class="bi bi-file-earmark-spreadsheet"></i>
-                        <div>
-                            <div class="file-name">Differential Expression Table (.csv)</div>
-                            <div class="file-desc">Log2FC, p-values, FDR, and gene descriptions</div>
+
+                        <!-- ── MA Pane ── -->
+                        <div class="viz-theater-pane" id="viz-pane-ma">
+                            <div class="viz-pane-header">
+                                <div class="viz-pane-info">
+                                    <h3 class="viz-pane-title">MA Plot</h3>
+                                    <p class="rna-text-sm rna-text-muted" style="margin: 0;">
+                                        Shows the relationship between average expression level (x-axis) and fold change
+                                        (y-axis).
+                                        Red points are statistically significant DEGs. A balanced cloud centered on y=0
+                                        indicates good
+                                        normalization.
+                                    </p>
+                                </div>
+                                <button class="btn-rna-figure" data-figure="ma-plot">
+                                    <i class="bi bi-download"></i> Download Interactive Figure
+                                </button>
+                            </div>
+                            <div class="viz-plot-stage rna-plot-container" id="ma-plot">
+                                <span class="rna-text-sm rna-text-muted">MA plot loads here</span>
+                            </div>
                         </div>
-                    </div>
-                    <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="DEG_TABLE"
-                        title="Download"><i class="bi bi-download"></i></button>
-                </div>
-                <div class="rna-download-item">
-                    <div class="file-info">
-                        <i class="bi bi-file-earmark-richtext"></i>
-                        <div>
-                            <div class="file-name">MultiQC Report (.html)</div>
-                            <div class="file-desc">Aggregated FastQC, HISAT2, featureCounts logs</div>
+
+                        <!-- ── Heatmap Pane ── -->
+                        <div class="viz-theater-pane" id="viz-pane-heatmap">
+                            <div class="viz-pane-header">
+                                <div class="viz-pane-info">
+                                    <h3 class="viz-pane-title">Top DEG Heatmap</h3>
+                                    <p class="rna-text-sm rna-text-muted" style="margin: 0;">
+                                        Z-score normalized expression heatmap of the top 50 most significant
+                                        differentially expressed
+                                        genes. Blue indicates below-average and red indicates above-average expression
+                                        relative to each gene's
+                                        mean.
+                                    </p>
+                                </div>
+                                <button class="btn-rna-figure" data-figure="heatmap-plot">
+                                    <i class="bi bi-download"></i> Download Interactive Figure
+                                </button>
+                            </div>
+                            <div class="viz-plot-stage rna-plot-container" id="heatmap-plot" style="min-height: 500px;">
+                                <span class="rna-text-sm rna-text-muted">Heatmap loads here</span>
+                            </div>
                         </div>
-                    </div>
-                    <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="MULTIQC_REPORT"
-                        title="Download"><i class="bi bi-download"></i></button>
-                </div>
-            </div>
-        </div>
 
-        <!-- Core Visualizations -->
-        <div class="rna-mb-3">
-            <h2 class="rna-section-title rna-mb-1">Core Visualizations</h2>
-            <p class="rna-section-subtitle">Interactive plots powered by your analysis results. Hover over data points
-                for
-                sample details.</p>
-        </div>
+                    </div>
+                </div>
+            </div>
 
-        <div class="rna-grid-2 rna-mb-3">
-            <div class="rna-card">
-                <div class="rna-card-header"><i class="bi bi-scatter-chart"></i>&ensp;PCA Plot</div>
-                <div class="rna-card-body">
-                    <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
-                        Principal Component Analysis reduces high-dimensional gene expression data into two axes that
-                        capture the largest variance. Samples that cluster together share similar expression profiles.
-                    </p>
-                    <div class="rna-plot-container" id="pca-plot">
-                        <span class="rna-text-sm rna-text-muted">PCA visualization loads here</span>
-                    </div>
-                </div>
-            </div>
-            <div class="rna-card">
-                <div class="rna-card-header"><i class="bi bi-scatter-chart"></i>&ensp;UMAP Plot</div>
-                <div class="rna-card-body">
-                    <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
-                        UMAP preserves local neighborhood structure and highlights clusters of similar samples more
-                        sharply
-                        than PCA, especially in datasets with complex structure.
-                    </p>
-                    <div class="rna-plot-container" id="umap-plot">
-                        <span class="rna-text-sm rna-text-muted">UMAP visualization loads here</span>
-                    </div>
-                </div>
-            </div>
         </div>
-
-        <div class="rna-grid-2 rna-mb-3">
-            <div class="rna-card">
-                <div class="rna-card-header"><i class="bi bi-fire"></i>&ensp;Volcano Plot</div>
-                <div class="rna-card-body">
-                    <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
-                        Each dot is a gene. Genes in the upper-left (blue, downregulated) and upper-right (red,
-                        upregulated)
-                        corners are the most biologically interesting. Dashed lines mark your chosen thresholds.
-                    </p>
-                    <div class="rna-plot-container" id="volcano-plot">
-                        <span class="rna-text-sm rna-text-muted">Volcano plot loads here</span>
-                    </div>
-                </div>
-            </div>
-            <div class="rna-card">
-                <div class="rna-card-header"><i class="bi bi-bar-chart-line"></i>&ensp;MA Plot</div>
-                <div class="rna-card-body">
-                    <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
-                        Shows the relationship between average expression level (x-axis) and fold change (y-axis).
-                        Red points are statistically significant DEGs. A balanced cloud centered on y=0 indicates good
-                        normalization.
-                    </p>
-                    <div class="rna-plot-container" id="ma-plot">
-                        <span class="rna-text-sm rna-text-muted">MA plot loads here</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="rna-mb-3">
-            <div class="rna-card">
-                <div class="rna-card-header"><i class="bi bi-grid-3x3"></i>&ensp;Top DEG Heatmap</div>
-                <div class="rna-card-body">
-                    <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
-                        Z-score normalized expression heatmap of the top 50 most significant differentially expressed
-                        genes.
-                        Blue indicates below-average and red indicates above-average expression relative to each gene's
-                        mean.
-                    </p>
-                    <div class="rna-plot-container" id="heatmap-plot" style="min-height: 500px;">
-                        <span class="rna-text-sm rna-text-muted">Heatmap loads here</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
     </div><!-- /tab-overview -->
 
     <!-- ═══════════════════════════════════════════════ -->

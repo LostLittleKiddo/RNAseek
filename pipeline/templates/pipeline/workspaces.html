@@ -27,11 +27,10 @@
 {% endblock %}
 
 {% block content %}
-<section class="rna-container" style="padding-top: 1.25rem; padding-bottom: 3rem;">
+<section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
 
     <!-- ═══ Welcome Banner (matches Submission page) ═══ -->
-    <div class="dash-welcome-banner"
-        style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem;">
+    <div class="dash-welcome-banner rna-mb-3" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
             <p class="dash-greeting">Active Workspaces</p>
             <h1 class="dash-tagline">RNAseek &mdash; Analysis Dashboard</h1>
@@ -63,10 +62,15 @@
             <table class="rna-table" id="jobs-table">
                 <colgroup>
                     {% if not is_production %}
-                    <col style="width: 14%;">{% endif %}
-                    <col style="width: {% if not is_production %}22{% else %}30{% endif %}%;">
-                    <col style="width: {% if not is_production %}16{% else %}20{% endif %}%;">
-                    <col style="width: {% if not is_production %}20{% else %}22{% endif %}%;">
+                    <col style="width: 14%;">
+                    <col style="width: 22%;">
+                    <col style="width: 16%;">
+                    <col style="width: 20%;">
+                    {% else %}
+                    <col style="width: 30%;">
+                    <col style="width: 20%;">
+                    <col style="width: 22%;">
+                    {% endif %}
                     <col style="width: 14%;">
                     <col style="width: 14%;">
                 </colgroup>

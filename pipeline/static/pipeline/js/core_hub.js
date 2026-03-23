@@ -27,12 +27,13 @@
             tab.classList.add("active");
             document.getElementById("tab-" + target).classList.add("active");
 
-            // Trigger Plotly resize when switching to overview tab (fixes hidden container sizing)
+            // Trigger Plotly resize on the currently-visible viz pane when switching to overview tab
             if (target === "overview" && typeof Plotly !== "undefined") {
-                ["pca-plot", "umap-plot", "volcano-plot", "ma-plot", "heatmap-plot"].forEach(function (id) {
-                    var el = document.getElementById(id);
-                    if (el && el.data) Plotly.Plots.resize(el);
-                });
+                var activePane = document.querySelector(".viz-theater-pane.active");
+                if (activePane) {
+                    var plotEl = activePane.querySelector(".rna-plot-container");
+                    if (plotEl && plotEl.data) Plotly.Plots.resize(plotEl);
+                }
             }
         });
     });
@@ -322,6 +323,60 @@
         });
     });
 
+    // ── Visualization Theater – Pill Navigation ──
+    var vizPills = document.querySelectorAll("#viz-pills .viz-pill");
+    var vizPanes = document.querySelectorAll(".viz-theater-pane");
+
+    vizPills.forEach(function (pill) {
+        pill.addEventListener("click", function () {
+            var target = pill.dataset.viz;
+            vizPills.forEach(function (p) { p.classList.remove("active"); });
+            vizPanes.forEach(function (p) { p.classList.remove("active"); });
+            pill.classList.add("active");
+            document.getElementById("viz-pane-" + target).classList.add("active");
+
+            // Resize the now-visible Plotly chart so it fills the container
+            if (typeof Plotly !== "undefined") {
+                var plotEl = document.getElementById("viz-pane-" + target).querySelector(".rna-plot-container");
+                if (plotEl && plotEl.data) Plotly.Plots.resize(plotEl);
+            }
+        });
+    });
+
+    // ── Download Interactive Figure (standalone HTML with tooltips) ──
+    document.querySelectorAll(".btn-rna-figure[data-figure]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            var plotId = btn.dataset.figure;
+            var el = document.getElementById(plotId);
+            if (!el || !el.data || typeof Plotly === "undefined") return;
+
+            var plotData = JSON.stringify(el.data);
+            var plotLayout = JSON.stringify(el.layout);
+            var safeName = plotId.replace(/[^a-z0-9_-]/gi, "_");
+
+            var html = '<!DOCTYPE html>\n<html lang="en"><head>' +
+                '<meta charset="utf-8">' +
+                '<title>RNAseek — ' + safeName + '</title>' +
+                '<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"><\/script>' +
+                '<style>body{margin:0;font-family:system-ui,sans-serif;background:#fafafa}' +
+                '#plot{width:100vw;height:100vh}</style>' +
+                '</head><body><div id="plot"></div><script>' +
+                'Plotly.newPlot("plot",' + plotData + ',' + plotLayout +
+                ',{responsive:true,displayModeBar:true});' +
+                '<\/script></body></html>';
+
+            var blob = new Blob([html], { type: "text/html" });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = safeName + "_interactive.html";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    });
+
     // ── Plot rendering ──
     var plotLayout = {
         paper_bgcolor: "transparent",
@@ -363,6 +418,7 @@
             legend: { orientation: "h", y: -0.18 },
         });
         Plotly.newPlot(el, traces, layout, plotConfig);
+        el.classList.add("has-plot");
     }
 
     function renderUMAP(umap) {
@@ -389,6 +445,7 @@
             legend: { orientation: "h", y: -0.18 },
         });
         Plotly.newPlot(el, traces, layout, plotConfig);
+        el.classList.add("has-plot");
     }
 
     function renderVolcano(v) {
@@ -420,6 +477,7 @@
             ],
         });
         Plotly.newPlot(el, traces, layout, plotConfig);
+        el.classList.add("has-plot");
     }
 
     function renderMA(ma) {
@@ -445,12 +503,17 @@
             legend: { orientation: "h", y: -0.18 },
         });
         Plotly.newPlot(el, traces, layout, plotConfig);
+        el.classList.add("has-plot");
     }
 
     function renderHeatmap(hm) {
         var el = document.getElementById("heatmap-plot");
         if (!el) return;
         el.innerHTML = "";
+
+        // Dynamically scale height so rows aren't squished
+        var dynamicHeight = Math.max(500, hm.genes.length * 15 + 150);
+        el.style.height = dynamicHeight + "px";
 
         var hoverText = [];
         for (var r = 0; r < hm.genes.length; r++) {
@@ -501,13 +564,15 @@
 
         var hmLayout = Object.assign({}, plotLayout, {
             title: { text: "Top " + hm.genes.length + " DEGs — Z-score Heatmap", font: { size: 14 } },
+            height: dynamicHeight,
             xaxis: { title: "", tickangle: -45, tickfont: { size: 10 } },
             yaxis: { title: "", autorange: "reversed", tickfont: { size: 9 }, dtick: 1 },
-            margin: { l: 100, r: 60, t: 50, b: 80 },
+            margin: { l: 120, r: 60, t: 50, b: 80 },
             annotations: annotations,
         });
 
         Plotly.newPlot(el, [trace], hmLayout, plotConfig);
+        el.classList.add("has-plot");
     }
 
     // ── Fetch job data and render plots ──
