@@ -5,315 +5,365 @@
 
 {% block content %}
 <section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
-    <div class="rna-flex rna-flex-between" style="align-items: flex-end;">
+
+    <!-- ═══ Page Banner ═══ -->
+    <div class="dash-welcome-banner rna-mb-3" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
-            <h1 class="rna-section-title rna-mb-1">Core Hub</h1>
-            <p class="rna-section-subtitle" style="margin-bottom: 0;">
-                Job <code>{{ job_id|truncatechars:13 }}</code> &mdash; Interactive dashboard for your completed
-                analysis.
-            </p>
+            <p class="dash-greeting">Core Hub</p>
+            <h1 class="dash-tagline">RNAseek &mdash; Analysis Dashboard</h1>
         </div>
-        <a href="{% url 'workspaces' %}" class="btn-rna btn-rna-outline btn-rna-sm">
-            <i class="bi bi-arrow-left"></i> Back to Workspaces
-        </a>
+        <div style="display:flex; align-items:center; gap:.75rem;">
+            <div class="dash-stats-banner">
+                <div class="dash-stats-inner">
+                    <span class="dash-stat-label">Job <code
+                            style="color: rgba(255,255,255,.9);">{{ job_id|truncatechars:13 }}</code></span>
+                </div>
+            </div>
+            <a href="{% url 'workspaces' %}" class="btn-rna btn-rna-light btn-rna-sm"
+                style="background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff;">
+                <i class="bi bi-arrow-left"></i> Back to Workspaces
+            </a>
+        </div>
     </div>
 
-    <!-- ═══ QC & Downloads ═══ -->
-    <div class="rna-card rna-mt-3 rna-mb-3">
-        <div class="rna-card-header">
-            <i class="bi bi-download"></i>&ensp;Downloads &amp; QC Reports
-        </div>
-        <div class="rna-card-body" style="padding: 0;">
-            <div class="rna-download-item">
-                <div class="file-info">
-                    <i class="bi bi-file-earmark-binary"></i>
-                    <div>
-                        <div class="file-name">Aligned Reads (.bam)</div>
-                        <div class="file-desc">Sorted and indexed BAM files aligned against the reference genome</div>
+    <!-- ═══ Tab Bar ═══ -->
+    <div class="rna-tab-bar rna-mt-3">
+        <button class="rna-tab active" data-tab="overview">
+            <i class="bi bi-bar-chart-line"></i> Overview
+        </button>
+        <button class="rna-tab" data-tab="modules">
+            <i class="bi bi-grid-3x3-gap"></i> Modules
+        </button>
+        <button class="rna-tab" data-tab="singlecell">
+            <i class="bi bi-layers"></i> Single-Cell
+        </button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- TAB 1: Overview (Downloads + Core Plots)       -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="rna-tab-panel active" id="tab-overview">
+
+        <!-- Downloads -->
+        <div class="rna-card rna-mt-3 rna-mb-3">
+            <div class="rna-card-header">
+                <i class="bi bi-download"></i>&ensp;Downloads &amp; QC Reports
+            </div>
+            <div class="rna-card-body" style="padding: 0;">
+                <div class="rna-download-item">
+                    <div class="file-info">
+                        <i class="bi bi-file-earmark-binary"></i>
+                        <div>
+                            <div class="file-name">Aligned Reads (.bam)</div>
+                            <div class="file-desc">Sorted and indexed BAM files aligned against the reference genome
+                            </div>
+                        </div>
                     </div>
+                    <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="ALIGNMENT_BAM"
+                        title="Download"><i class="bi bi-download"></i></button>
                 </div>
-                <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="ALIGNMENT_BAM"
-                    title="Download"><i class="bi bi-download"></i></button>
-            </div>
-            <div class="rna-download-item">
-                <div class="file-info">
-                    <i class="bi bi-file-earmark-spreadsheet"></i>
-                    <div>
-                        <div class="file-name">Raw Count Matrix (.csv)</div>
-                        <div class="file-desc">Genes &times; Samples raw read counts</div>
+                <div class="rna-download-item">
+                    <div class="file-info">
+                        <i class="bi bi-file-earmark-spreadsheet"></i>
+                        <div>
+                            <div class="file-name">Raw Count Matrix (.csv)</div>
+                            <div class="file-desc">Genes &times; Samples raw read counts</div>
+                        </div>
                     </div>
+                    <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="COUNT_MATRIX"
+                        title="Download"><i class="bi bi-download"></i></button>
                 </div>
-                <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="COUNT_MATRIX"
-                    title="Download"><i class="bi bi-download"></i></button>
-            </div>
-            <div class="rna-download-item">
-                <div class="file-info">
-                    <i class="bi bi-file-earmark-spreadsheet"></i>
-                    <div>
-                        <div class="file-name">Normalized Count Matrix (.csv)</div>
-                        <div class="file-desc">Library-size normalized &amp; batch-corrected matrix</div>
+                <div class="rna-download-item">
+                    <div class="file-info">
+                        <i class="bi bi-file-earmark-spreadsheet"></i>
+                        <div>
+                            <div class="file-name">Normalized Count Matrix (.csv)</div>
+                            <div class="file-desc">Library-size normalized &amp; batch-corrected matrix</div>
+                        </div>
                     </div>
+                    <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="NORMALIZED_COUNTS"
+                        title="Download"><i class="bi bi-download"></i></button>
                 </div>
-                <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="NORMALIZED_COUNTS"
-                    title="Download"><i class="bi bi-download"></i></button>
-            </div>
-            <div class="rna-download-item">
-                <div class="file-info">
-                    <i class="bi bi-file-earmark-spreadsheet"></i>
-                    <div>
-                        <div class="file-name">Differential Expression Table (.csv)</div>
-                        <div class="file-desc">Log2FC, p-values, FDR, and gene descriptions</div>
+                <div class="rna-download-item">
+                    <div class="file-info">
+                        <i class="bi bi-file-earmark-spreadsheet"></i>
+                        <div>
+                            <div class="file-name">Differential Expression Table (.csv)</div>
+                            <div class="file-desc">Log2FC, p-values, FDR, and gene descriptions</div>
+                        </div>
                     </div>
+                    <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="DEG_TABLE"
+                        title="Download"><i class="bi bi-download"></i></button>
                 </div>
-                <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="DEG_TABLE"
-                    title="Download"><i class="bi bi-download"></i></button>
-            </div>
-            <div class="rna-download-item">
-                <div class="file-info">
-                    <i class="bi bi-file-earmark-richtext"></i>
-                    <div>
-                        <div class="file-name">MultiQC Report (.html)</div>
-                        <div class="file-desc">Aggregated FastQC, HISAT2, featureCounts logs</div>
+                <div class="rna-download-item">
+                    <div class="file-info">
+                        <i class="bi bi-file-earmark-richtext"></i>
+                        <div>
+                            <div class="file-name">MultiQC Report (.html)</div>
+                            <div class="file-desc">Aggregated FastQC, HISAT2, featureCounts logs</div>
+                        </div>
                     </div>
-                </div>
-                <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="MULTIQC_REPORT"
-                    title="Download"><i class="bi bi-download"></i></button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ═══ Core Visualizations ═══ -->
-    <div class="rna-mb-3">
-        <h2 class="rna-section-title rna-mb-1">Core Visualizations</h2>
-        <p class="rna-section-subtitle">Interactive plots powered by your analysis results. Hover over data points for
-            sample details.</p>
-    </div>
-
-    <div class="rna-grid-2 rna-mb-3">
-        <div class="rna-card">
-            <div class="rna-card-header"><i class="bi bi-scatter-chart"></i>&ensp;PCA Plot</div>
-            <div class="rna-card-body">
-                <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
-                    Principal Component Analysis reduces high-dimensional gene expression data into two axes that
-                    capture the largest variance. Samples that cluster together share similar expression profiles. The
-                    percentage on each axis shows how much of the total variability it explains.
-                </p>
-                <div class="rna-plot-container" id="pca-plot">
-                    <span class="rna-text-sm rna-text-muted">PCA visualization loads here</span>
+                    <button class="rna-icon-btn rna-icon-btn-download download-btn" data-asset="MULTIQC_REPORT"
+                        title="Download"><i class="bi bi-download"></i></button>
                 </div>
             </div>
         </div>
-        <div class="rna-card">
-            <div class="rna-card-header"><i class="bi bi-scatter-chart"></i>&ensp;UMAP Plot</div>
-            <div class="rna-card-body">
-                <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
-                    UMAP (Uniform Manifold Approximation and Projection) is a non-linear dimensionality reduction method
-                    that preserves local neighborhood structure. It highlights clusters of similar samples more sharply
-                    than PCA, especially in datasets with complex structure.
-                </p>
-                <div class="rna-plot-container" id="umap-plot">
-                    <span class="rna-text-sm rna-text-muted">UMAP visualization loads here</span>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <div class="rna-grid-2 rna-mb-3">
-        <div class="rna-card">
-            <div class="rna-card-header"><i class="bi bi-fire"></i>&ensp;Volcano Plot</div>
-            <div class="rna-card-body">
-                <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
-                    Each dot is a gene. The x-axis shows fold change (how much expression differs between conditions)
-                    and the y-axis shows statistical significance. Genes in the upper-left (blue, downregulated) and
-                    upper-right (red, upregulated) corners are the most biologically interesting. Dashed lines mark your
-                    chosen thresholds.
-                </p>
-                <div class="rna-plot-container" id="volcano-plot">
-                    <span class="rna-text-sm rna-text-muted">Volcano plot loads here</span>
-                </div>
-            </div>
+        <!-- Core Visualizations -->
+        <div class="rna-mb-3">
+            <h2 class="rna-section-title rna-mb-1">Core Visualizations</h2>
+            <p class="rna-section-subtitle">Interactive plots powered by your analysis results. Hover over data points
+                for
+                sample details.</p>
         </div>
-        <div class="rna-card">
-            <div class="rna-card-header"><i class="bi bi-bar-chart-line"></i>&ensp;MA Plot</div>
-            <div class="rna-card-body">
-                <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
-                    MA plot shows the relationship between average expression level (x-axis) and fold change (y-axis).
-                    It helps identify if differential expression is biased toward highly or lowly expressed genes. Red
-                    points are statistically significant DEGs. A balanced cloud centered on y=0 indicates good
-                    normalization.
-                </p>
-                <div class="rna-plot-container" id="ma-plot">
-                    <span class="rna-text-sm rna-text-muted">MA plot loads here</span>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <div class="rna-mb-3">
-        <div class="rna-card">
-            <div class="rna-card-header"><i class="bi bi-grid-3x3"></i>&ensp;Top DEG Heatmap</div>
-            <div class="rna-card-body">
-                <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
-                    Z-score normalized expression heatmap of the top 50 most significant differentially expressed genes.
-                    Each row is a gene, each column is a sample. Blue indicates below-average expression and red
-                    indicates above-average expression relative to each gene's mean. Use this to visually confirm that
-                    your conditions show distinct expression patterns.
-                </p>
-                <div class="rna-plot-container" id="heatmap-plot" style="min-height: 500px;">
-                    <span class="rna-text-sm rna-text-muted">Heatmap loads here</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ═══ Standard Modules Grid ═══ -->
-    <div class="rna-mb-3">
-        <h2 class="rna-section-title rna-mb-1">Standard Analytical Modules</h2>
-        <p class="rna-section-subtitle">Click a module card to configure and run it.</p>
-    </div>
-
-    <div class="rna-grid-3 rna-mb-3" id="module-grid">
-        <!-- Module A -->
-        <div class="rna-module-card" data-module="SPLICING">
-            <div class="module-icon cat-transcriptome"><i class="bi bi-scissors"></i></div>
-            <h3>Alternative Splicing</h3>
-            <p>IsoformSwitchAnalyzeR transcript structure &amp; lost protein domains.</p>
-        </div>
-        <!-- Module B -->
-        <div class="rna-module-card" data-module="RNA_EDITING">
-            <div class="module-icon cat-transcriptome"><i class="bi bi-pencil-square"></i></div>
-            <h3>RNA Editing &amp; SNPs</h3>
-            <p>REDItools2 A-to-I editing events &amp; high-confidence mutations.</p>
-        </div>
-        <!-- Module D -->
-        <div class="rna-module-card" data-module="WGCNA">
-            <div class="module-icon cat-systems"><i class="bi bi-diagram-3"></i></div>
-            <h3>WGCNA</h3>
-            <p>Co-expression analysis correlating gene modules to clinical traits.</p>
-        </div>
-        <!-- Module E -->
-        <div class="rna-module-card" data-module="PATHWAY">
-            <div class="module-icon cat-systems"><i class="bi bi-signpost-split"></i></div>
-            <h3>Pathway Enrichment</h3>
-            <p>GSEA/ORA with PathBank, KEGG, Reactome pathway diagrams.</p>
-        </div>
-        <!-- Module F -->
-        <div class="rna-module-card" data-module="NETWORKS">
-            <div class="module-icon cat-systems"><i class="bi bi-share"></i></div>
-            <h3>Causal Networks &amp; STRING</h3>
-            <p>GRNBoost2 regulatory inference &amp; protein-protein interaction maps.</p>
-        </div>
-        <!-- Module G -->
-        <div class="rna-module-card" data-module="LIT_MINING">
-            <div class="module-icon cat-systems"><i class="bi bi-journal-text"></i></div>
-            <h3>Literature Mining</h3>
-            <p>INDRA NLP pathway reconstruction from PubMed abstracts.</p>
-        </div>
-        <!-- Module H -->
-        <div class="rna-module-card" data-module="SURVIVAL">
-            <div class="module-icon cat-clinical"><i class="bi bi-heart-pulse"></i></div>
-            <h3>Survival Prediction</h3>
-            <p>Kaplan-Meier curves &amp; Log-Rank significance testing.</p>
-        </div>
-        <!-- Module I -->
-        <div class="rna-module-card" data-module="TCGA">
-            <div class="module-icon cat-clinical"><i class="bi bi-hospital"></i></div>
-            <h3>TCGA Integration</h3>
-            <p>Compare samples against public TCGA cancer cohorts.</p>
-        </div>
-        <!-- Module J -->
-        <div class="rna-module-card" data-module="BIOMARKER">
-            <div class="module-icon cat-clinical"><i class="bi bi-bullseye"></i></div>
-            <h3>Biomarker Discovery</h3>
-            <p>Cross-reference DEGs with FDA-approved biomarkers via MarkerDB.</p>
-        </div>
-        <!-- Module K -->
-        <div class="rna-module-card" data-module="MOFA">
-            <div class="module-icon cat-multiomics"><i class="bi bi-boxes"></i></div>
-            <h3>MOFA</h3>
-            <p>Multi-omics factor analysis with variance explained plots.</p>
-        </div>
-        <!-- Module L -->
-        <div class="rna-module-card" data-module="DIABLO">
-            <div class="module-icon cat-multiomics"><i class="bi bi-circle-half"></i></div>
-            <h3>DIABLO</h3>
-            <p>Supervised multi-omics integration with Circos plots &amp; AUROC curves.</p>
-        </div>
-    </div>
-
-    <!-- ═══ Deconvolution Gateway ═══ -->
-    <div class="rna-mb-3">
-        <h2 class="rna-section-title rna-mb-1">Deconvolution Gateway</h2>
-        <p class="rna-section-subtitle">Optionally upcycle your bulk data into pseudo-single-cell profiles.</p>
-    </div>
-
-    <div class="rna-card rna-gateway-card rna-mb-3">
-        <div class="rna-card-body">
-            <div class="rna-flex" style="align-items: flex-start; gap: 1.5rem; flex-wrap: wrap;">
-                <div style="flex: 1; min-width: 250px;">
-                    <h3
-                        style="font-family: var(--rna-font-heading); font-size: 1rem; font-weight: 700; color: var(--rna-navy); margin: 0 0 .5rem;">
-                        <i class="bi bi-layers"></i>&ensp;Cell Deconvolution &amp; Imputation
-                    </h3>
-                    <p class="rna-text-sm rna-text-muted" style="line-height: 1.6;">
-                        Mathematically unmix your bulk RNA data into individual cell types using DestVI / BayesPrism.
-                        Generates a pseudo-single-cell <code>.h5ad</code> matrix that unlocks Trajectory, Spatial, and
-                        Autocorrelation modules.
+        <div class="rna-grid-2 rna-mb-3">
+            <div class="rna-card">
+                <div class="rna-card-header"><i class="bi bi-scatter-chart"></i>&ensp;PCA Plot</div>
+                <div class="rna-card-body">
+                    <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
+                        Principal Component Analysis reduces high-dimensional gene expression data into two axes that
+                        capture the largest variance. Samples that cluster together share similar expression profiles.
                     </p>
-                </div>
-                <div style="min-width: 260px;">
-                    <label class="rna-label">Single-Cell Reference Atlas</label>
-                    <select class="rna-input rna-select rna-mb-2" id="atlas-select">
-                        <option value="">— Select atlas —</option>
-                        <option value="human_pbmc">Human PBMC scRNA Atlas</option>
-                        <option value="human_brain">Human Brain scRNA Atlas</option>
-                        <option value="mouse_brain">Mouse Brain scRNA Atlas</option>
-                        <option value="human_liver">Human Liver scRNA Atlas</option>
-                    </select>
-
-                    <div class="rna-flex" style="align-items: center; gap: .75rem; margin-bottom: 1rem;">
-                        <label class="rna-label" style="margin: 0;">High-Resolution:</label>
-                        <label
-                            style="display: inline-flex; align-items: center; gap: .35rem; font-size: .82rem; cursor: pointer;">
-                            <input type="checkbox" id="hires-toggle"> Generate .h5ad (unlocks Spatial tools)
-                        </label>
+                    <div class="rna-plot-container" id="pca-plot">
+                        <span class="rna-text-sm rna-text-muted">PCA visualization loads here</span>
                     </div>
-
-                    <button class="btn-rna btn-rna-teal" id="run-deconv-btn">
-                        <i class="bi bi-play-circle"></i> Run Deconvolution
-                    </button>
+                </div>
+            </div>
+            <div class="rna-card">
+                <div class="rna-card-header"><i class="bi bi-scatter-chart"></i>&ensp;UMAP Plot</div>
+                <div class="rna-card-body">
+                    <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
+                        UMAP preserves local neighborhood structure and highlights clusters of similar samples more
+                        sharply
+                        than PCA, especially in datasets with complex structure.
+                    </p>
+                    <div class="rna-plot-container" id="umap-plot">
+                        <span class="rna-text-sm rna-text-muted">UMAP visualization loads here</span>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- ═══ Advanced Spokes (locked until h5ad exists) ═══ -->
-    <div class="rna-mb-3">
-        <h2 class="rna-section-title rna-mb-1">Advanced Single-Cell &amp; Spatial Workspace</h2>
-        <p class="rna-section-subtitle">Unlocked when the Deconvolution Gateway generates an <code>.h5ad</code>
-            pseudo-cell matrix.</p>
-    </div>
+        <div class="rna-grid-2 rna-mb-3">
+            <div class="rna-card">
+                <div class="rna-card-header"><i class="bi bi-fire"></i>&ensp;Volcano Plot</div>
+                <div class="rna-card-body">
+                    <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
+                        Each dot is a gene. Genes in the upper-left (blue, downregulated) and upper-right (red,
+                        upregulated)
+                        corners are the most biologically interesting. Dashed lines mark your chosen thresholds.
+                    </p>
+                    <div class="rna-plot-container" id="volcano-plot">
+                        <span class="rna-text-sm rna-text-muted">Volcano plot loads here</span>
+                    </div>
+                </div>
+            </div>
+            <div class="rna-card">
+                <div class="rna-card-header"><i class="bi bi-bar-chart-line"></i>&ensp;MA Plot</div>
+                <div class="rna-card-body">
+                    <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
+                        Shows the relationship between average expression level (x-axis) and fold change (y-axis).
+                        Red points are statistically significant DEGs. A balanced cloud centered on y=0 indicates good
+                        normalization.
+                    </p>
+                    <div class="rna-plot-container" id="ma-plot">
+                        <span class="rna-text-sm rna-text-muted">MA plot loads here</span>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-    <div class="rna-grid-3 rna-mb-4" id="advanced-spokes">
-        <!-- Spoke A -->
-        <div class="rna-module-card {% if not has_h5ad %}locked{% endif %}" data-spoke="TRAJECTORY">
-            <div class="module-icon cat-advanced"><i class="bi bi-bezier2"></i></div>
-            <h3>Spoke A: Trajectory Inference</h3>
-            <p>PAGA / Pseudotime mapping of developmental lineages. Select a root cell type to compute.</p>
+        <div class="rna-mb-3">
+            <div class="rna-card">
+                <div class="rna-card-header"><i class="bi bi-grid-3x3"></i>&ensp;Top DEG Heatmap</div>
+                <div class="rna-card-body">
+                    <p class="rna-text-sm rna-text-muted" style="margin: 0 0 .75rem;">
+                        Z-score normalized expression heatmap of the top 50 most significant differentially expressed
+                        genes.
+                        Blue indicates below-average and red indicates above-average expression relative to each gene's
+                        mean.
+                    </p>
+                    <div class="rna-plot-container" id="heatmap-plot" style="min-height: 500px;">
+                        <span class="rna-text-sm rna-text-muted">Heatmap loads here</span>
+                    </div>
+                </div>
+            </div>
         </div>
-        <!-- Spoke B -->
-        <div class="rna-module-card {% if not has_h5ad %}locked{% endif %}" data-spoke="SPATIAL">
-            <div class="module-icon cat-advanced"><i class="bi bi-pin-map"></i></div>
-            <h3>Spoke B: Spatial Mapping</h3>
-            <p>Tangram deep learning maps imputed cells onto H&amp;E tissue slides.</p>
+
+    </div><!-- /tab-overview -->
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- TAB 2: Modules (Analytical Module Cards)       -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="rna-tab-panel" id="tab-modules">
+
+        <div class="rna-mt-3 rna-mb-3">
+            <h2 class="rna-section-title rna-mb-1">Analytical Modules</h2>
+            <p class="rna-section-subtitle">Click a module card to configure and run it. Status badges show current
+                state.</p>
         </div>
-        <!-- Spoke C -->
-        <div class="rna-module-card {% if not has_h5ad %}locked{% endif %}" data-spoke="AUTOCORRELATION">
-            <div class="module-icon cat-advanced"><i class="bi bi-thermometer-half"></i></div>
-            <h3>Spoke C: Spatial Autocorrelation</h3>
-            <p>Moran&rsquo;s I analysis for spatially clustered gene expression patterns.</p>
+
+        <div class="rna-grid-3 rna-mb-3" id="module-grid">
+            <div class="rna-module-card" data-module="SPLICING">
+                <div class="rna-module-status-badge" data-module-status></div>
+                <div class="module-icon cat-transcriptome"><i class="bi bi-scissors"></i></div>
+                <h3>Alternative Splicing</h3>
+                <p>IsoformSwitchAnalyzeR transcript structure &amp; lost protein domains.</p>
+            </div>
+            <div class="rna-module-card" data-module="RNA_EDITING">
+                <div class="rna-module-status-badge" data-module-status></div>
+                <div class="module-icon cat-transcriptome"><i class="bi bi-pencil-square"></i></div>
+                <h3>RNA Editing &amp; SNPs</h3>
+                <p>REDItools2 A-to-I editing events &amp; high-confidence mutations.</p>
+            </div>
+            <div class="rna-module-card" data-module="WGCNA">
+                <div class="rna-module-status-badge" data-module-status></div>
+                <div class="module-icon cat-systems"><i class="bi bi-diagram-3"></i></div>
+                <h3>WGCNA</h3>
+                <p>Co-expression analysis correlating gene modules to clinical traits.</p>
+            </div>
+            <div class="rna-module-card" data-module="PATHWAY">
+                <div class="rna-module-status-badge" data-module-status></div>
+                <div class="module-icon cat-systems"><i class="bi bi-signpost-split"></i></div>
+                <h3>Pathway Enrichment</h3>
+                <p>GSEA/ORA with PathBank, KEGG, Reactome pathway diagrams.</p>
+            </div>
+            <div class="rna-module-card" data-module="NETWORKS">
+                <div class="rna-module-status-badge" data-module-status></div>
+                <div class="module-icon cat-systems"><i class="bi bi-share"></i></div>
+                <h3>Causal Networks &amp; STRING</h3>
+                <p>GRNBoost2 regulatory inference &amp; protein-protein interaction maps.</p>
+            </div>
+            <div class="rna-module-card" data-module="LIT_MINING">
+                <div class="rna-module-status-badge" data-module-status></div>
+                <div class="module-icon cat-systems"><i class="bi bi-journal-text"></i></div>
+                <h3>Literature Mining</h3>
+                <p>INDRA NLP pathway reconstruction from PubMed abstracts.</p>
+            </div>
+            <div class="rna-module-card" data-module="SURVIVAL">
+                <div class="rna-module-status-badge" data-module-status></div>
+                <div class="module-icon cat-clinical"><i class="bi bi-heart-pulse"></i></div>
+                <h3>Survival Prediction</h3>
+                <p>Kaplan-Meier curves &amp; Log-Rank significance testing.</p>
+            </div>
+            <div class="rna-module-card" data-module="TCGA">
+                <div class="rna-module-status-badge" data-module-status></div>
+                <div class="module-icon cat-clinical"><i class="bi bi-hospital"></i></div>
+                <h3>TCGA Integration</h3>
+                <p>Compare samples against public TCGA cancer cohorts.</p>
+            </div>
+            <div class="rna-module-card" data-module="BIOMARKER">
+                <div class="rna-module-status-badge" data-module-status></div>
+                <div class="module-icon cat-clinical"><i class="bi bi-bullseye"></i></div>
+                <h3>Biomarker Discovery</h3>
+                <p>Cross-reference DEGs with FDA-approved biomarkers via MarkerDB.</p>
+            </div>
+            <div class="rna-module-card" data-module="MOFA">
+                <div class="rna-module-status-badge" data-module-status></div>
+                <div class="module-icon cat-multiomics"><i class="bi bi-boxes"></i></div>
+                <h3>MOFA</h3>
+                <p>Multi-omics factor analysis with variance explained plots.</p>
+            </div>
+            <div class="rna-module-card" data-module="DIABLO">
+                <div class="rna-module-status-badge" data-module-status></div>
+                <div class="module-icon cat-multiomics"><i class="bi bi-circle-half"></i></div>
+                <h3>DIABLO</h3>
+                <p>Supervised multi-omics integration with Circos plots &amp; AUROC curves.</p>
+            </div>
         </div>
-    </div>
+
+        <!-- Inline result panel (populated by JS when a completed module is clicked) -->
+        <div class="rna-card rna-mb-3" id="module-result-panel" style="display: none;">
+            <div class="rna-card-header rna-flex rna-flex-between" style="align-items: center;">
+                <span id="result-panel-title">Module Results</span>
+                <button class="rna-modal-close" id="result-panel-close">&times;</button>
+            </div>
+            <div class="rna-card-body" id="result-panel-body"></div>
+        </div>
+
+    </div><!-- /tab-modules -->
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- TAB 3: Single-Cell (Deconvolution + Spokes)    -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div class="rna-tab-panel" id="tab-singlecell">
+
+        <!-- Deconvolution Gateway -->
+        <div class="rna-mt-3 rna-mb-3">
+            <h2 class="rna-section-title rna-mb-1">Deconvolution Gateway</h2>
+            <p class="rna-section-subtitle">Optionally upcycle your bulk data into pseudo-single-cell profiles.</p>
+        </div>
+
+        <div class="rna-card rna-gateway-card rna-mb-3">
+            <div class="rna-card-body">
+                <div class="rna-flex" style="align-items: flex-start; gap: 1.5rem; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 250px;">
+                        <h3
+                            style="font-family: var(--rna-font-heading); font-size: 1rem; font-weight: 700; color: var(--rna-navy); margin: 0 0 .5rem;">
+                            <i class="bi bi-layers"></i>&ensp;Cell Deconvolution &amp; Imputation
+                        </h3>
+                        <p class="rna-text-sm rna-text-muted" style="line-height: 1.6;">
+                            Mathematically unmix your bulk RNA data into individual cell types using DestVI /
+                            BayesPrism.
+                            Generates a pseudo-single-cell <code>.h5ad</code> matrix that unlocks Trajectory, Spatial,
+                            and
+                            Autocorrelation modules below.
+                        </p>
+                    </div>
+                    <div style="min-width: 260px;">
+                        <label class="rna-label">Single-Cell Reference Atlas</label>
+                        <select class="rna-input rna-select rna-mb-2" id="atlas-select">
+                            <option value="">— Select atlas —</option>
+                            <option value="human_pbmc">Human PBMC scRNA Atlas</option>
+                            <option value="human_brain">Human Brain scRNA Atlas</option>
+                            <option value="mouse_brain">Mouse Brain scRNA Atlas</option>
+                            <option value="human_liver">Human Liver scRNA Atlas</option>
+                        </select>
+
+                        <div class="rna-flex" style="align-items: center; gap: .75rem; margin-bottom: 1rem;">
+                            <label class="rna-label" style="margin: 0;">High-Resolution:</label>
+                            <label
+                                style="display: inline-flex; align-items: center; gap: .35rem; font-size: .82rem; cursor: pointer;">
+                                <input type="checkbox" id="hires-toggle"> Generate .h5ad (unlocks Spatial tools)
+                            </label>
+                        </div>
+
+                        <button class="btn-rna btn-rna-teal" id="run-deconv-btn">
+                            <i class="bi bi-play-circle"></i> Run Deconvolution
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Spokes -->
+        <div class="rna-mb-3">
+            <h2 class="rna-section-title rna-mb-1">Advanced Single-Cell &amp; Spatial Workspace</h2>
+            <p class="rna-section-subtitle">Unlocked when the Deconvolution Gateway generates an <code>.h5ad</code>
+                pseudo-cell matrix.</p>
+        </div>
+
+        <div class="rna-grid-3 rna-mb-4" id="advanced-spokes">
+            <div class="rna-module-card {% if not has_h5ad %}locked{% endif %}" data-spoke="TRAJECTORY">
+                <div class="module-icon cat-advanced"><i class="bi bi-bezier2"></i></div>
+                <h3>Trajectory Inference</h3>
+                <p>PAGA / Pseudotime mapping of developmental lineages. Select a root cell type to compute.</p>
+            </div>
+            <div class="rna-module-card {% if not has_h5ad %}locked{% endif %}" data-spoke="SPATIAL">
+                <div class="module-icon cat-advanced"><i class="bi bi-pin-map"></i></div>
+                <h3>Spatial Mapping</h3>
+                <p>Tangram deep learning maps imputed cells onto H&amp;E tissue slides.</p>
+            </div>
+            <div class="rna-module-card {% if not has_h5ad %}locked{% endif %}" data-spoke="AUTOCORRELATION">
+                <div class="module-icon cat-advanced"><i class="bi bi-thermometer-half"></i></div>
+                <h3>Spatial Autocorrelation</h3>
+                <p>Moran&rsquo;s I analysis for spatially clustered gene expression patterns.</p>
+            </div>
+        </div>
+
+    </div><!-- /tab-singlecell -->
+
 </section>
 
 <!-- ═══ Module Modal ═══ -->
@@ -323,9 +373,7 @@
             <h3 id="modal-module-title">Module Configuration</h3>
             <button class="rna-modal-close modal-close-btn">&times;</button>
         </div>
-        <div class="rna-modal-body" id="modal-module-body">
-            <!-- Dynamic module inputs here -->
-        </div>
+        <div class="rna-modal-body" id="modal-module-body"></div>
         <div class="rna-modal-footer">
             <button class="btn-rna btn-rna-outline btn-rna-sm modal-close-btn">Cancel</button>
             <button class="btn-rna btn-rna-primary btn-rna-sm" id="modal-submit">
@@ -337,7 +385,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<div id="core-hub-data" data-job-id="{{ job_id }}" style="display:none;"></div>
+<div id="core-hub-data" data-job-id="{{ job_id }}" data-submission-id="{{ submission_id }}"
+    data-module-jobs='{{ module_jobs_json|escapejs }}' style="display:none;"></div>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 <script src="{% static 'pipeline/js/core_hub.js' %}"></script>
 {% endblock %}

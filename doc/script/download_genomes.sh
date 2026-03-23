@@ -34,9 +34,9 @@ for item in "${GENOMES[@]}"; do
     echo "========================================"
     echo "Processing: $FOLDER"
     
-    # Create the organism's folder and enter it
-    mkdir -p "$FOLDER"
-    cd "$FOLDER"
+    # Create the organism's folder structure and enter genome/ subdir
+    mkdir -p "$FOLDER/genome" "$FOLDER/hisat2_index" "$FOLDER/bwa_index" "$FOLDER/bismark_index"
+    cd "$FOLDER/genome"
     
     # Download the file (-c allows resuming an interrupted download, -q makes it quieter)
     if [ ! -f "${FILENAME%.gz}" ]; then 
@@ -51,7 +51,7 @@ for item in "${GENOMES[@]}"; do
     fi
     
     # Move back to the main directory
-    cd ..
+    cd ../..
 done
 
 echo "========================================"

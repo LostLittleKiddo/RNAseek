@@ -5,9 +5,19 @@
 
 {% block content %}
 <section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
-    <div class="rna-text-center rna-mb-3">
-        <h1 class="rna-section-title rna-mb-1">Processing Your Data</h1>
-        <p class="rna-section-subtitle">Monitoring job <code>{{ job_id|truncatechars:13 }}</code></p>
+
+    <!-- ═══ Page Banner ═══ -->
+    <div class="dash-welcome-banner rna-mb-3">
+        <div>
+            <p class="dash-greeting">Processing Your Data</p>
+            <h1 class="dash-tagline">RNAseek &mdash; Pipeline Execution</h1>
+        </div>
+        <div class="dash-stats-banner">
+            <div class="dash-stats-inner">
+                <span class="dash-stat-label">Monitoring job <code
+                        style="color: rgba(255,255,255,.9);">{{ job_id|truncatechars:13 }}</code></span>
+            </div>
+        </div>
     </div>
 
     <!-- Pipeline Steps -->

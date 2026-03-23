@@ -5,16 +5,25 @@
 
 {% block content %}
 <section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
-    <div class="rna-flex rna-flex-between" style="align-items: flex-end;">
+
+    <!-- ═══ Page Banner ═══ -->
+    <div class="dash-welcome-banner rna-mb-3" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
-            <h1 class="rna-section-title rna-mb-1">Advanced Single-Cell &amp; Spatial Workspace</h1>
-            <p class="rna-section-subtitle" style="margin-bottom: 0;">
-                Powered by the imputed <code>.h5ad</code> pseudo-single-cell matrix from deconvolution.
-            </p>
+            <p class="dash-greeting">Advanced Workspace</p>
+            <h1 class="dash-tagline">RNAseek &mdash; Single-Cell &amp; Spatial</h1>
         </div>
-        <a href="{% url 'core_hub' job_id %}" class="btn-rna btn-rna-outline btn-rna-sm">
-            <i class="bi bi-arrow-left"></i> Back to Core Hub
-        </a>
+        <div style="display:flex; align-items:center; gap:.75rem;">
+            <div class="dash-stats-banner">
+                <div class="dash-stats-inner">
+                    <span class="dash-stat-label">Powered by the imputed <code
+                            style="color: rgba(255,255,255,.9);">.h5ad</code> pseudo-single-cell matrix</span>
+                </div>
+            </div>
+            <a href="{% url 'core_hub' job_id %}" class="btn-rna btn-rna-light btn-rna-sm"
+                style="background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff;">
+                <i class="bi bi-arrow-left"></i> Back to Core Hub
+            </a>
+        </div>
     </div>
 
     <!-- ═══ Spoke A: Trajectory Inference ═══ -->

@@ -218,10 +218,14 @@ def _route_chip_seq(submission, job):
     genome_key = submission.reference_genome
 
     # Resolve genome FASTA + BWA index
+    is_custom = genome_key == "custom"
     _, genome_fasta, _ = _resolve_genome(
         genome_key, work_dir, submission=submission,
     )
-    genome_fasta = _resolve_bwa_index(genome_fasta)
+    if is_custom:
+        genome_fasta = _resolve_bwa_index(genome_fasta=genome_fasta, custom=True)
+    else:
+        genome_fasta = _resolve_bwa_index(genome_key=genome_key)
 
     # --- Step 1: FastQC ---
     _run_fastqc_step(job, fastq_assets, qc_dir)

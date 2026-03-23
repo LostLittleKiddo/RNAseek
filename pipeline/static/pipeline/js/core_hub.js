@@ -1,13 +1,69 @@
 /**
  * RNAseek – Core Hub
- * Module card clicks, configuration modal, module submission,
- * deconvolution gateway, and spoke-unlock polling.
+ * Tab navigation, module cards with status, configuration modal,
+ * module submission, deconvolution gateway, and plot rendering.
  */
 (function () {
     "use strict";
 
     const CSRF = document.querySelector('meta[name="csrf-token"]').content;
-    const JOB_ID = document.getElementById("core-hub-data").dataset.jobId;
+    const hubData = document.getElementById("core-hub-data");
+    const JOB_ID = hubData.dataset.jobId;
+    const SUBMISSION_ID = hubData.dataset.submissionId || "";
+
+    // Parse server-provided module job statuses
+    var moduleJobs = {};
+    try { moduleJobs = JSON.parse(hubData.dataset.moduleJobs || "{}"); } catch (_) { }
+
+    // ── Tab Navigation ──
+    var tabs = document.querySelectorAll(".rna-tab");
+    var panels = document.querySelectorAll(".rna-tab-panel");
+
+    tabs.forEach(function (tab) {
+        tab.addEventListener("click", function () {
+            var target = tab.dataset.tab;
+            tabs.forEach(function (t) { t.classList.remove("active"); });
+            panels.forEach(function (p) { p.classList.remove("active"); });
+            tab.classList.add("active");
+            document.getElementById("tab-" + target).classList.add("active");
+
+            // Trigger Plotly resize when switching to overview tab (fixes hidden container sizing)
+            if (target === "overview" && typeof Plotly !== "undefined") {
+                ["pca-plot", "umap-plot", "volcano-plot", "ma-plot", "heatmap-plot"].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el && el.data) Plotly.Plots.resize(el);
+                });
+            }
+        });
+    });
+
+    // ── Module Status Badges ──
+    function applyModuleStatuses() {
+        document.querySelectorAll(".rna-module-card[data-module]").forEach(function (card) {
+            var mod = card.dataset.module;
+            var info = moduleJobs[mod];
+            var badge = card.querySelector(".rna-module-status-badge");
+            if (!info || !badge) return;
+
+            card.classList.remove("rna-module-running", "rna-module-done", "rna-module-failed");
+            badge.className = "rna-module-status-badge";
+
+            if (info.status === "SUCCESS") {
+                card.classList.add("rna-module-done");
+                badge.classList.add("status-done");
+                badge.textContent = "Completed";
+            } else if (info.status === "RUNNING" || info.status === "PENDING") {
+                card.classList.add("rna-module-running");
+                badge.classList.add("status-running");
+                badge.textContent = "Running";
+            } else if (info.status === "FAILED") {
+                card.classList.add("rna-module-failed");
+                badge.classList.add("status-failed");
+                badge.textContent = "Failed";
+            }
+        });
+    }
+    applyModuleStatuses();
 
     // ── Module Configuration Modal ──
     const modalBackdrop = document.getElementById("module-modal");
@@ -18,7 +74,6 @@
 
     let currentModule = null;
 
-    // Module-specific input templates
     const moduleInputs = {
         wgcna: function () {
             return '<label class="rna-label">Clinical Trait CSV (optional)</label>' +
@@ -67,24 +122,32 @@
         },
     };
 
-    // Default (no extra input needed)
     function defaultInputs(modName) {
         return '<p class="rna-text-sm" style="color:var(--rna-grey-500);">No additional configuration needed for <strong>' + modName + '</strong>. Click Run to start.</p>';
     }
 
-    document.querySelectorAll(".rna-module-card[data-module]").forEach(card => {
-        card.addEventListener("click", () => {
-            currentModule = card.dataset.module;
-            const prettyName = card.querySelector("h3").textContent;
+    // Module card click: completed modules show results; others open the config modal
+    document.querySelectorAll(".rna-module-card[data-module]").forEach(function (card) {
+        card.addEventListener("click", function () {
+            var mod = card.dataset.module;
+            var info = moduleJobs[mod];
+
+            if (info && info.status === "SUCCESS") {
+                showResultPanel(mod, info);
+                return;
+            }
+
+            currentModule = mod;
+            var prettyName = card.querySelector("h3").textContent;
             modalTitle.textContent = prettyName;
-            const builder = moduleInputs[currentModule];
+            var builder = moduleInputs[currentModule];
             modalBody.innerHTML = builder ? builder() : defaultInputs(prettyName);
             modalBackdrop.classList.add("open");
         });
     });
 
-    modalClose.forEach(btn => btn.addEventListener("click", closeModal));
-    modalBackdrop.addEventListener("click", e => {
+    modalClose.forEach(function (btn) { btn.addEventListener("click", closeModal); });
+    modalBackdrop.addEventListener("click", function (e) {
         if (e.target === modalBackdrop) closeModal();
     });
 
@@ -93,15 +156,52 @@
         currentModule = null;
     }
 
+    // ── Result Panel ──
+    var resultPanel = document.getElementById("module-result-panel");
+    var resultTitle = document.getElementById("result-panel-title");
+    var resultBody = document.getElementById("result-panel-body");
+    var resultClose = document.getElementById("result-panel-close");
+
+    if (resultClose) {
+        resultClose.addEventListener("click", function () {
+            resultPanel.style.display = "none";
+        });
+    }
+
+    function showResultPanel(mod, info) {
+        var card = document.querySelector('[data-module="' + mod + '"]');
+        var name = card ? card.querySelector("h3").textContent : mod;
+        resultTitle.textContent = name + " — Results";
+
+        var payload = info.payload || {};
+        var html = '<p class="rna-text-sm rna-text-muted">Job completed at ' + (info.updated_at || "N/A") + '</p>';
+
+        if (payload.summary) {
+            html += '<p>' + payload.summary + '</p>';
+        }
+        if (payload.plot_data) {
+            html += '<div class="rna-plot-container" id="module-result-plot" style="min-height: 300px;"></div>';
+        }
+        if (payload.table_preview) {
+            html += '<div style="overflow-x: auto; margin-top: 1rem;">' + payload.table_preview + '</div>';
+        }
+        if (!payload.summary && !payload.plot_data && !payload.table_preview) {
+            html += '<p class="rna-text-sm">Result payload stored. Download or view via API.</p>';
+        }
+
+        resultBody.innerHTML = html;
+        resultPanel.style.display = "";
+        resultPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
     // ── Module Submission ──
-    modalSubmit.addEventListener("click", async () => {
+    modalSubmit.addEventListener("click", async function () {
         if (!currentModule) return;
         modalSubmit.disabled = true;
         modalSubmit.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Running...';
 
-        const payload = { job_id: JOB_ID };
+        var payload = { job_id: JOB_ID };
 
-        // Gather module-specific params
         if (currentModule === "wgcna") {
             payload.soft_power = parseInt(document.getElementById("mod-soft-power")?.value || 6);
         } else if (currentModule === "gsea") {
@@ -119,7 +219,8 @@
             payload.method = document.getElementById("mod-immune-method")?.value;
         }
 
-        const res = await fetch("/api/modules/" + currentModule + "/run", {
+        var url = "/api/submissions/" + SUBMISSION_ID + "/modules/" + currentModule + "/run";
+        var res = await fetch(url, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -129,47 +230,54 @@
         });
 
         if (res.ok) {
-            const data = await res.json();
-            const card = document.querySelector('[data-module="' + currentModule + '"]');
+            var data = await res.json();
+            var card = document.querySelector('[data-module="' + currentModule + '"]');
             if (card) {
                 card.classList.add("rna-module-running");
-                pollModuleJob(data.job_id, card);
+                var badge = card.querySelector(".rna-module-status-badge");
+                if (badge) { badge.className = "rna-module-status-badge status-running"; badge.textContent = "Running"; }
+                pollModuleJob(data.job_id, card, currentModule);
             }
             closeModal();
         }
 
         modalSubmit.disabled = false;
-        modalSubmit.innerHTML = '<i class="bi bi-play-fill"></i> Run Module';
+        modalSubmit.innerHTML = '<i class="bi bi-play-circle"></i> Run Module';
     });
 
-    function pollModuleJob(modJobId, card) {
-        const iv = setInterval(async () => {
-            const res = await fetch("/api/jobs/" + modJobId + "/");
+    function pollModuleJob(modJobId, card, moduleName) {
+        var iv = setInterval(async function () {
+            var res = await fetch("/api/jobs/" + modJobId + "/");
             if (!res.ok) { clearInterval(iv); return; }
-            const data = await res.json();
+            var data = await res.json();
+            var badge = card.querySelector(".rna-module-status-badge");
             if (data.status === "SUCCESS") {
                 clearInterval(iv);
                 card.classList.remove("rna-module-running");
                 card.classList.add("rna-module-done");
+                if (badge) { badge.className = "rna-module-status-badge status-done"; badge.textContent = "Completed"; }
+                moduleJobs[moduleName] = { status: "SUCCESS", payload: data.payload || {}, updated_at: data.updated_at };
             } else if (data.status === "FAILED") {
                 clearInterval(iv);
                 card.classList.remove("rna-module-running");
                 card.classList.add("rna-module-failed");
+                if (badge) { badge.className = "rna-module-status-badge status-failed"; badge.textContent = "Failed"; }
+                moduleJobs[moduleName] = { status: "FAILED" };
             }
         }, 4000);
     }
 
     // ── Deconvolution Gateway ──
-    const deconBtn = document.getElementById("run-deconv");
+    var deconBtn = document.getElementById("run-deconv-btn");
     if (deconBtn) {
-        deconBtn.addEventListener("click", async () => {
+        deconBtn.addEventListener("click", async function () {
             deconBtn.disabled = true;
             deconBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Running...';
 
-            const atlas = document.getElementById("atlas-select")?.value;
-            const hires = document.getElementById("hires-toggle")?.checked;
+            var atlas = document.getElementById("atlas-select")?.value;
+            var hires = document.getElementById("hires-toggle")?.checked;
 
-            const res = await fetch("/api/modules/deconvolution/run", {
+            var res = await fetch("/api/modules/deconvolution/run", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -179,39 +287,37 @@
             });
 
             if (res.ok) {
-                const data = await res.json();
+                var data = await res.json();
                 pollDeconv(data.job_id);
             } else {
                 deconBtn.disabled = false;
-                deconBtn.innerHTML = '<i class="bi bi-play-fill"></i> Run Deconvolution';
+                deconBtn.innerHTML = '<i class="bi bi-play-circle"></i> Run Deconvolution';
             }
         });
     }
 
     function pollDeconv(deconvJobId) {
-        const iv = setInterval(async () => {
-            const res = await fetch("/api/jobs/" + deconvJobId + "/");
+        var iv = setInterval(async function () {
+            var res = await fetch("/api/jobs/" + deconvJobId + "/");
             if (!res.ok) { clearInterval(iv); return; }
-            const data = await res.json();
+            var data = await res.json();
             if (data.status === "SUCCESS") {
                 clearInterval(iv);
-                // Unlock spokes
-                document.querySelectorAll(".spoke-card.locked").forEach(c => {
+                document.querySelectorAll("#advanced-spokes .rna-module-card.locked").forEach(function (c) {
                     c.classList.remove("locked");
-                    c.querySelector("a")?.removeAttribute("aria-disabled");
                 });
                 deconBtn.innerHTML = '<i class="bi bi-check-circle"></i> Complete';
             } else if (data.status === "FAILED") {
                 clearInterval(iv);
                 deconBtn.disabled = false;
-                deconBtn.innerHTML = '<i class="bi bi-play-fill"></i> Run Deconvolution';
+                deconBtn.innerHTML = '<i class="bi bi-play-circle"></i> Run Deconvolution';
             }
         }, 5000);
     }
 
     // ── Download links ──
-    document.querySelectorAll(".download-btn[data-asset]").forEach(btn => {
-        btn.addEventListener("click", () => {
+    document.querySelectorAll(".download-btn[data-asset]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
             window.open("/api/session/assets?role=" + btn.dataset.asset + "&job_id=" + JOB_ID, "_blank");
         });
     });
@@ -346,7 +452,6 @@
         if (!el) return;
         el.innerHTML = "";
 
-        // Build annotation text for hover
         var hoverText = [];
         for (var r = 0; r < hm.genes.length; r++) {
             var row = [];
@@ -379,7 +484,6 @@
             },
         };
 
-        // Group annotation bar at the top
         var groupColors = {};
         var gi = 0;
         hm.groups.forEach(function (g) {

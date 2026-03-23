@@ -1,5 +1,7 @@
 """Page views — Django TemplateViews for the frontend."""
 
+import json
+
 from django.shortcuts import get_object_or_404
 from django.views.generic import TemplateView
 
@@ -128,6 +130,25 @@ class CoreHubView(TemplateView):
             file_role=FileAsset.FileRole.H5AD_PSEUDO
         ).exists()
         ctx["nav_step"] = self.nav_step
+
+        # Submission ID for module run API calls
+        submission = job.parent_submission
+        ctx["submission_id"] = str(submission.submission_id) if submission else ""
+
+        # Module jobs: non-core-pipeline jobs linked to same submission
+        module_jobs_map = {}
+        if submission:
+            for mj in AnalysisJob.objects.filter(
+                parent_submission=submission,
+                is_core_pipeline=False,
+            ).values("module_name", "status", "result_payload", "updated_at"):
+                module_jobs_map[mj["module_name"]] = {
+                    "status": mj["status"],
+                    "payload": mj["result_payload"] or {},
+                    "updated_at": mj["updated_at"].isoformat() if mj["updated_at"] else None,
+                }
+        ctx["module_jobs_json"] = json.dumps(module_jobs_map)
+
         return ctx
 
 

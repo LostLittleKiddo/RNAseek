@@ -182,22 +182,3 @@ class AnalysisJob(models.Model):
 
     def __str__(self):
         return f"{self.module_name} [{self.status}]"
-
-
-class ModuleResult(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    submission = models.ForeignKey(
-        AnalysisSubmission,
-        on_delete=models.CASCADE,
-        related_name="module_results",
-    )
-    module_name = models.CharField(max_length=100)
-    result_payload = models.JSONField(default=dict, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = "module_result"
-
-    def __str__(self):
-        return f"{self.module_name} result for {self.submission_id}"

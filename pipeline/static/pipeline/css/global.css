@@ -1388,3 +1388,100 @@ a:hover {
     border-color: var(--rna-teal);
     box-shadow: 0 6px 24px rgba(5, 154, 152, .15);
 }
+
+/* ── Tab Bar ── */
+.rna-tab-bar {
+    display: flex;
+    gap: .5rem;
+    border-bottom: 2px solid var(--rna-grey-200);
+    padding-bottom: 0;
+}
+
+.rna-tab {
+    padding: .65rem 1.25rem;
+    font-family: var(--rna-font-heading);
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--rna-grey-500);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: color .2s ease, border-color .2s ease;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+
+.rna-tab:hover {
+    color: var(--rna-teal);
+}
+
+.rna-tab.active {
+    color: var(--rna-teal);
+    border-bottom-color: var(--rna-teal);
+}
+
+.rna-tab-panel {
+    display: none;
+}
+
+.rna-tab-panel.active {
+    display: block;
+}
+
+/* ── Module Status Badges ── */
+.rna-module-status-badge {
+    position: absolute;
+    top: .6rem;
+    right: .6rem;
+    font-size: .65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    padding: .15rem .5rem;
+    border-radius: 999px;
+    display: none;
+}
+
+.rna-module-status-badge.status-running {
+    display: inline-block;
+    background: rgba(245, 158, 11, .15);
+    color: var(--rna-accent-amber);
+    animation: rna-pulse 2s ease-in-out infinite;
+}
+
+.rna-module-status-badge.status-done {
+    display: inline-block;
+    background: rgba(22, 163, 74, .12);
+    color: var(--rna-accent-green);
+}
+
+.rna-module-status-badge.status-failed {
+    display: inline-block;
+    background: rgba(231, 76, 60, .12);
+    color: #e74c3c;
+}
+
+.rna-module-card.rna-module-running {
+    border-color: var(--rna-accent-amber);
+}
+
+.rna-module-card.rna-module-done {
+    border-color: var(--rna-accent-green);
+}
+
+.rna-module-card.rna-module-done::before {
+    opacity: 1;
+    background: var(--rna-accent-green);
+}
+
+.rna-module-card.rna-module-failed {
+    border-color: #e74c3c;
+}
+
+.rna-module-card.rna-module-failed::before {
+    opacity: 1;
+    background: #e74c3c;
+}

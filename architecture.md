@@ -109,8 +109,8 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    DATABASE (SQLite dev / PostgreSQL prod)            │
-│  • 5 models: Session, AnalysisSubmission, FileAsset,                 │
-│    AnalysisJob, ModuleResult                                         │
+│  • 4 models: Session, AnalysisSubmission, FileAsset,                 │
+│    AnalysisJob                                                       │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -147,16 +147,16 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 │               │       │ reference_genome    │       └──────────────┘
 │               │       │ custom_genome_name  │
 │               │       │ metadata_mode       │       ┌──────────────┐
-│               │       │ metadata_payload {} │ 1───* │ ModuleResult │
-│               │       │ adjusted_pvalue     │       │──────────────│
-│               │       │ min_log2fc          │       │ id PK        │
-│               │       │ max_log2fc          │       │ submission FK│
-│               │       │ created_at          │       │ module_name  │
-│               │       └─────────────────────┘       │ result_      │
-│               │                                      │   payload {} │
-│               │       ┌─────────────────────┐       │ created_at   │
-│               │ 1───* │   AnalysisJob       │       │ updated_at   │
-│               │       │─────────────────────│       └──────────────┘
+│               │       │ metadata_payload {} │
+│               │       │ adjusted_pvalue     │
+│               │       │ min_log2fc          │
+│               │       │ max_log2fc          │
+│               │       │ created_at          │
+│               │       └─────────────────────┘
+│               │
+│               │       ┌─────────────────────┐
+│               │ 1───* │   AnalysisJob       │
+│               │       │─────────────────────│
 │               │       │ job_id PK           │
 │               │       │ session FK ─────────┤
 │               │       │ parent_submission FK│ ←── FK to AnalysisSubmission
@@ -217,24 +217,15 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 - `step_progress` (JSONField) — Per-step status tracking: `{ "steps": {"fastqc": "done", "hisat2": "running", ...}, "current_step": "hisat2" }`
 - Timestamps: `created_at`, `updated_at`
 
-**`ModuleResult`** — Designed to store Tier 2/3 module outputs independently of their execution job. Currently defined but not actively used.
-
-- `id` (UUID, PK)
-- `submission` (FK → AnalysisSubmission, CASCADE)
-- `module_name` (CharField, 100)
-- `result_payload` (JSONField) — Plotly data, tables, summaries
-- Timestamps: `created_at`, `updated_at`
-
 ### Relationship Cardinalities
 
-| Relationship                      | Cardinality |
-| --------------------------------- | ----------- |
-| Session → AnalysisSubmission      | 1 : N       |
-| Session → FileAsset               | 1 : N       |
-| Session → AnalysisJob             | 1 : N       |
-| AnalysisSubmission → FileAsset    | 1 : N       |
-| AnalysisSubmission → AnalysisJob  | 1 : N       |
-| AnalysisSubmission → ModuleResult | 1 : N       |
+| Relationship                     | Cardinality |
+| -------------------------------- | ----------- |
+| Session → AnalysisSubmission     | 1 : N       |
+| Session → FileAsset              | 1 : N       |
+| Session → AnalysisJob            | 1 : N       |
+| AnalysisSubmission → FileAsset   | 1 : N       |
+| AnalysisSubmission → AnalysisJob | 1 : N       |
 
 All foreign keys use `CASCADE` deletion — deleting a Session recursively removes all associated data.
 

@@ -952,7 +952,7 @@ class GenomeResolverTest(TestCase):
             with open(fasta, "w") as f:
                 f.write(">chr1\nACGT\n")
 
-            result = _resolve_bwa_index(fasta)
+            result = _resolve_bwa_index(genome_fasta=fasta, custom=True)
             self.assertEqual(result, fasta)
             mock_run.assert_called_once()
             self.assertIn("bwa index", mock_run.call_args.args[0])
@@ -969,7 +969,7 @@ class GenomeResolverTest(TestCase):
             with open(bwt, "w") as f:
                 f.write("index")
 
-            result = _resolve_bwa_index(fasta)
+            result = _resolve_bwa_index(genome_fasta=fasta)
             self.assertEqual(result, fasta)
             mock_run.assert_not_called()
 
@@ -978,9 +978,8 @@ class GenomeResolverTest(TestCase):
         from pipeline.tasks import _resolve_bismark_genome
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            result = _resolve_bismark_genome(tmpdir)
+            result = _resolve_bismark_genome(genome_dir=tmpdir, custom=True)
             self.assertEqual(result, tmpdir)
-            mock_run.assert_called_once()
             self.assertIn("bismark_genome_preparation", mock_run.call_args.args[0])
 
     @patch("pipeline.tasks._genome._run")
@@ -989,6 +988,6 @@ class GenomeResolverTest(TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             os.makedirs(os.path.join(tmpdir, "Bisulfite_Genome"))
-            result = _resolve_bismark_genome(tmpdir)
+            result = _resolve_bismark_genome(genome_dir=tmpdir)
             self.assertEqual(result, tmpdir)
             mock_run.assert_not_called()

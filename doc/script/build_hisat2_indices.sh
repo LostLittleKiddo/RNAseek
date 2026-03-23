@@ -17,24 +17,17 @@ for dir in */; do
     echo "-------------------------------------------------"
     echo "Entering: $FOLDER_NAME"
     
-    cd "$FOLDER_NAME"
-    
-    # Find the .fa file (handles different naming conventions)
-    FASTA_FILE=$(ls *.fa 2>/dev/null | head -n 1)
+    FASTA_FILE=$(ls "$FOLDER_NAME"/genome/*.fa 2>/dev/null | head -n 1)
+    HISAT2_DIR="$FOLDER_NAME/hisat2_index"
+    mkdir -p "$HISAT2_DIR"
     
     if [ -z "$FASTA_FILE" ]; then
-        echo "No .fa file found in $FOLDER_NAME. Skipping..."
+        echo "No .fa file found in $FOLDER_NAME/genome/. Skipping..."
     else
-        echo "Building index for $FASTA_FILE..."
-        
-        # -p 8 uses 8 CPU threads to speed it up
-        # We name the index using the FOLDER_NAME as the prefix
-        hisat2-build -p 8 "$FASTA_FILE" "$FOLDER_NAME"
-        
+        echo "Building HISAT2 index for $FASTA_FILE..."
+        hisat2-build -p 8 "$FASTA_FILE" "$HISAT2_DIR/$FOLDER_NAME"
         echo "Finished indexing $FOLDER_NAME."
     fi
-    
-    cd ..
 done
 
 echo "-------------------------------------------------"
