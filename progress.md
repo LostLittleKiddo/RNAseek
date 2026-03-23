@@ -156,6 +156,19 @@
 | **Frontend (Core Hub)**                | ✅      | All 5 plots rendered via Plotly.js 2.35.2 with custom color scheme, hover templates, responsive layout                                                               |
 | **Downloads**                          | ✅      | 5 download items: aligned BAMs, raw counts, normalized counts, DEG table, MultiQC report — served via `FileDownloadView`                                             |
 
+### Stats Package Source Files
+
+| File               | Purpose                                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
+| `core.py`          | `run_stage2_stats()` — main Stage 2 driver; orchestrates all steps below                              |
+| `_helpers.py`      | `_load_metadata()`, `_align_samples()`, `_filter_low_counts()`, `_combat_seq()`, `_detect_outliers()` |
+| `_deseq2.py`       | DESeq2 R bridge: formula builder, factor sanitisation, multi-contrast extraction                      |
+| `_annotations.py`  | `annotate_deg_table()` — MyGene.info REST API batched queries                                         |
+| `_methylkit.py`    | `run_differential_methylation()` — methylKit R bridge for bisulfite data                              |
+| `_plots.py`        | `_generate_plot_data()` — PCA, UMAP, Volcano, MA, Heatmap JSON serialisation for Plotly.js            |
+| `_plots_wgcna.py`  | `build_module_trait_heatmap()`, `build_pathway_dotplot()` — WGCNA-specific Plotly helpers             |
+| `_r_bridge.py`     | Shared lazy rpy2 initialisation; provides `ro`, `localconverter`, `importr`, `_converter`, `_R_CORES` |
+
 ---
 
 ## Phase 6: Standard Analytical Spokes (Tier 2 Modules)
@@ -258,7 +271,7 @@
 
 | File                                  | Status | Notes                                                                                                                                                                                                                                                                                                                                                                     |
 | ------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`pipeline_setup.js`** (~1600 lines) | ✅      | 5-step wizard navigation, entry point selector, assay type selector, library type toggle, FASTQ/BAM/Matrix drop zones, chunked upload with retry, paired-end validation, CSV metadata upload with PapaParse, manual metadata builder, column mapping, contrast builder, per-step validation, toast notifications, body-cloned tooltip positioning (escapes overflow/zoom) |
+| **`pipeline_setup.js`** (~2400 lines) | ✅      | 5-step wizard navigation, entry point selector, assay type selector, library type toggle, FASTQ/BAM/Matrix drop zones, chunked upload with retry, paired-end validation, CSV metadata upload with PapaParse, manual metadata builder, column mapping, contrast builder, per-step validation, toast notifications, body-cloned tooltip positioning (escapes overflow/zoom) |
 | **`core_hub.js`** (~600 lines)        | ✅      | Tab switching (Overview/Modules/Single-Cell), Plotly resize on tab change, module status badge rendering from server JSON, module card click (completed shows result panel, others open config modal), 5 Plotly rendering functions, module submission + polling with badge updates, deconvolution gateway + polling + spoke unlock, download link handlers               |
 
 ### CSS
@@ -266,8 +279,8 @@
 | File                                     | Status | Notes                                                                                                                                                                                             |
 | ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`variables.css`**                      | ✅      | Full design token system (navy-teal-mint palette, gradients, typography, border radii, shadows)                                                                                                   |
-| **`global.css`** (~600 lines)            | ✅      | Complete component library: navbar, footer, buttons, cards, module cards, grids, forms, badges, modals, progress bars, tab bar, module status badges (running/done/failed), responsive utilities  |
-| **`submission_layers.css`** (~800 lines) | ✅      | 5-step wizard layout, step indicators, radio cards, drop zones, file management panel, metadata table, validation messages, toast animations, wizard-panel zoom (0.8), body-cloned tooltip styles |
+| **`global.css`** (~1500 lines)           | ✅      | Complete component library: navbar, footer, buttons, cards, module cards, grids, forms, badges, modals, progress bars, tab bar, module status badges (running/done/failed), responsive utilities  |
+| **`submission_layers.css`** (~2000 lines) | ✅      | 5-step wizard layout, step indicators, radio cards, drop zones, file management panel, metadata table, validation messages, toast animations, wizard-panel zoom (0.8), body-cloned tooltip styles |
 
 ---
 
@@ -315,7 +328,8 @@ All 11 genomes have HISAT2 indices (`.ht2`), FASTA, and GTF annotation files. Pr
 | `test_upload_api.py`      | —     | Upload API tests                                                                                                                                                                                              |
 | `test_hisat2_pipeline.py` | —     | HISAT2 alignment integration                                                                                                                                                                                  |
 | `test_dev_dataset.py`     | —     | Dev dataset validation                                                                                                                                                                                        |
-| `test_e2e.py`             | —     | Full E2E: synthetic yeast FASTQ → Stage 1 → Stage 2 (used in CI)                                                                                                                                              |  | `test_genome_indices.py` | — | Genome index resolution and pre-built index verification |
+| `test_e2e.py`             | —     | Full E2E: synthetic yeast FASTQ → Stage 1 → Stage 2 (used in CI)                                                                                                                                             |
+| `test_genome_indices.py`  | —     | Genome index resolution and pre-built index verification                                                                                                                                                      |
 ---
 
 ## Summary by Blueprint Phase

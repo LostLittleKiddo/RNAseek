@@ -405,6 +405,7 @@
         updateWizardProgress();
         updateWizardNav();
         renderFileManagementPanel();
+        applyAssayVisibility();
     }
 
     /* ═══════════════════════════════════════════════════════════════════
@@ -425,7 +426,111 @@
             card.classList.add("selected");
             radio.checked = true;
             assayType = radio.value;
+            applyAssayVisibility();
         });
+    }
+
+    /* ── Genomes that have a miRBase index (small RNA only) ── */
+    var MIRBASE_GENOMES = ["hg38", "mm39", "mm10", "rn7", "danRer11", "galGal6", "dm6", "wbcel235", "araTha"];
+
+    /* ── Assay-aware tooltip / warning text ── */
+    var GENOME_TOOLTIPS = {
+        standard_rna: "Select the reference genome matching your organism. HISAT2 uses pre-built indices for splice-aware alignment. Choose \u201cCustom\u201d to upload your own.",
+        small_rna: "Select the organism for miRBase alignment. Only organisms with pre-built miRBase indices are available. Custom genomes are not supported for small RNA.",
+        chip_seq: "Select the reference genome matching your organism. BWA MEM uses pre-built indices for gapped alignment. Choose \u201cCustom\u201d to upload your own.",
+        methylation: "Select the reference genome matching your organism. Bismark uses pre-built bisulfite-converted indices. Choose \u201cCustom\u201d to upload your own.",
+    };
+    var CUSTOM_GENOME_WARNINGS = {
+        standard_rna: "Building a <strong>HISAT2</strong> index can take <strong>30 min to several hours</strong> depending on genome size.",
+        chip_seq: "Building a <strong>BWA</strong> index can take <strong>30 min to several hours</strong> depending on genome size.",
+        methylation: "Running <strong>Bismark genome preparation</strong> can take <strong>30 min to several hours</strong> depending on genome size.",
+    };
+
+    /**
+     * Show/hide UI elements that depend on the selected assay type.
+     *
+     * Strandedness:  only standard_rna uses it
+     * Quant level:   only standard_rna and chip_seq use featureCounts
+     * Genome filter: small_rna restricts to MIRBASE_GENOMES; no custom genome
+     * Custom genome: not available for small_rna
+     */
+    function applyAssayVisibility() {
+        /* ── Step 2: Strandedness ── */
+        var strandSection = $("strandedness-section");
+        if (strandSection) {
+            strandSection.style.display = (assayType === "standard_rna") ? "" : "none";
+            // Reset to unstranded when hidden
+            if (assayType !== "standard_rna") {
+                var strandSel = $("strandedness");
+                if (strandSel) strandSel.value = "unstranded";
+            }
+        }
+
+        /* ── Step 3: Quant Level ── */
+        var quantSection = $("quant-level-section");
+        if (quantSection) {
+            var showQuant = (assayType === "standard_rna" || assayType === "chip_seq");
+            quantSection.style.display = showQuant ? "" : "none";
+            if (!showQuant && quantLevel) quantLevel.value = "gene";
+        }
+
+        /* ── Step 3: Genome dropdown filtering ── */
+        if (genomeSelect) {
+            var options = genomeSelect.querySelectorAll("option");
+            options.forEach(function (opt) {
+                if (!opt.value) return; // placeholder
+                if (assayType === "small_rna") {
+                    if (opt.value === "custom") {
+                        opt.disabled = true;
+                        opt.style.display = "none";
+                    } else if (MIRBASE_GENOMES.indexOf(opt.value) === -1 && opt.value !== "") {
+                        opt.disabled = true;
+                        opt.style.opacity = "0.4";
+                        opt.style.display = "";
+                    } else {
+                        opt.disabled = false;
+                        opt.style.opacity = "";
+                        opt.style.display = "";
+                    }
+                } else {
+                    opt.disabled = false;
+                    opt.style.opacity = "";
+                    opt.style.display = "";
+                }
+            });
+            // Also hide/show the Custom optgroup
+            var customOptgroup = genomeSelect.querySelector('optgroup[label="Custom"]');
+            if (customOptgroup) customOptgroup.style.display = (assayType === "small_rna") ? "none" : "";
+
+            // Reset selection if current value is now disabled
+            var selected = genomeSelect.options[genomeSelect.selectedIndex];
+            if (selected && selected.disabled) {
+                genomeSelect.value = "";
+                customGenomeSection.classList.remove("visible");
+            }
+        }
+
+        /* ── Step 3: Custom genome section ── */
+        if (customGenomeSection) {
+            if (assayType === "small_rna") {
+                customGenomeSection.classList.remove("visible");
+            }
+        }
+
+        /* ── Step 3: Custom genome warning text ── */
+        var warningEl = $("custom-genome-warning");
+        if (warningEl) {
+            var warningSpan = warningEl.querySelector("span");
+            if (warningSpan && CUSTOM_GENOME_WARNINGS[assayType]) {
+                warningSpan.innerHTML = "<strong>Attention:</strong> " + CUSTOM_GENOME_WARNINGS[assayType];
+            }
+        }
+
+        /* ── Step 3: Genome tooltip ── */
+        var tooltipEl = $("genome-tooltip-text");
+        if (tooltipEl && GENOME_TOOLTIPS[assayType]) {
+            tooltipEl.textContent = GENOME_TOOLTIPS[assayType];
+        }
     }
 
     /* ═══════════════════════════════════════════════════════════════════
@@ -1155,6 +1260,10 @@
         if (inputDataType === "matrix") return true;
         var val = genomeSelect.value;
         if (!val) return false;
+        if (assayType === "small_rna") {
+            if (val === "custom") return false;
+            if (MIRBASE_GENOMES.indexOf(val) === -1) return false;
+        }
         if (val === "custom") {
             if (!customGenomeName.value.trim()) return false;
             if (inputDataType === "fastq" && (!customGenomeFiles.fasta || !customGenomeFiles.annotation)) return false;
@@ -2205,6 +2314,7 @@
         initContrasts();
         initThresholds();
         initStepNavigation();
+        applyAssayVisibility();
 
         wizardNext.addEventListener("click", nextStep);
         wizardBack.addEventListener("click", prevStep);

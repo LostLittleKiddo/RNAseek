@@ -13,12 +13,10 @@ import csv
 import json
 import os
 import tempfile
-import uuid
 from unittest.mock import MagicMock, patch
 
 from django.test import RequestFactory, TestCase
 
-from pipeline.middleware import AnonymousSessionMiddleware
 from pipeline.models import AnalysisJob, AnalysisSubmission, FileAsset, Session
 
 

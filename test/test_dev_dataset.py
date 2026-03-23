@@ -11,11 +11,8 @@ Dataset: 88 samples, 4 conditions, 2 batches (NU_HiSeq4000, UC_HiSeq4000)
   - 0.4 M NaCl (45 min)
 """
 
-import csv
-import json
 import os
 import sys
-import tempfile
 
 # Ensure project root is on sys.path for Django settings
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

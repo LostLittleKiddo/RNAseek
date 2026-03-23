@@ -13,8 +13,6 @@ actually calls R-based functions must have rpy2 + R installed.
 import os
 import warnings
 
-import numpy as np
-
 # Number of cores available for R parallelism
 _R_CORES = max(2, (os.cpu_count() or 4) // 2)
 

@@ -10,10 +10,8 @@ Covers:
 - Integration: run_tier2_module routes WGCNA correctly
 """
 
-import json
 import os
 import tempfile
-import uuid
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -22,7 +20,6 @@ from django.test import TestCase
 
 from pipeline.models import AnalysisJob, AnalysisSubmission, FileAsset, Session
 from pipeline.stats._plots_wgcna import (
-    _empty_dotplot,
     _significance_labels,
     build_module_trait_heatmap,
     build_pathway_dotplot,

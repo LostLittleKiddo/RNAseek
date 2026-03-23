@@ -5,12 +5,9 @@ genome, sets up a Django submission, and runs Stage 1 + Stage 2 directly.
 """
 
 import gzip
-import json
 import os
 import random
-import subprocess
 import sys
-import uuid
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
@@ -218,10 +215,7 @@ def main():
 
     from pipeline.tasks import (
         _featurecounts_to_csv,
-        _pair_fastqs,
         _run,
-        _strandedness_fc,
-        _strandedness_hisat2,
     )
 
     work_dir = sub.upload_dir

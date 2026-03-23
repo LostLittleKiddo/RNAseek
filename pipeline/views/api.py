@@ -8,7 +8,6 @@ import shutil
 
 from django.conf import settings
 from django.http import FileResponse, Http404, JsonResponse
-from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -252,6 +251,20 @@ class CorePipelineView(View):
                 return JsonResponse({"error": "Reference genome is required."}, status=400)
             if quant_level not in self.VALID_QUANT_LEVELS:
                 return JsonResponse({"error": "Invalid quant_level."}, status=400)
+
+        # ── Small RNA: only miRBase-supported genomes, no custom ──
+        if input_data_type == "fastq" and assay_type == "small_rna":
+            from pipeline.tasks._constants import _MIRBASE_SPECIES_MAP
+            if reference_genome == "custom":
+                return JsonResponse(
+                    {"error": "Custom genomes are not supported for Small RNA / miRNA. Please select a pre-indexed organism."},
+                    status=400,
+                )
+            if reference_genome and reference_genome not in _MIRBASE_SPECIES_MAP:
+                return JsonResponse(
+                    {"error": f"Genome '{reference_genome}' does not have a miRBase index. Please select a supported organism."},
+                    status=400,
+                )
 
         metadata_mode = body.get("metadata_mode", "")
         if metadata_mode not in ("upload", "manual"):

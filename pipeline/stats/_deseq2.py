@@ -4,8 +4,6 @@ import logging
 import os
 import re
 
-import numpy as np
-
 import pipeline.stats._r_bridge as _rb
 from pipeline.stats._r_bridge import _R_CORES, _ensure_rpy2
 

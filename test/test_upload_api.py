@@ -22,7 +22,6 @@ import tempfile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, TestCase
 
-from pipeline.middleware import AnonymousSessionMiddleware
 from pipeline.models import AnalysisSubmission, FileAsset, Session
 from pipeline.views import (
     ChunkUploadView,

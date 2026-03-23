@@ -224,7 +224,7 @@
                                 </div>
                             </div>
 
-                            <div class="wiz-section">
+                            <div class="wiz-section" id="strandedness-section">
                                 <h3 class="wiz-section-title"><i class="bi bi-layers"></i> Strandedness
                                     <span class="input-tip"><i class="bi bi-question-circle"></i>
                                         <span class="tip-text"><strong>Unstranded:</strong> No strand-specific protocol
@@ -380,43 +380,62 @@
         <section class="wizard-step" id="wizard-step-3">
             <div class="rna-container rna-mt-3 rna-mb-4">
                 <div class="wizard-split">
-                    <!-- Left Panel (1/3) -->
                     <div class="wizard-split-left">
-                        <div class="wiz-section">
-                            <h3 class="wiz-section-title"><i class="bi bi-database"></i> Reference Genome
-                                <span class="required" aria-hidden="true">*</span><span class="sr-only">Required</span>
-                                <span class="input-tip"><i class="bi bi-question-circle"></i>
-                                    <span class="tip-text">Select the reference genome matching your organism. HISAT2
-                                        uses
-                                        pre-built indices for splice-aware alignment. Choose "Custom" to upload your
-                                        own.</span>
-                                </span>
-                            </h3>
-                            <select class="rna-input rna-select" id="genome-select">
-                                <option value="">-- Select a reference genome --</option>
-                                {% for group in genome_choices %}
-                                <optgroup label="{{ group.group }}">
-                                    {% for opt in group.options %}
-                                    <option value="{{ opt.value }}">{{ opt.label }}</option>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem;">
+
+                            <div class="wiz-section" style="margin-bottom: 0;">
+                                <h3 class="wiz-section-title"><i class="bi bi-database"></i> Reference Genome
+                                    <span class="required" aria-hidden="true">*</span><span
+                                        class="sr-only">Required</span>
+                                    <span class="input-tip"><i class="bi bi-question-circle"></i>
+                                        <span class="tip-text" id="genome-tooltip-text">Select the reference genome
+                                            matching your organism.
+                                            HISAT2
+                                            uses pre-built indices for splice-aware alignment. Choose "Custom" to upload
+                                            your
+                                            own.</span>
+                                    </span>
+                                </h3>
+                                <select class="rna-input rna-select" id="genome-select">
+                                    <option value="">-- Select a genome --</option>
+                                    {% for group in genome_choices %}
+                                    <optgroup label="{{ group.group }}">
+                                        {% for opt in group.options %}
+                                        <option value="{{ opt.value }}">{{ opt.label }}</option>
+                                        {% endfor %}
+                                    </optgroup>
                                     {% endfor %}
-                                </optgroup>
-                                {% endfor %}
-                                <optgroup label="Custom">
-                                    <option value="custom">Custom Genome...</option>
-                                </optgroup>
-                            </select>
+                                    <optgroup label="Custom">
+                                        <option value="custom">Custom Genome...</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+
+                            <div class="wiz-section" id="quant-level-section" style="margin-bottom: 0;">
+                                <h3 class="wiz-section-title"><i class="bi bi-bar-chart-steps"></i> Quant Level
+                                    <span class="input-tip"><i class="bi bi-question-circle"></i>
+                                        <span class="tip-text">Controls featureCounts <code>-t</code> flag. Gene-level
+                                            (default) or transcript-level for isoform-resolution.</span>
+                                    </span>
+                                </h3>
+                                <select class="rna-input rna-select" id="quant-level">
+                                    <option value="gene" selected>Gene-level</option>
+                                    <option value="transcript">Transcript-level</option>
+                                </select>
+                            </div>
+
                         </div>
 
-                        <!-- Custom Genome Section -->
                         <div class="custom-genome-section" id="custom-genome-section">
                             <h4 class="custom-genome-heading">
                                 <i class="bi bi-gear"></i> Custom Genome Configuration
                             </h4>
 
-                            <div class="rna-banner-warn rna-mb-2">
+                            <div class="rna-banner-warn rna-mb-2" id="custom-genome-warning">
                                 <i class="bi bi-exclamation-triangle"></i>
                                 <span>
-                                    <strong>Attention:</strong> Building a HISAT2 index can take
+                                    <strong>Attention:</strong> Building a genome index can take
                                     <strong>30 min to several hours</strong> depending on genome size.
                                 </span>
                             </div>
@@ -473,23 +492,8 @@
                                 </div>
                             </div>
                         </div>
-
-                        <div class="wiz-section rna-mt-2">
-                            <h3 class="wiz-section-title"><i class="bi bi-bar-chart-steps"></i> Quantification Level
-                                <span class="input-tip"><i class="bi bi-question-circle"></i>
-                                    <span class="tip-text">Controls featureCounts <code>-t</code> flag. Gene-level
-                                        (default) or
-                                        transcript-level for isoform-resolution.</span>
-                                </span>
-                            </h3>
-                            <select class="rna-input rna-select" id="quant-level">
-                                <option value="gene" selected>Gene-level (default)</option>
-                                <option value="transcript">Transcript-level</option>
-                            </select>
-                        </div>
                     </div>
 
-                    <!-- Right Panel (2/3) -->
                     <div class="wizard-split-right">
                         <div class="step-graphic step-graphic-3">
                             <div class="step-graphic-icon"><i class="bi bi-database"></i></div>

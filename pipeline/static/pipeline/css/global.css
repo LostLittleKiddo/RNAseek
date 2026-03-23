@@ -586,6 +586,10 @@ a:hover {
     display: flex;
     align-items: center;
     gap: .5rem;
+    flex: 1 1 auto;
+    /* ADDED: Allows text area to take available space */
+    min-width: 0;
+    /* ADDED: Prevents long text from pushing the button out */
 }
 
 .rna-download-item .file-info i {
@@ -614,6 +618,8 @@ a:hover {
     cursor: pointer;
     transition: all .2s ease;
     font-size: .9rem;
+    flex-shrink: 0;
+    /* ADDED: Locks the button size so it never squishes */
 }
 
 .rna-icon-btn-download {

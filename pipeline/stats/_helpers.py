@@ -1,9 +1,6 @@
 """Stage-2 helpers: metadata loading, filtering, batch correction, outlier detection."""
 
-import json
 import logging
-import os
-import re
 
 import numpy as np
 

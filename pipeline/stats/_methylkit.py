@@ -5,7 +5,6 @@ pipeline on Bismark coverage files. Produces per-CpG differential methylation
 results and summary statistics suitable for volcano/PCA/MA plots.
 """
 
-import csv
 import json
 import logging
 import os

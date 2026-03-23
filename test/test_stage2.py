@@ -7,9 +7,7 @@ Tests:
   4. Error case: model matrix not full rank (perfect confounding)
 """
 
-import json
 import os
-import shutil
 import sys
 import tempfile
 

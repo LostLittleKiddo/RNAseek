@@ -5,7 +5,7 @@ import shutil
 
 from celery import shared_task
 
-from pipeline.tasks._helpers import _emit_progress, _update_step
+from pipeline.tasks._helpers import _emit_progress
 
 logger = logging.getLogger(__name__)
 
