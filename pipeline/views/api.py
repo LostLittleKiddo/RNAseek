@@ -631,7 +631,7 @@ class ModuleRunView(View):
         "DIABLO",         # L — mixOmics DIABLO
     }
 
-    def post(self, request, module_name):
+    def post(self, request, submission_id, module_name):
         session_obj = request.session_obj
 
         # ── Validate module name ──
@@ -669,9 +669,21 @@ class ModuleRunView(View):
                 status=409,
             )
 
+        # ── Resolve parent submission ──
+        try:
+            submission = AnalysisSubmission.objects.get(
+                submission_id=submission_id, session=session_obj
+            )
+        except (AnalysisSubmission.DoesNotExist, ValueError):
+            return JsonResponse(
+                {"error": "Submission not found."}, status=404
+            )
+
         # ── Create the Tier 2 AnalysisJob ──
         module_job = AnalysisJob.objects.create(
             session=session_obj,
+            parent_submission=submission,
+            is_core_pipeline=False,
             module_name=name_upper,
             step_progress={
                 "pipeline_steps": [name_upper],

@@ -115,6 +115,14 @@ def run_tier2_module(self, session_id, core_job_id, module_name, params=None):
             result = _dispatch_wgcna(
                 job, session_id, str(submission.submission_id), **params,
             )
+        elif module_name == "RNA_EDITING":
+            result = _dispatch_rna_editing(
+                job, session_id, str(submission.submission_id), **params,
+            )
+        elif module_name == "TIME_SERIES":
+            result = _dispatch_timeseries(
+                job, session_id, str(submission.submission_id), **params,
+            )
         else:
             # Placeholder for unimplemented modules.
             progress = job.step_progress or {}
@@ -191,6 +199,113 @@ def _dispatch_wgcna(job, session_id, submission_id, **kwargs):
         matrix_path=matrix_asset.local_path,
         metadata_path=metadata_asset.local_path,
         **kwargs,
+    )
+
+
+def _dispatch_rna_editing(job, session_id, submission_id, **kwargs):
+    """Resolve BAM files and genome FASTA, then delegate to the RNA editing engine.
+
+    Required FileAsset roles on the submission:
+        ALIGNMENT_BAM  - one or more aligned BAM files from the core pipeline
+
+    The reference genome FASTA is resolved from the submission's
+    ``reference_genome`` field via ``_genome_paths()``.
+
+    Optional params (forwarded from the frontend form):
+        whole_transcriptome : bool
+        bed_data            : str   (raw BED file content)
+    """
+    import os
+    import tempfile
+
+    from pipeline.models import AnalysisSubmission, FileAsset
+    from pipeline.tasks._genome import _genome_paths, _resolve_genome
+    from pipeline.tasks._module_rna_editing import execute_rna_editing
+
+    submission = AnalysisSubmission.objects.get(
+        submission_id=submission_id, session_id=session_id,
+    )
+
+    # Collect all BAM files produced by the core pipeline for this submission.
+    bam_assets = FileAsset.objects.filter(
+        session_id=session_id,
+        submission=submission,
+        file_role=FileAsset.FileRole.ALIGNMENT_BAM,
+    )
+    bam_paths = [a.local_path for a in bam_assets if os.path.isfile(a.local_path)]
+    if not bam_paths:
+        raise FileNotFoundError(
+            "No aligned BAM files found for this submission. "
+            "Run the core pipeline first."
+        )
+
+    # Resolve the reference genome FASTA.
+    genome_key = submission.reference_genome
+    _, genome_fasta, _ = _resolve_genome(
+        genome_key, submission.upload_dir, submission=submission,
+    )
+    if not genome_fasta:
+        raise FileNotFoundError(
+            f"Could not resolve reference FASTA for genome '{genome_key}'."
+        )
+
+    # If the user provided BED data as text, write it to a temporary file.
+    whole_transcriptome = kwargs.pop("whole_transcriptome", False)
+    bed_data = kwargs.pop("bed_data", None)
+    bed_path = None
+
+    if not whole_transcriptome and bed_data and isinstance(bed_data, str):
+        work_dir = os.path.join(submission.upload_dir, "rna_editing")
+        os.makedirs(work_dir, exist_ok=True)
+        bed_path = os.path.join(work_dir, "target_regions.bed")
+        with open(bed_path, "w") as fh:
+            fh.write(bed_data)
+
+    return execute_rna_editing(
+        job_id=str(job.job_id),
+        session_id=str(session_id),
+        bam_paths=bam_paths,
+        genome_fasta=genome_fasta,
+        bed_path=bed_path,
+        whole_transcriptome=whole_transcriptome,
+    )
+
+
+def _dispatch_timeseries(job, session_id, submission_id, **kwargs):
+    """Resolve normalized count matrix and delegate to the Time Series engine.
+
+    Required FileAsset roles on the submission:
+        NORMALIZED_COUNTS  - DESeq2 normalized count matrix
+
+    Required params (from the frontend form):
+        mapping_data : dict   (sample -> timepoint / condition mapping)
+        time_unit    : str    (minutes, hours, days, weeks)
+    """
+    from pipeline.models import AnalysisSubmission, FileAsset
+    from pipeline.tasks._module_timeseries import execute_timeseries
+
+    submission = AnalysisSubmission.objects.get(
+        submission_id=submission_id, session_id=session_id,
+    )
+
+    matrix_asset = FileAsset.objects.get(
+        session_id=session_id,
+        submission=submission,
+        file_role=FileAsset.FileRole.NORMALIZED_COUNTS,
+    )
+
+    mapping_data = kwargs.pop("mapping_data", None)
+    if not mapping_data:
+        raise ValueError("No sample mapping data provided.")
+
+    time_unit = kwargs.pop("time_unit", "hours")
+
+    return execute_timeseries(
+        job_id=str(job.job_id),
+        session_id=str(session_id),
+        matrix_path=matrix_asset.local_path,
+        mapping_data=mapping_data,
+        time_unit=time_unit,
     )
 
 

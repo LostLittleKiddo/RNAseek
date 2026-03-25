@@ -1398,6 +1398,27 @@
             if (csvInput.files.length) setCsvFile(csvInput.files[0]);
             csvInput.value = "";
         });
+
+        var downloadTemplateBtn = $("download-csv-template");
+        if (downloadTemplateBtn) {
+            downloadTemplateBtn.addEventListener("click", function () {
+                var samples = extractSampleNames();
+                var rows = [["sample", "condition"]];
+                for (var i = 0; i < samples.length; i++) {
+                    rows.push([samples[i], ""]);
+                }
+                var csvContent = rows.map(function (r) { return r.join(","); }).join("\n");
+                var blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement("a");
+                a.href = url;
+                a.download = "metadata_template.csv";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+        }
     }
 
     function clearCsvFile() {

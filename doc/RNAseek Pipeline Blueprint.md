@@ -1,150 +1,257 @@
-# 🧬 RNASeek: The Enterprise Masterclass Blueprint
+# RNASeek Pipeline Blueprint
 
-**Version:** 1.2 (Target: March 31, 2026) | **Architecture:** Multi-Tenant Asynchronous Microservices
-
----
-
-## PHASE 1: The Bare Metal & Infrastructure Architecture
-
-*How the system is built to handle massive scale, gigabyte data streaming, and biological computation without crashing.*
-
-**1. The Application Layer (Dockerized Microservices)**
-* **Web Server (Django 5.2):** Served by Daphne (ASGI) to handle synchronous REST API calls and real-time asynchronous WebSocket connections (via Django Channels) for live progress bars. Nginx sits in front as a reverse proxy, handling SSL (Certbot) and static file delivery (WhiteNoise).
-* **Message Broker (Redis 7+):** Acts as the high-throughput memory bank handling the queue of biological jobs.
-* **Worker Fleet (Celery 5.6):** The heavy lifters. Isolated containers that do not run a web server; they strictly execute Python/R bioinformatics scripts. If a worker hits an Out-Of-Memory (OOM) error while aligning a 40GB genome, Redis simply requeues the job to a surviving worker.
-
-**2. The Storage Layer (POSIX Shared NFS)**
-* **The Problem:** FASTQ files are 10–50 GBs. Moving them between cloud buckets (AWS S3) and local workers costs a fortune in egress fees and network latency.
-* **The Solution:** A POSIX-compliant Network File System (NFS) mounted directly to `/app/media/` on *every* Docker container.
-* **The Result:** The web server accepts the upload and writes it to `/app/media/`. The Celery worker wakes up and reads it from the *exact same path*. Zero data movement. This NFS also holds the 100s of Reference Genomes (44GB each).
-
-**3. The Security Layer (Frictionless Multi-Tenancy)**
-* No usernames. No passwords.
-* Upon visiting the site, the Django middleware issues a cryptographically signed, `HttpOnly` UUID cookie (`Session_ID`) valid for 14 days.
-* Every database row, every file upload, and every Celery job is locked to this UUID.
+**Version:** 1.3 | **Architecture:** Multi-Tenant Asynchronous Microservices
 
 ---
 
-## PHASE 2: The Data Model (Django ORM)
+## Phase 1: Infrastructure Architecture
 
-*The relational structure that enforces the "Global Workspace vs. Nested Hub" UI paradigm.*
+### 1.1 Application Layer (Dockerized Microservices)
 
-1.  **`Session`:** The root tenant. Contains `session_id` (UUID) and `expires_at` (14-day TTL).
-2.  **`AnalysisSubmission` (The Workspace Anchor):** A child of `Session`. Represents a primary Core Pipeline run. **These are the only items that render in the user's global "Active Workspace."** It automatically generates an `upload_dir` folder on the NFS, which acts as the localized "Hub" for all subsequent analysis.
-3.  **`FileAsset`:** Tracks physical files. Contains `file_role` (e.g., `RAW_FASTQ`, `ALIGNMENT_BAM`, `USER_COUNT_MATRIX`, `CUSTOM_GENOME_FASTA`) and the absolute `local_path` on the NFS. Linked via ForeignKey to `AnalysisSubmission`.
-4.  **`AnalysisJob` (The Execution Tracker):** Tracks background processing. Contains `job_id` (Celery task ID), `module_name`, `status`, `result_payload` (JSON), and `step_progress` JSON. 
-    * **Hierarchy Enforcement:** Includes a `parent_submission` (ForeignKey) and an `is_core_pipeline` (Boolean). 
-    * If `is_core_pipeline=True`, WebSockets broadcast to the global workspace. 
-    * If `is_core_pipeline=False`, WebSockets only broadcast to the isolated UI of that specific Submission Hub.
-    * **Module Output Storage:** Tier 2/3 module results are stored directly in `result_payload`, eliminating the need for a separate model.
-    * **Reference Genomes:** Resolved via filesystem lookup (`_GENOME_FOLDER_MAP` dict in `_constants.py`) rather than a DB model. Pre-built indices for HISAT2, BWA, Bismark, and Bowtie/miRBase reside under `pipeline/reference_genomes/`.
+* **Web Server (Django 5.2):** Served by Daphne (ASGI) for synchronous REST API calls and real-time asynchronous WebSocket connections (Django Channels) for live progress bars. Nginx sits in front as a reverse proxy handling SSL (Let's Encrypt / Certbot), WebSocket upgrades at `/ws/`, 10 GB upload limits, and 30-day static file caching.
+* **Message Broker (Redis 7+):** Memory-based queue for Celery tasks and Channels layer backend.
+* **Worker Fleet (Celery 5.6):** Prefork workers with CPU-matched concurrency. Isolated containers that strictly execute Python/R bioinformatics scripts. 32 GB RAM limit per worker container.
+* **Scheduler (Celery Beat):** Single-replica container running periodic tasks (session purge at 2:00 AM UTC).
+* **Microbial Engine (BASys2 Docker):** An isolated local Docker container running the BASys2 pipeline and database. This processes unannotated bacterial FASTA uploads, rapidly generating complete structural, operon, and metabolome annotations (JSON/GenBank) in ~10 seconds for downstream alignment and counting without relying on external API calls.
 
----
+### 1.2 Storage Layer (POSIX Shared NFS)
 
-## PHASE 3: The API Facade & Data Ingestion
+* A POSIX-compliant Network File System (NFS) mounted to `/app/media/` on every Docker container (web, worker, beat). The `docker-compose.yml` defines a `media-data` volume with commented NFS swap instructions.
+* The web server writes uploads to `/app/media/sessions/{uuid}/`. Celery workers read from the exact same path. Zero data movement.
+* Reference genomes (11 pre-indexed) reside under `pipeline/reference_genomes/`.
 
-*How massive data enters the system flawlessly.*
+### 1.3 Security Layer (Anonymous Sessions)
 
-**1. The Chunked Uploader (`/api/upload/chunk`)**
-* Browsers crash if you try to upload a 20GB FASTQ file via standard HTTP POST.
-* Your UI chunks the files into 5MB binary slices. The Django API receives these slices, sanitizes the filename to prevent path traversal, and dynamically appends the binary bytes (`ab` mode) into the `AnalysisSubmission` NFS folder.
-
-**2. The Master Router (`/api/pipeline/core`)**
-* The "Facade Pattern" in action. The frontend UI sends a single JSON payload. Django interprets the biological state and routes the execution matrix, flagging the resulting `AnalysisJob` as `is_core_pipeline=True` so it appears in the Global Workspace.
-* **State Routing:**
-    * `input_data_type == "fastq"` ➡️ Requires full alignment. Demands paired-end validation.
-    * `input_data_type == "alignment"` ➡️ BAM/CRAMs. Skips alignment. Demands GTF annotations.
-    * `input_data_type == "matrix"` ➡️ User count matrix. Bypasses Stage 1 entirely.
+* No usernames or passwords. `AnonymousSessionMiddleware` issues a cryptographically random UUID cookie (`Session_ID`), `HttpOnly`, `SameSite=Lax`, with a 14-day TTL.
+* The middleware creates or validates a `Session` model per request and attaches `request.session_obj`.
+* Every database row (`FileAsset`, `AnalysisJob`, `AnalysisSubmission`) is scoped to this session via foreign key.
 
 ---
 
-## PHASE 4: The Hub Engine (Stage 1 Multi-Track)
+## Phase 2: Data Model (Django ORM)
 
-*The raw biological physics layer. Triggered dynamically by the Celery `run_core_pipeline` task.*
-
-* **Track A: Standard Transcriptomics (Poly-A RNA-Seq)**
-    * **QC:** `FastQC` and `Trimmomatic` (removes adapter contamination).
-    * **Alignment:** `HISAT2` (splice-aware aligner). Converts SAM to compressed CRAM.
-    * **Quantification:** `featureCounts` calculates exact gene-level expression.
-* **Track B: Regulatory Transcriptomics (Small RNA / Non-Coding)**
-    * **Alignment:** `Bowtie` (optimized for ultra-short reads). Maps against `miRBase`.
-* **Track C: Epigenomics (ChIP-seq & DNA Methylation)**
-    * **ChIP-seq:** Aligns via `BWA`. Uses `MACS2` to call biological "peaks".
-    * **Methylation:** Uses `Bismark` to align bisulfite-converted DNA.
-* **Universal Output:** Generates interactive `MultiQC` HTML reports, saved to the `AnalysisSubmission` Hub.
+1. **`Session`:** Root tenant. `session_id` (UUID PK), `created_at`, `expires_at` (14-day TTL), `is_expired` property.
+2. **`AnalysisSubmission`:** Child of `Session`. UUID PK. Represents a primary Core Pipeline run. Contains `input_data_type` (fastq / alignment / matrix), `assay_type` (standard_rna / small_rna / chip_seq / methylation), `library_type` (single / paired), `strandedness` (unstranded / fr-firststrand / fr-secondstrand), `reference_genome`, `metadata_mode` (upload / manual), `metadata_payload` (JSON), threshold fields (`adjusted_pvalue`, `min_log2fc`, `max_log2fc`), `custom_genome_name`, and `submission_name`. The `upload_dir` property generates the NFS path. These are the only items rendered in the global Active Workspace.
+3. **`FileAsset`:** UUID PK. FK to Session and FK to Submission (nullable). 16 `file_role` choices: `RAW_FASTQ`, `ALIGNMENT_BAM`, `USER_COUNT_MATRIX`, `COUNT_MATRIX`, `NORMALIZED_COUNTS`, `DEG_TABLE`, `MULTIQC_REPORT`, `H5AD_PSEUDO`, `HE_IMAGE_USER`, `HE_IMAGE_GENERIC`, `PEAK_FILE`, `METHYLATION_REPORT`, `CUSTOM_GENOME_FASTA`, `CUSTOM_GENOME_ANNOTATION`, `METADATA_CSV`, plus `is_user_uploaded` flag and `local_path`.
+4. **`AnalysisJob`:** UUID PK (equals Celery task ID). FK to Session, FK to Submission (`parent_submission`, nullable). `is_core_pipeline` boolean (default `True`; Tier 2 module jobs set to `False`). `module_name` (string), `status` (PENDING / RUNNING / SUCCESS / FAILED), `result_payload` (JSON), `step_progress` (JSON), timestamps. Module outputs are stored directly in `result_payload` -- no separate `ModuleResult` model.
+5. **Reference Genomes:** No DB model. Resolved via filesystem lookup (`_GENOME_FOLDER_MAP` dict in `_genome.py`). Pre-built indices for HISAT2, BWA, Bismark, and Bowtie/miRBase reside under `pipeline/reference_genomes/`.
 
 ---
 
-## PHASE 5: The Convergence & Normalization (Stage 2)
+## Phase 3: API Facade and Data Ingestion
 
-*Every input type converges into a standardized mathematical matrix, unlocking the Hub.*
+### 3.1 Chunked Uploader (`POST /api/upload/chunk`)
 
-**1. Batch Correction (`ComBat-seq`)**
-* Removes technical noise via `sva::ComBat_seq()` through `rpy2` while preserving biological variance.
+Files are chunked into 5 MB binary slices client-side. The Django API receives slices, sanitizes filenames to prevent path traversal, and appends binary bytes (`ab` mode) into role-aware subdirectories inside the submission's NFS folder (`raw/`, `aligned/`, `counts/`, `metadata/`, `custom_genome/`). A `FileAsset` row is created on the final chunk.
 
-**2. Statistical Normalization & Outliers (`DESeq2`)**
-* Transforms raw counts using Negative Binomial distributions. Calculates Mahalanobis distance for outlier detection.
+### 3.2 Master Router (`POST /api/pipeline/core`)
 
-**3. Automated Annotation Bridge**
-* Pings `MyGene.info` REST API to append plain-English gene descriptions to the final DEG table.
+Facade pattern. The frontend sends a single JSON payload. Django validates `input_data_type`, `assay_type`, file presence, metadata, genome selection, and contrast configuration. It sets `pipeline_steps` and dispatches `run_core_pipeline` as a Celery task, flagging the resulting `AnalysisJob` as `is_core_pipeline=True`.
 
-**4. The Plotly UX Generation**
-* Celery calculates X/Y coordinate JSON payloads for PCA, UMAP, Volcano Plots, etc. These core plots populate the default view of the `AnalysisSubmission` Hub.
+**State routing:**
+* `fastq` -- Full alignment pipeline. Requires paired-end validation. Routes by assay type (standard RNA / small RNA / ChIP-seq / methylation).
+* `alignment` -- BAM/CRAM input. Skips alignment. Routes to featureCounts then Stage 2.
+* `matrix` -- User count matrix. Bypasses Stage 1 entirely. Validates CSV (non-empty, all-numeric, non-negative).
 
----
+**Assay routing (FASTQ only):**
+* `standard_rna` -- HISAT2 alignment track.
+* `small_rna` -- Bowtie/miRBase track. Genomes restricted to `MIRBASE_GENOMES` only; custom genome blocked.
+* `chip_seq` -- BWA + MACS2 track.
+* `methylation` -- Bismark track.
 
-## PHASE 6: The Standard Analytical Spokes (Tier 2)
+### 3.3 Other API Endpoints
 
-*12 modular micro-pipelines that unlock inside a specific Submission Hub after Stage 2. Triggered via `/api/submissions/{id}/modules/{name}/run`.* **The Hub Isolation Principle:** When a user triggers one of these modules, the resulting `AnalysisJob` is flagged `is_core_pipeline=False`. The job executes silently in the background of the Hub, and upon success, writes its output to `AnalysisJob.result_payload`. **The global Active Workspace remains completely unaware and uncluttered.** The Core Hub UI uses a 3-tab layout (Overview | Modules | Single-Cell) to organize downloads, plots, module cards with status badges, and the deconvolution gateway.
-
-| Module                   | Biological Purpose                                                 | Computational Engine    | Reused Hub Data                | Required Hub UI Input                                                         |
-| :----------------------- | :----------------------------------------------------------------- | :---------------------- | :----------------------------- | :---------------------------------------------------------------------------- |
-| **A. Alt Splicing**      | Detects structural transcript alterations/exon skipping.           | `IsoformSwitchAnalyzeR` | Aligned BAMs, GTF Annotation   | **Condition Mapping:** Specific experimental groups to compare.               |
-| **B. RNA Editing**       | Base-by-base scans of BAMs to find A-to-I mutations/SNPs.          | `REDItools2`            | Aligned BAMs, Reference Genome | **Target Regions:** BED file of coordinates, or "Whole Transcriptome".        |
-| **C. Time Series**       | Clusters genes by their temporal expression across time.           | `ImpulseDE2`            | Normalized Expression Values   | **Temporal Metadata:** Timepoints assigned to each sample (e.g., 0h, 12h).    |
-| **D. WGCNA**             | Groups highly correlated gene networks into color modules.         | `PyWGCNA`               | Normalized Expression Values   | **Clinical Traits (Optional):** Numeric metadata to correlate with networks.  |
-| **E. Pathways**          | Maps upregulated genes against KEGG/PathBank diagrams.             | `gseapy`                | Final DEG Table                | **Database Selection:** Desired pathway database to map against.              |
-| **F. Causal Networks**   | Machine learning infers causal gene-to-gene edges.                 | `arboreto` (GRNBoost2)  | Normalized Expression Values   | **Transcription Factors (Optional):** Custom gene list to restrict inference. |
-| **G. Protein Interacts** | Fetches physical protein binding networks.                         | STRING-DB API           | Final DEG Table                | **Thresholds:** Confidence score cutoff and max node limit.                   |
-| **H. Literature NLP**    | Scans millions of PubMed abstracts for causal biology.             | INDRA Bio API           | Final DEG Table                | **Context Keyword:** Biological/disease context to guide the scan.            |
-| **I. Survival**          | Kaplan-Meier curves predicting high/low expression survival.       | `lifelines`             | Normalized Expression Values   | **Clinical Survival Data:** CSV mapping samples to Days/Vital Status.         |
-| **J. TCGA Cancer**       | Harmonizes user data against public GDC tumor cohorts.             | `TCGAbiolinks`          | Normalized Expression Values   | **Target Cohort:** Dropdown selection of the public tumor cohort.             |
-| **K. Biomarkers**        | Flags FDA-approved diagnostic/prognostic biomarkers.               | MarkerDB API            | Final DEG Table                | **Disease Context:** Target condition for cross-referencing.                  |
-| **L. MOFA / DIABLO**     | Mathematically fuses RNA-seq with ChIP-seq to find latent factors. | `mofapy2` / `mixOmics`  | Normalized Expression Values   | **Secondary Omics Upload:** A second normalized matrix matched to samples.    |
+| Endpoint                                     | Method | Purpose                                                                                                                                                            |
+| :------------------------------------------- | :----- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/submission/create`                     | POST   | Creates `AnalysisSubmission`, returns UUID                                                                                                                         |
+| `/api/submission/delete`                     | POST   | Cascade-deletes submission + disk files; `sendBeacon`-safe (csrf_exempt)                                                                                           |
+| `/api/jobs/<uuid>/`                          | GET    | Polls job status; detects stale RUNNING jobs via Celery `AsyncResult` (marks FAILED if REVOKED)                                                                    |
+| `/api/session/assets`                        | GET    | Lists session file assets; filterable by `role` and `job_id`                                                                                                       |
+| `/api/download/<uuid>`                       | GET    | Serves files with path-traversal protection and MIME detection                                                                                                     |
+| `/api/files/<uuid>/`                         | DELETE | Deletes user-uploaded asset from DB and disk                                                                                                                       |
+| `/api/submissions/<uuid>/modules/<name>/run` | POST   | Validates module name against 12 approved modules, verifies core job completed, creates `AnalysisJob` with `is_core_pipeline=False`, dispatches `run_tier2_module` |
 
 ---
 
-## PHASE 7: The Predictive Single-Cell & Spatial Gateway (Tier 3 & 4)
+## Phase 4: Hub Engine (Stage 1 Multi-Track)
 
-*Advanced outputs that also save directly to the Submission Hub's state.*
+Triggered by the Celery `run_core_pipeline` task. Progress updates are emitted via `_emit_progress()` through the Channels layer.
 
-**Tier 3: The Deconvolution Engine**
-* Takes the normalized bulk matrix and a Single-Cell Reference Atlas. Runs `DestVI` or `BayesPrism` to decompose bulk samples into pseudo-single-cells. Saves an `.h5ad` AnnData matrix to the Hub's `FileAsset` list.
+### Track A: Standard Transcriptomics (Poly-A RNA-Seq)
 
-**Tier 4: The Advanced Spatial Spokes**
-* **Trajectory Inference:** `scanpy` uses the pseudo-cells to map developmental paths.
-* **Spatial Mapping:** `Tangram` (Deep Learning) maps the imputed pseudo-cells onto a user-uploaded H&E histology tissue image.
-* **Spatial Autocorrelation:** `Squidpy` identifies physical "hot spots" of gene expression.
+* **QC:** `FastQC` (parallelized with `-t CPU_COUNT`) and `Trimmomatic` (parallel per-sample via `ThreadPoolExecutor`; single-end and paired-end modes).
+* **Alignment:** `HISAT2` (splice-aware). `_TOOL_THREADS` per sample, parallel via `ThreadPoolExecutor`. SAM converted to sorted/indexed BAM (featureCounts requires BAM, not CRAM).
+* **Custom genome:** On-demand HISAT2 index build (`hisat2_build` pipeline step) from user-uploaded FASTA + GTF/GFF. Tracked as a separate step with a warning banner in the UI.
+* **Quantification:** `featureCounts` at gene-level and transcript-level. Auto-detects GFF/GFF3 gene attribute via `_detect_gff_gene_attr`. Exports CSV.
+* **QC Report:** `MultiQC` interactive HTML saved to the submission hub.
+* **Handoff:** Calls `run_stage2_stats()` after quantification.
+
+### Track B: Regulatory Transcriptomics (Small RNA / miRNA)
+
+* **Route:** FastQC, Trimmomatic (MINLEN:18), Bowtie alignment against species-specific miRBase index, miRNA quantification via `samtools idxstats`, MultiQC, Stage 2 handoff.
+
+### Track C: Epigenomics -- ChIP-seq
+
+* **Route:** FastQC, Trimmomatic, BWA MEM alignment (with BWA index resolution), MACS2 peak calling (genome-size lookup via `_MACS2_GENOME_SIZE`), consensus peak SAF via `bedtools merge`, featureCounts on peaks (treatment BAMs only, `-F SAF` flag), MultiQC, Stage 2 handoff.
+* **Feature:** Input/control sample splitting from metadata (`_split_chip_samples()`).
+
+### Track C: Epigenomics -- DNA Methylation
+
+* **Route:** FastQC, Trimmomatic, Bismark genome preparation, Bismark alignment, methylation extraction, MultiQC, differential methylation via methylKit R bridge (`methRead`, filter, normalize, unite, `calculateDiffMeth`, CSV export; PCA, volcano, MA plot data).
+
+### Track D: Microbial / Bacterial Transcriptomics
+
+* **Route:** FastQC, Trimmomatic (quality filtering).
+* **On-Demand Annotation:** If a user uploads an unannotated bacterial FASTA, the pipeline dispatches it to the local BASys2 Docker container. BASys2 leverages its 10 integrated databases to generate complete genomic, operon, and whole-metabolome annotations.
+* **Alignment & Quantification:** Bowtie2 or BWA alignment followed by `featureCounts` utilizing the BASys2-generated genomic coordinates.
+* **QC Report:** MultiQC interactive HTML.
+* **Handoff:** Calls `run_stage2_stats()` with specialized routing for microbial operon and metabolome mapping.
+
+### Entry Points B and C (Non-FASTQ)
+
+* **Alignment (BAM/CRAM):** CRAM-to-BAM conversion (parallel), BAM indexing, featureCounts, Stage 2.
+* **Count Matrix (CSV/TSV):** CSV/TSV loading, validation (non-empty, all-numeric, non-negative), canonical copy, Stage 2.
 
 ---
 
-## PHASE 8: DevOps, Janitorial & Server Security
+## Phase 5: Convergence and Normalization (Stage 2)
 
-*How the system survives in production without human intervention.*
+Orchestrated by `run_stage2_stats()` in `pipeline/stats/core.py`.
 
-**1. The Auto-Purge Janitor**
-* A Celery Beat task runs `python manage.py purge_expired` every night at 2:00 AM.
-* It searches for any `Session` where `expires_at` is past the current time.
-* It executes `shutil.rmtree()` on the user's specific `/app/media/sessions/{uuid}/` directory, physically obliterating 50GB+ of their BAMs/FASTQs and all associated Hub data to prevent disk hoarding. Django Cascade deletion wipes the DB rows.
+1. **Gene Filtering:** `_filter_low_counts()` with `min_total=10` threshold.
+2. **Batch Correction:** `_combat_seq()` via `sva::ComBat_seq()` through rpy2. Conditional on batch column presence in metadata.
+3. **DESeq2 Normalization and DGE:** `_run_deseq2()` with dynamic formula construction, factor sanitization, multi-contrast extraction, BiocParallel `MulticoreParam` for parallel dispersion estimation.
+4. **Outlier Detection:** `_detect_outliers()` via PCA-based Mahalanobis distance.
+5. **Automated Annotation:** `annotate_deg_table()` queries MyGene.info REST API in batches with exponential backoff retry. Appends gene descriptions and disease associations to the DEG table.
+6. **Plotly Visualization Data:** `_generate_plot_data()` produces JSON payloads for PCA (sklearn, variance explained), UMAP (umap-learn), Volcano (log2FC vs -log10 padj with threshold lines), MA (baseMean vs log2FC), and Heatmap (z-score, top DEGs with group color annotations).
 
-**2. CI/CD & Observability**
-* **GitHub Actions:** Runs a lightweight integration test (`test_e2e.py`) using a tiny yeast dataset on every push.
-* **Prometheus & Grafana:** Monitors the Celery queue depth and the RAM usage of the worker nodes to ensure `HISAT2` doesn't cause OOM kernel panics.
-* **The Gitignore:** Explicitly blocks `.fastq.gz`, `.bam`, `.cram`, `.sam`, `.h5ad`, `.ht2`, and `.RData` files to prevent repo bloat.
+### Stats Source Files
 
-**3. Pre-Built Reference Indices**
-* All 11 reference genomes ship with pre-built indices for every alignment tool: HISAT2 (`.ht2`), BWA (`.amb/.ann/.bwt/.pac/.sa`), Bismark (`Bisulfite_Genome/`), and Bowtie/miRBase (species-specific).
-* Build scripts under `doc/script/`: `build_hisat2_indices.sh`, `build_bwa_indices.sh`, `build_bismark_indices.sh`, `build_mirbase_indices.sh`.
-* Only custom user-uploaded genomes trigger runtime index building. Pre-built genomes fail fast with a helpful error if indices are missing.
+| File              | Purpose                                                                                               |
+| :---------------- | :---------------------------------------------------------------------------------------------------- |
+| `core.py`         | `run_stage2_stats()` -- main Stage 2 driver                                                           |
+| `_helpers.py`     | `_load_metadata()`, `_align_samples()`, `_filter_low_counts()`, `_combat_seq()`, `_detect_outliers()` |
+| `_deseq2.py`      | DESeq2 R bridge: formula builder, factor sanitization, multi-contrast extraction                      |
+| `_annotations.py` | `annotate_deg_table()` -- MyGene.info REST API batched queries                                        |
+| `_methylkit.py`   | `run_differential_methylation()` -- methylKit R bridge for bisulfite data                             |
+| `_plots.py`       | `_generate_plot_data()` -- PCA, UMAP, Volcano, MA, Heatmap JSON serialization                         |
+| `_plots_wgcna.py` | `build_module_trait_heatmap()`, `build_pathway_dotplot()` -- WGCNA-specific Plotly helpers            |
+| `_r_bridge.py`    | Shared lazy rpy2 initialization; provides `ro`, `localconverter`, `importr`, `_converter`, `_R_CORES` |
+
+---
+
+## Phase 6: Standard Analytical Spokes (Tier 2)
+
+12 modular micro-pipelines that unlock inside a specific Submission Hub after Stage 2 completion. Triggered via `POST /api/submissions/{id}/modules/{name}/run`.
+
+**Hub Isolation Principle:** Module jobs are flagged `is_core_pipeline=False`. They execute in the background and write output to `AnalysisJob.result_payload`. The global Active Workspace remains uncluttered.
+
+The Core Hub UI uses a 3-tab layout (Overview | Modules | Single-Cell). Tab 2 contains a master-detail split pane: a scrollable module list on the left and a dynamic detail pane on the right. The detail pane supports four states: empty, history list, new run form, and result view.
+
+| #    | Module          | Engine                       | Reused Hub Data                | Hub UI Input                                                                                      | Backend Status |
+| :--- | :-------------- | :--------------------------- | :----------------------------- | :------------------------------------------------------------------------------------------------ | :------------- |
+| A    | Alt Splicing    | `IsoformSwitchAnalyzeR`      | Aligned BAMs, GTF              | Condition mapping (manual table or CSV upload, with downloadable BAM-prefilled template)          | Stub           |
+| B    | RNA Editing     | `REDItools2`                 | Aligned BAMs, Reference Genome | Whole transcriptome checkbox or BED file upload                                                   | Stub           |
+| C    | Time Series     | `ImpulseDE2`                 | Normalized Expression          | Timepoints (comma-separated) + time unit dropdown                                                 | Stub           |
+| D    | WGCNA           | `PyWGCNA`                    | Normalized Expression          | Soft-power threshold (1-30) + clinical traits (CSV upload, example, or manual builder)            | Implemented    |
+| E    | Pathways        | `gseapy` + `clusterProfiler` | Final DEG Table                | Gene-set database dropdown (PathBank, Hallmark, C2 KEGG/Reactome, C5 GO BP/MF/CC) + FDR threshold | Stub           |
+| F    | Causal Networks | `arboreto` (GRNBoost2)       | Normalized Expression          | Transcription factors (textarea) + STRING confidence threshold                                    | Stub           |
+| G    | Literature NLP  | INDRA Bio API                | Final DEG Table                | Context keywords                                                                                  | Stub           |
+| H    | Survival        | `lifelines`                  | Normalized Expression          | Genes of interest (comma-separated) + clinical survival data (CSV/example/builder)                | Stub           |
+| I    | TCGA Cancer     | `TCGAbiolinks`               | Normalized Expression          | Target TCGA cohort dropdown (BRCA, LUAD, COAD, PRAD, LIHC, KIRC, GBM, OV)                         | Stub           |
+| J    | Biomarkers      | MarkerDB API                 | Final DEG Table                | Disease context                                                                                   | Stub           |
+| K    | MOFA            | `mofapy2`                    | Normalized Expression          | Number of factors (2-50) + secondary omics matrix (CSV/example/builder)                           | Stub           |
+| L    | DIABLO          | `mixOmics`                   | Normalized Expression          | Number of components (2-20) + secondary omics matrix (CSV/example/builder)                        | Stub           |
+
+**WGCNA implementation details:** 6-step pipeline in `_module_wgcna.py` (load data, find modules, module-trait correlation, hub gene extraction, Enrichr enrichment, plot generation). Stats helpers in `_plots_wgcna.py`. 24 unit tests.
+
+### Module E: Pathway & Gene Set Enrichment
+
+* **Engine:** `gseapy` and custom R scripts (`clusterProfiler`).
+* **Databases Included:**
+    * **PathBank:** Comprehensive integration for interactive mapping of metabolic, disease, and signaling pathways. Used to visualize DEGs directly on dynamic pathway diagrams.
+    * **Standard Gene Sets:** MSigDB Hallmark, C2 (KEGG, Reactome), C5 (GO BP/MF/CC).
+    * **Microbial Pathways (BASys2):** For bacterial datasets, utilizes the whole metabolome and operon annotations extracted from the Phase 4 BASys2 output to map microbial differentially expressed genes to specific metabolic pathways.
+* **Outputs:** PathBank interactive network graphs, GO/KEGG dot plots, enrichment data tables, and pathway visualization HTML files.
+
+---
+
+## Phase 7: Predictive Single-Cell and Spatial Gateway (Tier 3 and 4)
+
+### Tier 3: Deconvolution Engine
+
+* Takes the normalized bulk matrix and a single-cell reference atlas. Planned engines: `DestVI` or `BayesPrism`.
+* Frontend gateway UI is complete: atlas selector dropdown (4 atlases), high-resolution toggle, "Run Deconvolution" button, completion polling, spoke unlock logic (all in `core_hub.js`).
+* Backend is not implemented. `scvi-tools` is commented out in `requirements.txt`. `H5AD_PSEUDO` file role is defined in the model but no code generates `.h5ad` files.
+
+### Tier 4: Advanced Spatial Spokes
+
+* **Trajectory Inference (scanpy/PAGA):** No backend. `scanpy` is installed but unused for trajectory.
+* **Spatial Mapping (Tangram):** No backend. `tangram-sc` is commented out in `requirements.txt`.
+* **Spatial Autocorrelation (Squidpy):** No backend. `squidpy` is commented out in `requirements.txt`.
+* All three appear as locked spoke cards in the Core Hub Single-Cell tab, unlockable after deconvolution completion.
+
+---
+
+## Phase 8: DevOps, Janitorial and Server Security
+
+### 8.1 Auto-Purge Janitor
+
+* Celery Beat task at 2:00 AM UTC (`purge-expired-sessions` crontab in `config/celery.py`).
+* Queries expired `Session` rows, executes `shutil.rmtree()` on `/app/media/sessions/{uuid}/`, Django cascade-deletes DB rows.
+* Management command: `python manage.py purge_expired [--dry-run]` with audit logging.
+
+### 8.2 CI/CD and Testing
+
+* **GitHub Actions:** `.github/workflows/e2e.yml` runs Miniconda setup, bioinformatics tool verification, yeast HISAT2 index build, Django migrations, and `test_e2e.py` on a synthetic sacCer3 dataset on every push.
+* **Test suite:** 9 test files covering models, views, uploads, all 4 pipeline tracks, Stage 2 stats, WGCNA, genome index resolution, and end-to-end integration.
+* **`.gitignore`:** Blocks `.fastq.gz`, `.bam`, `.cram`, `.sam`, `.h5ad`, `.ht2`, and `.RData` to prevent repo bloat.
+
+### 8.3 Docker and Deployment
+
+* **Dockerfile:** Multi-stage production container (Miniconda base, conda env, pip deps, app code, collectstatic, EXPOSE 8000).
+* **`docker-compose.yml`:** 4 services (web/Daphne, worker/Celery with 32 GB RAM limit, beat, redis/7-alpine). Shared `media-data` volume. Health checks on all services.
+* **`docker-compose.dev.yml`:** Override with live code mount, reduced concurrency (2), debug log level.
+* **`deploy.sh`:** Production deployment script (.env check, pip install, migrate, collectstatic, Nginx symlink, systemd reload).
+* **`nginx/rnaseek.conf`:** HTTPS (Let's Encrypt), WebSocket upgrade, 10 GB uploads, 30-day static cache, gzip compression.
+* **systemd:** `rnaseek-web.service` (Daphne), `rnaseek-worker.service` (Celery), `rnaseek-beat.service`.
+
+### 8.4 Pre-Built Reference Indices
+
+All 11 reference genomes ship with pre-built HISAT2 indices (`.ht2`), FASTA, and GTF annotation files. Build scripts under `doc/script/` generate indices for BWA, Bismark, and miRBase/Bowtie. Only custom user-uploaded genomes trigger runtime index building via the `hisat2_build` pipeline step.
+
+### 8.5 Not Implemented
+
+* **Prometheus and Grafana monitoring:** No monitoring infrastructure exists for Celery queue depth or worker RAM.
+
+---
+
+## Real-Time Progress (WebSocket)
+
+* **Consumer:** `PipelineProgressConsumer` (AsyncWebsocketConsumer) at `ws/pipeline/<job_id>/`. Validates session ownership via cookie. Joins `pipeline_{job_id}` channel group. Broadcasts `pipeline_progress` events.
+* **ASGI routing:** `config/asgi.py` configures `ProtocolTypeRouter` with `AuthMiddlewareStack` + `URLRouter`.
+* **Channel layer:** Redis backend.
+* **Task-side:** `_emit_progress()` in `_helpers.py` sends progress updates.
+* **Frontend:** `processing.html` opens WebSocket with reconnect logic (2s x retry backoff); falls back to HTTP polling if WebSocket fails.
+
+---
+
+## Reference Genomes
+
+| Genome      | Assembly                                                      |
+| :---------- | :------------------------------------------------------------ |
+| Human       | GRCh38 (hg38)                                                 |
+| Mouse       | GRCm39 (mm39)                                                 |
+| Mouse       | GRCm38 (mm10)                                                 |
+| Rat         | rn7                                                           |
+| Zebrafish   | GRCz11 (danRer11)                                             |
+| Chicken     | GRCg6a (galGal6)                                              |
+| Pig         | Sscrofa11.1 (susScr11)                                        |
+| Drosophila  | dm6                                                           |
+| C. elegans  | WBcel235 (wbcel235)                                           |
+| Yeast       | sacCer3 (R64-1-1)                                             |
+| Arabidopsis | TAIR10 (araTha)                                               |
+| Custom      | User-uploaded FASTA + GTF/GFF with on-demand index build      |
+| Bacterial   | BASys2 On-Demand Annotation (FASTA -> Annotated GenBank/JSON) |
 
 ***
