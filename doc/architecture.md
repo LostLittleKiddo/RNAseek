@@ -130,17 +130,17 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 
 ### Component Interaction Summary
 
-| Component              | Role                                                              | Communicates With                                                                        |
-| ---------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| **Nginx**              | SSL termination, reverse proxy, static serving, WebSocket upgrade | Daphne (upstream), tusd:1080 (/files/ Tus uploads)                                      |
-| **tusd v2**            | Tus resumable upload microservice; receives raw binary from Nginx; stores chunks to `tusd-data/`; fires post-finish webhooks | Nginx (receives /files/ traffic), Django/Daphne (post-finish webhook) |
-| **Daphne**             | ASGI server: HTTP requests + WebSocket connections                | Redis (channels layer), Database (ORM), Filesystem (uploads)                             |
-| **Django Views**       | Request handling, validation, template rendering                  | Database (ORM), Redis (task dispatch)                                                    |
-| **WebSocket Consumer** | Real-time progress push to browser                                | Redis (channel group pub/sub)                                                            |
-| **Session Middleware** | Tenant isolation via UUID cookie                                  | Database (Session model)                                                                 |
-| **Celery Workers**     | Heavy bioinformatics computation (HISAT2, DESeq2, etc.)           | Redis (task queue, progress broadcast), Database (job status), Filesystem (input/output) |
-| **Celery Beat**        | Scheduled maintenance (session purge)                             | Redis (task dispatch)                                                                    |
-| **Redis**              | Message broker, WebSocket layer, result backend                   | All server-side components                                                               |
+| Component              | Role                                                                                                                         | Communicates With                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **Nginx**              | SSL termination, reverse proxy, static serving, WebSocket upgrade                                                            | Daphne (upstream), tusd:1080 (/files/ Tus uploads)                                       |
+| **tusd v2**            | Tus resumable upload microservice; receives raw binary from Nginx; stores chunks to `tusd-data/`; fires post-finish webhooks | Nginx (receives /files/ traffic), Django/Daphne (post-finish webhook)                    |
+| **Daphne**             | ASGI server: HTTP requests + WebSocket connections                                                                           | Redis (channels layer), Database (ORM), Filesystem (uploads)                             |
+| **Django Views**       | Request handling, validation, template rendering                                                                             | Database (ORM), Redis (task dispatch)                                                    |
+| **WebSocket Consumer** | Real-time progress push to browser                                                                                           | Redis (channel group pub/sub)                                                            |
+| **Session Middleware** | Tenant isolation via UUID cookie                                                                                             | Database (Session model)                                                                 |
+| **Celery Workers**     | Heavy bioinformatics computation (HISAT2, DESeq2, etc.)                                                                      | Redis (task queue, progress broadcast), Database (job status), Filesystem (input/output) |
+| **Celery Beat**        | Scheduled maintenance (session purge)                                                                                        | Redis (task dispatch)                                                                    |
+| **Redis**              | Message broker, WebSocket layer, result backend                                                                              | All server-side components                                                               |
 
 ---
 
