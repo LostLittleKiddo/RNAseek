@@ -12,6 +12,7 @@ from pipeline.stats._helpers import (          # noqa: F401
 
 from pipeline.stats._deseq2 import (          # noqa: F401
     _build_formula_string,
+    _get_covariates,
     _r_string_vector,
     _run_deseq2,
     _sanitize_factor_levels,

@@ -32,14 +32,18 @@ def _load_metadata(submission):
 def _align_samples(metadata, counts_df):
     """Ensure metadata rows match count matrix columns.
 
-    The first column of metadata (or '_sample_name' for manual mode)
+    The column named 'sample' (case-insensitive) or '_sample_name'
     is treated as sample identifiers.  File extensions are stripped
     to match featureCounts column names.
     """
     if "_sample_name" in metadata.columns:
         sample_col = "_sample_name"
     else:
-        sample_col = metadata.columns[0]
+        sample_col_match = [c for c in metadata.columns if c.lower() == "sample"]
+        if sample_col_match:
+            sample_col = sample_col_match[0]
+        else:
+            sample_col = metadata.columns[0]
 
     metadata = metadata.copy()
     metadata["_match_key"] = (
@@ -82,11 +86,17 @@ def _filter_low_counts(counts_df, min_total=10):
 #  Batch correction
 # ─────────────────────────────────────────────────────────────
 
-def _combat_seq(counts_df, metadata, batch_col, group_col):
+def _combat_seq(counts_df, metadata, batch_col, group_col, covariates=None):
     """Run sva::ComBat_seq in R for batch correction.
 
     Gracefully returns the original counts if the batch column has fewer
     than 2 distinct levels (nothing to correct).
+
+    Parameters
+    ----------
+    covariates : list[str] | None
+        Additional covariate column names to pass as ``covar_mod`` to
+        ComBat_seq for improved batch-effect estimation.
     """
     _ensure_rpy2()
     import pandas as pd
@@ -109,11 +119,25 @@ def _combat_seq(counts_df, metadata, batch_col, group_col):
             metadata[group_col].astype("category").cat.codes.values + 1
         )
 
-        corrected_r = sva.ComBat_seq(
-            count_matrix_r,
-            batch=batch_r,
-            group=group_r,
-        )
+        combat_kwargs = {
+            "batch": batch_r,
+            "group": group_r,
+        }
+
+        # Build covariate model matrix for ComBat_seq if covariates are present
+        if covariates:
+            valid_covs = [c for c in covariates if c in metadata.columns]
+            if valid_covs:
+                covar_df = metadata[valid_covs].copy()
+                for c in covar_df.columns:
+                    try:
+                        covar_df[c] = pd.to_numeric(covar_df[c])
+                    except (ValueError, TypeError):
+                        covar_df[c] = covar_df[c].astype("category").cat.codes.values
+                covar_r = _rb.ro.r["as.matrix"](covar_df.values)
+                combat_kwargs["covar_mod"] = covar_r
+
+        corrected_r = sva.ComBat_seq(count_matrix_r, **combat_kwargs)
 
         corrected = np.array(corrected_r)
     return pd.DataFrame(

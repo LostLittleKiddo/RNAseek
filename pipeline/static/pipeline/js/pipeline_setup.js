@@ -295,8 +295,21 @@
             case 2:
                 if (inputDataType === "fastq") {
                     if (!libraryType) errors.push("Please select a library type (Single-End or Paired-End).");
+                    /* Req 3: block paired-end for small RNA */
+                    if (assayType === "small_rna" && libraryType === "paired")
+                        errors.push("Small RNA / miRNA requires Single-End reads. Paired-End is not supported.");
                     if (selectedFiles.length === 0 && uploadedFiles.length === 0)
                         errors.push("Please upload at least one FASTQ file.");
+                    /* Req 1: minimum sample count for FASTQ */
+                    var fileCount = selectedFiles.length + uploadedFiles.length;
+                    if (libraryType === "paired") {
+                        var pairCount = Math.floor(fileCount / 2);
+                        if (pairCount < 2 && fileCount > 0)
+                            errors.push("At least 2 paired-end samples (2 R1/R2 pairs) are required for differential analysis.");
+                    } else {
+                        if (fileCount > 0 && fileCount < 2)
+                            errors.push("At least 2 FASTQ files (samples) are required for differential analysis.");
+                    }
                     if (libraryType === "paired" && selectedFiles.length > 0) {
                         var peR1 = [], peR2 = [], peUnpaired = [];
                         selectedFiles.forEach(function (f) {
@@ -312,6 +325,10 @@
                 } else if (inputDataType === "alignment") {
                     if (selectedBamFiles.length === 0 && uploadedBamFiles.length === 0)
                         errors.push("Please upload at least one BAM/CRAM file.");
+                    /* Req 1: minimum sample count for alignment */
+                    var bamCount = selectedBamFiles.length + uploadedBamFiles.length;
+                    if (bamCount > 0 && bamCount < 2)
+                        errors.push("At least 2 BAM/CRAM files (samples) are required for differential analysis.");
                 } else if (inputDataType === "matrix") {
                     if (!matrixFile && !parsedMatrixData)
                         errors.push("Please upload a count matrix file.");
@@ -338,6 +355,24 @@
                     if (contrasts.length === 0 || incomplete.length > 0)
                         errors.push("Please complete all pairwise comparisons in Define Comparisons.");
                 }
+                /* Req 2: contrast values must exist in primary group column */
+                if (contrastSection.style.display !== "none" && isMetadataValid() && primaryGroupSelect.value) {
+                    var samples4 = getActiveMetadataSamples();
+                    var pg4 = primaryGroupSelect.value;
+                    var groupValues = {};
+                    for (var si = 0; si < samples4.length; si++) {
+                        var gv = (samples4[si][pg4] || "").trim();
+                        if (gv) groupValues[gv] = true;
+                    }
+                    for (var ci2 = 0; ci2 < contrasts.length; ci2++) {
+                        var cTarget = (contrasts[ci2][0] || "").trim();
+                        var cRef = (contrasts[ci2][1] || "").trim();
+                        if (cTarget && !(cTarget in groupValues))
+                            errors.push("Contrast target '" + cTarget + "' does not exist in the '" + pg4 + "' column of your metadata.");
+                        if (cRef && !(cRef in groupValues))
+                            errors.push("Contrast reference '" + cRef + "' does not exist in the '" + pg4 + "' column of your metadata.");
+                    }
+                }
                 /* Validate CSV has a 'sample' column when in upload mode */
                 if (metadataMode === "upload" && parsedCsvData) {
                     var hasSampleCol = parsedCsvData.meta.fields.some(function (f) {
@@ -345,6 +380,51 @@
                     });
                     if (!hasSampleCol)
                         errors.push("CSV must have a column named 'sample' to match uploaded file names.");
+                }
+                /* ChIP-seq: require input/control and treatment samples */
+                if (inputDataType === "fastq" && assayType === "chip_seq" && isMetadataValid()) {
+                    var chipErrors = validateChipSeqMetadata();
+                    chipErrors.forEach(function (e) { errors.push(e); });
+                }
+                /* Batch correction: verify batch column exists in samples */
+                if (isMetadataValid()) {
+                    var batchErrors = validateBatchColumn();
+                    batchErrors.forEach(function (e) { errors.push(e); });
+                }
+                /* Req 7: sanitized sample names */
+                if (isMetadataValid()) {
+                    var sNameSamples = getActiveMetadataSamples();
+                    var sampleColName = "sample";
+                    if (sNameSamples.length > 0 && parsedCsvData && parsedCsvData.meta.fields) {
+                        var found = parsedCsvData.meta.fields.find(function (f) { return f.toLowerCase() === "sample"; });
+                        if (found) sampleColName = found;
+                    }
+                    var badNames = [];
+                    for (var sni = 0; sni < sNameSamples.length; sni++) {
+                        var sn = (sNameSamples[sni][sampleColName] || "").trim();
+                        if (sn && !SAFE_NAME_RE.test(sn)) badNames.push(sn);
+                    }
+                    if (badNames.length > 0)
+                        errors.push("Sample names must contain only letters, digits, hyphens, or underscores. Invalid: " + badNames.slice(0, 5).join(", ") + (badNames.length > 5 ? " (and " + (badNames.length - 5) + " more)" : ""));
+                }
+                /* Req 6: matrix header/metadata match */
+                if (inputDataType === "matrix" && parsedMatrixData && isMetadataValid()) {
+                    var matHeaders = parsedMatrixData.meta.fields.slice(1).sort();
+                    var metaSamples6 = getActiveMetadataSamples();
+                    var metaCol6 = "sample";
+                    if (metaSamples6.length > 0 && parsedCsvData && parsedCsvData.meta.fields) {
+                        var f6 = parsedCsvData.meta.fields.find(function (f) { return f.toLowerCase() === "sample"; });
+                        if (f6) metaCol6 = f6;
+                    }
+                    var metaNames6 = metaSamples6.map(function (r) { return (r[metaCol6] || "").trim(); }).filter(Boolean).sort();
+                    var inMatOnly = matHeaders.filter(function (h) { return metaNames6.indexOf(h) === -1; });
+                    var inMetaOnly = metaNames6.filter(function (h) { return matHeaders.indexOf(h) === -1; });
+                    if (inMatOnly.length > 0 || inMetaOnly.length > 0) {
+                        var parts = [];
+                        if (inMatOnly.length > 0) parts.push("in matrix but not metadata: " + inMatOnly.slice(0, 5).join(", "));
+                        if (inMetaOnly.length > 0) parts.push("in metadata but not matrix: " + inMetaOnly.slice(0, 5).join(", "));
+                        errors.push("Matrix column headers and metadata sample names must match exactly. Mismatched — " + parts.join("; ") + ".");
+                    }
                 }
                 break;
 
@@ -426,6 +506,18 @@
             card.classList.add("selected");
             radio.checked = true;
             assayType = radio.value;
+            /* Req 3: Small RNA forces Single-End library type */
+            if (assayType === "small_rna" && libraryType === "paired") {
+                libraryType = "single";
+                var singleRadio = document.querySelector('input[name="library_type"][value="single"]');
+                if (singleRadio) {
+                    singleRadio.checked = true;
+                    $$('#col-fastq .library-type-card').forEach(function (c) { c.classList.remove('selected'); });
+                    singleRadio.closest('.library-type-card').classList.add('selected');
+                }
+                if (pairedEndTip) pairedEndTip.classList.remove('visible');
+                showToast('info', 'Library Type', 'Small RNA assay requires Single-End reads. Library type has been set to Single-End.');
+            }
             applyAssayVisibility();
         });
     }
@@ -1100,6 +1192,9 @@
         reader.readAsText(file);
     }
 
+    /* ── Shared regex for safe names (sample names, custom genome name) ── */
+    var SAFE_NAME_RE = /^[a-zA-Z0-9_-]+$/;
+
     function validateMatrixData() {
         if (!parsedMatrixData || !parsedMatrixData.data || parsedMatrixData.data.length === 0)
             return { valid: false, message: "Matrix is empty or could not be parsed." };
@@ -1108,17 +1203,56 @@
         if (fields.length < 2)
             return { valid: false, message: "Matrix must have at least 2 columns (gene ID + 1 sample)." };
 
+        /* Req 1 (matrix): need ≥ 3 columns (gene ID + ≥ 2 samples) */
+        if (fields.length < 3)
+            return { valid: false, message: "Matrix must have at least 3 columns (gene ID + 2 or more samples). DESeq2 requires ≥ 2 samples." };
+
         var sampleCols = fields.slice(1);
         var bad = 0;
+        var negative = false;
+        var hasMissing = false;
         var rows = parsedMatrixData.data.slice(0, 20);
+
+        /* Req 4: unique gene IDs */
+        var geneIdCol = fields[0];
+        var geneIds = {};
+        var duplicateGenes = [];
+        for (var gi = 0; gi < parsedMatrixData.data.length; gi++) {
+            var gid = (parsedMatrixData.data[gi][geneIdCol] || "").trim();
+            if (gid in geneIds) {
+                if (duplicateGenes.indexOf(gid) === -1) duplicateGenes.push(gid);
+            } else {
+                geneIds[gid] = true;
+            }
+        }
+        if (duplicateGenes.length > 0)
+            return { valid: false, message: "Duplicate gene IDs found: " + duplicateGenes.slice(0, 5).join(", ") + (duplicateGenes.length > 5 ? " (and " + (duplicateGenes.length - 5) + " more)" : "") + ". Each gene ID must be unique." };
+
         for (var ri = 0; ri < rows.length; ri++) {
             for (var ci = 0; ci < sampleCols.length; ci++) {
                 var val = rows[ri][sampleCols[ci]];
-                if (val !== "" && val !== undefined && !Number.isInteger(Number(val))) bad++;
+                /* Req 5: no missing data */
+                if (val === "" || val === undefined || val === null) {
+                    hasMissing = true;
+                } else {
+                    var valStr = String(val).trim().toLowerCase();
+                    if (valStr === "" || valStr === "na" || valStr === "nan" || valStr === "null") {
+                        hasMissing = true;
+                    } else {
+                        var num = Number(val);
+                        if (isNaN(num)) { bad++; }
+                        else if (!Number.isInteger(num)) { bad++; }
+                        else if (num < 0) { negative = true; }
+                    }
+                }
             }
         }
+        if (hasMissing)
+            return { valid: false, message: "Count matrix contains empty or missing values (NA/NaN/null). All cells must have integer counts." };
         if (bad > 0)
             return { valid: false, message: "Found non-integer values. Please upload raw integer counts (not TPM/FPKM)." };
+        if (negative)
+            return { valid: false, message: "Count matrix contains negative values. Only non-negative raw counts are accepted." };
 
         return { valid: true, message: "Valid matrix: " + parsedMatrixData.data.length + " genes \u00d7 " + sampleCols.length + " samples." };
     }
@@ -1431,6 +1565,23 @@
     }
 
     function setCsvFile(file) {
+        /* Auto-clear previous CSV (UI + best-effort server deletion) */
+        if (csvFile) {
+            var oldName = csvFile.name;
+            var oldTracker = uploadTracker[oldName];
+            if (oldTracker && oldTracker.assetId) {
+                fetch("/api/files/" + oldTracker.assetId + "/", {
+                    method: "DELETE",
+                    headers: { "X-CSRFToken": CSRF },
+                }).catch(function () { /* best-effort */ });
+                delete uploadTracker[oldName];
+            }
+            csvFile = null;
+            parsedCsvData = null;
+            csvInput.value = "";
+            if (csvViewerTable) csvViewerTable.innerHTML = "";
+        }
+
         csvFile = file;
         csvFileName.style.display = "";
         csvFileName.innerHTML = '<i class="bi bi-file-earmark-check"></i> <span>' + escapeHtml(file.name) + '</span>' +
@@ -1923,6 +2074,166 @@
        VALIDATION (Step 5 Summary)
        ═══════════════════════════════════════════════════════════════════ */
 
+    /* ── Track-Specific Validators ── */
+
+    function validateChipSeqMetadata() {
+        var errs = [];
+        var samples = getActiveMetadataSamples();
+        if (samples.length === 0) return errs;
+        var pg = primaryGroupSelect.value;
+        if (!pg) return errs;
+        var hasControl = false, hasTreatment = false;
+        for (var i = 0; i < samples.length; i++) {
+            var val = (samples[i][pg] || "").trim().toLowerCase();
+            if (val === "input") hasControl = true;
+            else if (val) hasTreatment = true;
+        }
+        if (!hasControl)
+            errs.push("ChIP-seq requires at least one sample labeled 'input' (case-insensitive) as control.");
+        if (!hasTreatment)
+            errs.push("ChIP-seq requires at least one non-input (treatment/IP) sample.");
+        return errs;
+    }
+
+    function validateBatchColumn() {
+        var errs = [];
+        var batchCol = batchEffectSelect ? batchEffectSelect.value : "";
+        if (!batchCol) return errs;
+        var samples = getActiveMetadataSamples();
+        if (samples.length === 0) return errs;
+        // Check column exists in first sample
+        var firstRow = samples[0];
+        var available = Object.keys(firstRow).map(function (k) { return k.trim().toLowerCase(); });
+        if (available.indexOf(batchCol.trim().toLowerCase()) === -1) {
+            errs.push("Batch correction column '" + batchCol + "' not found in metadata.");
+            return errs;
+        }
+        // Check each batch has >= 2 samples (ComBat-seq requirement)
+        var batchCounts = {};
+        for (var i = 0; i < samples.length; i++) {
+            var val = (samples[i][batchCol] || "").toString().trim();
+            if (val) batchCounts[val] = (batchCounts[val] || 0) + 1;
+        }
+        var singletons = Object.keys(batchCounts).filter(function (b) { return batchCounts[b] < 2; });
+        if (singletons.length > 0)
+            errs.push("ComBat-seq requires \u2265 2 samples per batch. Singleton batch(es): " + singletons.join(", ") + ". Merge them or remove the batch column.");
+        return errs;
+    }
+
+    function getActiveMetadataSamples() {
+        if (metadataMode === "upload" && parsedCsvData) {
+            var filtered = getFilteredCsvRows();
+            return filtered.length > 0 ? filtered : parsedCsvData.data;
+        }
+        return getMetadataRows();
+    }
+
+    /**
+     * Cross-cutting pre-submission validation.
+     * Runs all track-specific and dependency checks before allowing POST.
+     * Returns an array of error strings (empty = pass).
+     */
+    function validatePreSubmission() {
+        var errs = [];
+
+        /* 1. Matrix: content sanity (already checked in step 2, double-check) */
+        if (inputDataType === "matrix" && parsedMatrixData) {
+            var mv = validateMatrixData();
+            if (!mv.valid) errs.push(mv.message);
+        }
+
+        /* 2. Paired-end file matching */
+        if (inputDataType === "fastq" && libraryType === "paired") {
+            var allFiles = selectedFiles.concat(uploadedFiles.map(function (n) { return { name: n }; }));
+            var r1 = [], r2 = [], unmatched = [];
+            allFiles.forEach(function (f) {
+                if (/_R1[._]|_1\.(fq|fastq)\.gz$/i.test(f.name)) r1.push(f.name);
+                else if (/_R2[._]|_2\.(fq|fastq)\.gz$/i.test(f.name)) r2.push(f.name);
+                else unmatched.push(f.name);
+            });
+            if (unmatched.length > 0)
+                errs.push(unmatched.length + " file(s) don't match _R1/_R2 naming: " + unmatched.join(", "));
+            if (r1.length !== r2.length)
+                errs.push("Unequal pairs: " + r1.length + " R1 and " + r2.length + " R2 files.");
+        }
+
+        /* 3. Small RNA genome restriction + library type conflict */
+        if (inputDataType === "fastq" && assayType === "small_rna") {
+            if (libraryType === "paired")
+                errs.push("Small RNA / miRNA requires Single-End reads. Paired-End is not supported.");
+            var gen = genomeSelect.value;
+            if (gen === "custom")
+                errs.push("Custom genomes are not supported for Small RNA / miRNA.");
+            else if (gen && MIRBASE_GENOMES.indexOf(gen) === -1)
+                errs.push("Genome '" + gen + "' does not have a miRBase index.");
+        }
+
+        /* 4. ChIP-seq input/control split */
+        if (inputDataType === "fastq" && assayType === "chip_seq") {
+            var chipErrs = validateChipSeqMetadata();
+            chipErrs.forEach(function (e) { errs.push(e); });
+        }
+
+        /* 5. Custom genome files present + sanitized name */
+        if (genomeSelect.value === "custom" && inputDataType !== "matrix") {
+            var cgName = customGenomeName.value.trim();
+            if (!cgName)
+                errs.push("Custom genome name is required.");
+            else if (!SAFE_NAME_RE.test(cgName))
+                errs.push("Custom genome name must contain only letters, digits, hyphens, or underscores.");
+            if (inputDataType === "fastq") {
+                if (!customGenomeFiles.fasta) errs.push("Custom genome requires a FASTA file.");
+                if (!customGenomeFiles.annotation) errs.push("Custom genome requires a GTF/GFF annotation file.");
+            } else if (inputDataType === "alignment") {
+                if (!customGenomeFiles.annotation) errs.push("Custom genome requires a GTF/GFF annotation file.");
+            }
+        }
+
+        /* 6. Batch column validation */
+        var batchErrs = validateBatchColumn();
+        batchErrs.forEach(function (e) { errs.push(e); });
+
+        /* 7. Metadata present and mapped */
+        if (!isMetadataValid()) errs.push("Metadata is not configured.");
+        if (isMetadataValid() && !isMappingValid()) errs.push("Primary group column not assigned.");
+
+        /* 8. Contrast level validity (pre-submission double-check) */
+        if (isMetadataValid() && primaryGroupSelect.value && contrasts.length > 0) {
+            var psSamples = getActiveMetadataSamples();
+            var psPg = primaryGroupSelect.value;
+            var psGroupVals = {};
+            for (var psi = 0; psi < psSamples.length; psi++) {
+                var psv = (psSamples[psi][psPg] || "").trim();
+                if (psv) psGroupVals[psv] = true;
+            }
+            for (var pci = 0; pci < contrasts.length; pci++) {
+                var pcT = (contrasts[pci][0] || "").trim();
+                var pcR = (contrasts[pci][1] || "").trim();
+                if (pcT && !(pcT in psGroupVals))
+                    errs.push("Contrast target '" + pcT + "' does not exist in the '" + psPg + "' column.");
+                if (pcR && !(pcR in psGroupVals))
+                    errs.push("Contrast reference '" + pcR + "' does not exist in the '" + psPg + "' column.");
+            }
+        }
+
+        /* 9. Minimum sample count (pre-submission catch-all) */
+        if (inputDataType === "fastq") {
+            var psFileCount = selectedFiles.length + uploadedFiles.length;
+            var psMinSamples = (libraryType === "paired") ? Math.floor(psFileCount / 2) : psFileCount;
+            if (psMinSamples > 0 && psMinSamples < 2)
+                errs.push("At least 2 samples are required for differential expression analysis.");
+        } else if (inputDataType === "alignment") {
+            var psBamCount = selectedBamFiles.length + uploadedBamFiles.length;
+            if (psBamCount > 0 && psBamCount < 2)
+                errs.push("At least 2 BAM/CRAM files (samples) are required for differential analysis.");
+        } else if (inputDataType === "matrix" && parsedMatrixData) {
+            if (parsedMatrixData.meta.fields.length < 3)
+                errs.push("Matrix must have at least 3 columns (gene ID + 2 or more samples).");
+        }
+
+        return errs;
+    }
+
     function validateAll() {
         var setValid = function (el, valid) {
             if (!el) return;
@@ -2004,7 +2315,7 @@
 
         var mapping = { primary_group: primaryGroupSelect.value };
         if (batchEffectSelect.value) mapping.batch_effect = batchEffectSelect.value;
-        if (covariates.length > 0) mapping.covariates = covariates;
+        if (covariates.length > 0) mapping.additional_covariates = covariates;
 
         return {
             samples: samples,
@@ -2093,6 +2404,14 @@
 
     async function submitPipeline() {
         if (isSubmitting) return;
+
+        /* ── Pre-submission validation gate ── */
+        var preErrors = validatePreSubmission();
+        if (preErrors.length > 0) {
+            preErrors.forEach(function (msg) { showToast("error", "Validation Error", msg); });
+            return;
+        }
+
         isSubmitting = true;
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="bi bi-arrow-repeat rna-processing"></i> Launching\u2026';
@@ -2180,7 +2499,18 @@
             });
 
             var data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Pipeline submission failed.");
+            if (!res.ok) {
+                /* Backend may return {errors: [...]} array or single {error: "..."}. */
+                if (data.errors && data.errors.length > 0) {
+                    data.errors.forEach(function (msg) { showToast("error", "Validation Error", msg); });
+                    throw new Error(data.errors[0]);
+                }
+                throw new Error(data.error || "Pipeline submission failed.");
+            }
+            /* Surface non-blocking warnings from backend */
+            if (data.warnings && data.warnings.length > 0) {
+                data.warnings.forEach(function (msg) { showToast("warning", "Notice", msg, 8000); });
+            }
 
             setModalStep("submit", "done");
 

@@ -172,7 +172,10 @@ class CorePipelineViewAssayTypeTest(TestCase):
             file_role=FileAsset.FileRole.RAW_FASTQ,
             local_path="/tmp/s1.fq.gz",
         )
-        resp = self._post(self._base_body(assay_type="small_rna"))
+        resp = self._post(self._base_body(
+            assay_type="small_rna",
+            reference_genome="hg38",
+        ))
         self.assertEqual(resp.status_code, 200)
         job_id = json.loads(resp.content)["job_id"]
         job = AnalysisJob.objects.get(job_id=job_id)
@@ -192,7 +195,18 @@ class CorePipelineViewAssayTypeTest(TestCase):
             file_role=FileAsset.FileRole.RAW_FASTQ,
             local_path="/tmp/s1.fq.gz",
         )
-        resp = self._post(self._base_body(assay_type="chip_seq"))
+        chip_meta = {
+            "samples": [
+                {"_sample_name": "s1", "condition": "treated"},
+                {"_sample_name": "s2", "condition": "input"},
+            ],
+            "column_mapping": {"primary_group": "condition"},
+            "contrasts": [],
+        }
+        resp = self._post(self._base_body(
+            assay_type="chip_seq",
+            metadata_payload=chip_meta,
+        ))
         self.assertEqual(resp.status_code, 200)
         job_id = json.loads(resp.content)["job_id"]
         job = AnalysisJob.objects.get(job_id=job_id)
@@ -232,7 +246,18 @@ class CorePipelineViewAssayTypeTest(TestCase):
             file_role=FileAsset.FileRole.RAW_FASTQ,
             local_path="/tmp/s1.fq.gz",
         )
-        resp = self._post(self._base_body(assay_type="chip_seq"))
+        chip_meta = {
+            "samples": [
+                {"_sample_name": "s1", "condition": "treated"},
+                {"_sample_name": "s2", "condition": "input"},
+            ],
+            "column_mapping": {"primary_group": "condition"},
+            "contrasts": [],
+        }
+        resp = self._post(self._base_body(
+            assay_type="chip_seq",
+            metadata_payload=chip_meta,
+        ))
         self.assertEqual(resp.status_code, 200)
         self.submission.refresh_from_db()
         self.assertEqual(self.submission.assay_type, "chip_seq")

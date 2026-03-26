@@ -15,6 +15,7 @@ from django.views.decorators.csrf import csrf_exempt
 from pipeline.models import AnalysisJob, AnalysisSubmission, FileAsset
 from pipeline.tasks import run_core_pipeline
 from pipeline.tasks.core import run_tier2_module
+from pipeline.validators import validate_pipeline_submission
 
 
 class FileAssetDeleteView(View):
@@ -222,214 +223,24 @@ class CorePipelineView(View):
         except (AnalysisSubmission.DoesNotExist, ValueError):
             return JsonResponse({"error": "Invalid submission."}, status=400)
 
-        # ── Determine entry point ──
+        # ── Run all validators ──
+        errors, warnings = validate_pipeline_submission(body, submission)
+        if errors:
+            return JsonResponse(
+                {"error": errors[0], "errors": errors}, status=400
+            )
+
+        # ── Extract validated fields ──
         input_data_type = body.get("input_data_type", "fastq")
-        if input_data_type not in self.VALID_INPUT_DATA_TYPES:
-            return JsonResponse({"error": "Invalid input_data_type."}, status=400)
-
-        # ── Assay type (only relevant for FASTQ entry) ──
         assay_type = body.get("assay_type", "standard_rna")
-        if input_data_type == "fastq" and assay_type not in self.VALID_ASSAY_TYPES:
-            return JsonResponse({"error": "Invalid assay_type."}, status=400)
-
-        # ── Fields only required for FASTQ entry ──
         library_type = body.get("library_type", "")
         strandedness = body.get("strandedness", "unstranded")
-
-        if input_data_type == "fastq":
-            if library_type not in self.VALID_LIBRARY_TYPES:
-                return JsonResponse({"error": "Invalid library_type."}, status=400)
-            if strandedness not in self.VALID_STRANDEDNESS:
-                return JsonResponse({"error": "Invalid strandedness."}, status=400)
-
-        # ── Reference genome ──
         reference_genome = body.get("reference_genome", "")
         quant_level = body.get("quant_level", "gene")
-
-        if input_data_type in ("fastq", "alignment"):
-            if not reference_genome:
-                return JsonResponse({"error": "Reference genome is required."}, status=400)
-            if quant_level not in self.VALID_QUANT_LEVELS:
-                return JsonResponse({"error": "Invalid quant_level."}, status=400)
-
-        # ── Small RNA: only miRBase-supported genomes, no custom ──
-        if input_data_type == "fastq" and assay_type == "small_rna":
-            from pipeline.tasks._constants import _MIRBASE_SPECIES_MAP
-            if reference_genome == "custom":
-                return JsonResponse(
-                    {"error": "Custom genomes are not supported for Small RNA / miRNA. Please select a pre-indexed organism."},
-                    status=400,
-                )
-            if reference_genome and reference_genome not in _MIRBASE_SPECIES_MAP:
-                return JsonResponse(
-                    {"error": f"Genome '{reference_genome}' does not have a miRBase index. Please select a supported organism."},
-                    status=400,
-                )
-
         metadata_mode = body.get("metadata_mode", "")
-        if metadata_mode not in ("upload", "manual"):
-            return JsonResponse({"error": "Invalid metadata_mode."}, status=400)
-
-        # ── Validate input files ──
-        if input_data_type == "fastq":
-            fastq_assets = submission.file_assets.filter(
-                file_role=FileAsset.FileRole.RAW_FASTQ
-            )
-            if not fastq_assets.exists():
-                return JsonResponse({"error": "No FASTQ files uploaded."}, status=400)
-            if library_type == "paired" and fastq_assets.count() % 2 != 0:
-                return JsonResponse(
-                    {"error": "Paired-end requires an even number of FASTQ files."},
-                    status=400,
-                )
-        elif input_data_type == "alignment":
-            bam_assets = submission.file_assets.filter(
-                file_role=FileAsset.FileRole.ALIGNMENT_BAM
-            )
-            if not bam_assets.exists():
-                return JsonResponse({"error": "No BAM/CRAM files uploaded."}, status=400)
-        elif input_data_type == "matrix":
-            matrix_assets = submission.file_assets.filter(
-                file_role=FileAsset.FileRole.USER_COUNT_MATRIX
-            )
-            if not matrix_assets.exists():
-                return JsonResponse({"error": "No count matrix uploaded."}, status=400)
-
-        # ── Custom genome files ──
-        if input_data_type in ("fastq", "alignment") and reference_genome == "custom":
-            custom_name = body.get("custom_genome_name", "").strip()
-            if not custom_name:
-                return JsonResponse({"error": "Custom genome name is required."}, status=400)
-
-            if input_data_type == "fastq":
-                has_fasta = submission.file_assets.filter(
-                    file_role=FileAsset.FileRole.CUSTOM_GENOME_FASTA
-                ).exists()
-                has_annotation = submission.file_assets.filter(
-                    file_role=FileAsset.FileRole.CUSTOM_GENOME_ANNOTATION
-                ).exists()
-                if not has_fasta or not has_annotation:
-                    return JsonResponse(
-                        {"error": "Custom genome requires both FASTA and GTF/GFF files."},
-                        status=400,
-                    )
-            else:
-                has_annotation = submission.file_assets.filter(
-                    file_role=FileAsset.FileRole.CUSTOM_GENOME_ANNOTATION
-                ).exists()
-                if not has_annotation:
-                    return JsonResponse(
-                        {"error": "Custom genome requires a GTF/GFF annotation file."},
-                        status=400,
-                    )
-
-        # ── Metadata validation ──
-        meta = body.get("metadata_payload", {})
-
-        samples = meta.get("samples", [])
-        if not samples:
-            return JsonResponse(
-                {"error": "Metadata requires sample data."},
-                status=400,
-            )
-
-        if metadata_mode == "upload" and samples and isinstance(samples[0], dict):
-            first_col = list(samples[0].keys())[0] if samples[0] else ""
-            if first_col.strip().lower() != "sample":
-                return JsonResponse(
-                    {"error": "The first column of metadata must be named 'sample'."},
-                    status=400,
-                )
-
-        # ── Metadata sample-name matching ──
-        if metadata_mode == "upload" and samples and isinstance(samples[0], dict):
-            sample_col = list(samples[0].keys())[0]
-            meta_sample_ids = {
-                (row.get(sample_col) or "").strip() for row in samples
-            }
-            meta_sample_ids.discard("")
-
-            expected_stems = set()
-            if input_data_type == "fastq":
-                fastq_assets = submission.file_assets.filter(
-                    file_role=FileAsset.FileRole.RAW_FASTQ
-                )
-                fq_names = [
-                    os.path.basename(p)
-                    for p in fastq_assets.values_list("local_path", flat=True)
-                ]
-                if library_type == "paired":
-                    pair_re = re_mod.compile(
-                        r'^(.+?)(?:_R[12]|_[12])\.(?:fq|fastq)\.gz$', re_mod.IGNORECASE
-                    )
-                    for name in fq_names:
-                        m = pair_re.match(name)
-                        if m:
-                            expected_stems.add(m.group(1))
-                else:
-                    for name in fq_names:
-                        stem = re_mod.sub(
-                            r'\.(fq|fastq)(\.gz)?$', '', name, flags=re_mod.IGNORECASE
-                        )
-                        expected_stems.add(stem)
-            elif input_data_type == "alignment":
-                bam_assets = submission.file_assets.filter(
-                    file_role=FileAsset.FileRole.ALIGNMENT_BAM
-                )
-                for p in bam_assets.values_list("local_path", flat=True):
-                    stem = re_mod.sub(
-                        r'\.(bam|cram)$', '', os.path.basename(p), flags=re_mod.IGNORECASE
-                    )
-                    expected_stems.add(stem)
-
-            if expected_stems:
-                unmatched = expected_stems - meta_sample_ids
-                if unmatched:
-                    return JsonResponse(
-                        {"error": (
-                            f"Metadata is missing rows for uploaded samples: "
-                            f"{', '.join(sorted(unmatched))}. "
-                            f"The 'sample' column must contain the filename stem "
-                            f"(without extension)."
-                        )},
-                        status=400,
-                    )
-
-        # ── Column mapping ──
-        col_mapping = meta.get("column_mapping", {})
-        primary_group = col_mapping.get("primary_group")
-        if not primary_group:
-            return JsonResponse(
-                {"error": "A primary group column must be selected."},
-                status=400,
-            )
-
-        # Validate contrasts
-        contrasts = meta.get("contrasts", [])
-        for pair in contrasts:
-            if not isinstance(pair, list) or len(pair) != 2:
-                return JsonResponse(
-                    {"error": "Each contrast must be a [target, reference] pair."},
-                    status=400,
-                )
-            if pair[0] == pair[1]:
-                return JsonResponse(
-                    {"error": "Contrast target and reference must be different."},
-                    status=400,
-                )
-
-        # ── Thresholds ──
-        try:
-            adj_pvalue = float(body.get("adjusted_pvalue", 0.05))
-            min_log2fc = float(body.get("min_log2fc", -1.0))
-            max_log2fc = float(body.get("max_log2fc", 1.0))
-        except (ValueError, TypeError):
-            return JsonResponse({"error": "Invalid threshold values."}, status=400)
-
-        if not (0 < adj_pvalue <= 1):
-            return JsonResponse(
-                {"error": "adjusted_pvalue must be between 0 and 1."}, status=400
-            )
+        adj_pvalue = float(body.get("adjusted_pvalue", 0.05))
+        min_log2fc = float(body.get("min_log2fc", -1.0))
+        max_log2fc = float(body.get("max_log2fc", 1.0))
 
         # ── Persist payload ──
         submission.submission_name = body.get("submission_name", "")[:200]
@@ -489,10 +300,14 @@ class CorePipelineView(View):
                 job.result_payload = {"error": "Task queue unavailable. Is the Celery worker running?"}
                 job.save(update_fields=["status", "result_payload"])
 
-        return JsonResponse({
+        resp = {
             "job_id": str(job.job_id),
             "status": job.status,
-        })
+        }
+        if warnings:
+            resp["warnings"] = warnings
+
+        return JsonResponse(resp)
 
 
 class JobStatusView(View):

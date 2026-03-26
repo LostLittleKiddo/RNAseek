@@ -4,10 +4,24 @@ import logging
 import os
 import re
 
+import numpy as np
+
 import pipeline.stats._r_bridge as _rb
 from pipeline.stats._r_bridge import _R_CORES, _ensure_rpy2
 
 logger = logging.getLogger(__name__)
+
+
+def _get_covariates(column_mapping):
+    """Return covariate list from column_mapping, accepting both key names.
+
+    The frontend sends 'covariates'; legacy code uses 'additional_covariates'.
+    Accept both for backward compatibility.
+    """
+    covs = column_mapping.get("additional_covariates")
+    if not covs:
+        covs = column_mapping.get("covariates", [])
+    return list(covs)
 
 
 def _build_formula_string(column_mapping):
@@ -18,7 +32,7 @@ def _build_formula_string(column_mapping):
     """
     terms = []
 
-    for cov in column_mapping.get("additional_covariates", []):
+    for cov in _get_covariates(column_mapping):
         terms.append(cov)
 
     batch = column_mapping.get("batch_effect")
@@ -84,6 +98,7 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
     import pandas as pd
 
     primary_group = column_mapping["primary_group"]
+    covariates = _get_covariates(column_mapping)
     formula_str = _build_formula_string(column_mapping)
     logger.info("DESeq2 design formula: %s", formula_str)
 
@@ -109,25 +124,87 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
         )
 
         # ── Build colData ──
-        formula_cols = list(column_mapping.get("additional_covariates", []))
+        formula_cols = list(covariates)
         if column_mapping.get("batch_effect"):
             formula_cols.append(column_mapping["batch_effect"])
         formula_cols.append(primary_group)
 
         col_data = metadata[formula_cols].copy()
 
+        # Detect which columns are numeric (continuous covariates like age, weight)
+        numeric_cols = set()
         for c in col_data.columns:
+            try:
+                pd.to_numeric(col_data[c])
+                # Only treat as numeric if it's a covariate, not the primary group or batch
+                if c in covariates:
+                    numeric_cols.add(c)
+                    col_data[c] = pd.to_numeric(col_data[c]).astype(float)
+                    continue
+            except (ValueError, TypeError):
+                pass
             col_data[c] = col_data[c].astype(str)
 
-        col_data, level_maps = _sanitize_factor_levels(col_data, column_mapping)
+        # Only sanitize factor (non-numeric) columns
+        factor_col_data = col_data[[c for c in col_data.columns if c not in numeric_cols]]
+        factor_col_data, level_maps = _sanitize_factor_levels(factor_col_data, column_mapping)
+        for c in factor_col_data.columns:
+            col_data[c] = factor_col_data[c]
 
         # Reverse lookup: original -> sanitized
         primary_level_map = {v: k for k, v in level_maps.get(primary_group, {}).items()}
 
+        # ── Validate contrast levels exist ──
+        if contrasts_list:
+            sanitized_levels = set(col_data[primary_group].unique())
+            for pair in contrasts_list:
+                target, reference = pair[0], pair[1]
+                safe_target = primary_level_map.get(target, target)
+                safe_reference = primary_level_map.get(reference, reference)
+                for label, safe_val in [("target", safe_target), ("reference", safe_reference)]:
+                    if safe_val not in sanitized_levels:
+                        available = sorted(
+                            level_maps.get(primary_group, {}).values()
+                        ) or sorted(sanitized_levels)
+                        raise RuntimeError(
+                            "Contrast %s '%s' not found in primary group '%s'. "
+                            "Available levels: %s"
+                            % (label, pair[0] if label == "target" else pair[1],
+                               primary_group, available)
+                        )
+
+        # ── Proactive rank-deficiency check ──
+        from patsy import dmatrix, PatsyError
+        try:
+            design_df = col_data.copy()
+            for c in design_df.columns:
+                if c not in numeric_cols:
+                    design_df[c] = design_df[c].astype("category")
+            dm = dmatrix(formula_str, design_df, return_type="dataframe")
+            rank = np.linalg.matrix_rank(dm.values)
+            if rank < dm.shape[1]:
+                raise RuntimeError(
+                    "DESeq2 error: The model matrix is not full rank (%d/%d). "
+                    "This typically means your experimental design has perfect "
+                    "confounding between variables (e.g., batch and condition are "
+                    "identical). Please review your metadata column assignments "
+                    "and remove redundant or perfectly correlated variables."
+                    % (rank, dm.shape[1])
+                )
+        except PatsyError as exc:
+            raise RuntimeError(
+                "Failed to construct design matrix: %s" % exc
+            ) from exc
+        except ImportError:
+            logger.debug("patsy not installed — skipping proactive rank check")
+
         _rb.ro.r.assign("col_data", col_data)
 
         for c in formula_cols:
-            _rb.ro.r('col_data$%s <- as.factor(col_data$%s)' % (c, c))
+            if c in numeric_cols:
+                _rb.ro.r('col_data$%s <- as.numeric(col_data$%s)' % (c, c))
+            else:
+                _rb.ro.r('col_data$%s <- as.factor(col_data$%s)' % (c, c))
 
         # ── Run DESeq2 ──
         _rb.ro.r('design_formula <- as.formula("%s")' % formula_str)

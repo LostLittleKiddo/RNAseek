@@ -113,6 +113,17 @@ def test_align_samples():
     report("Metadata rows match", len(meta_aligned) == 4)
     report("Condition column present", "condition" in meta_aligned.columns)
 
+    # Extra-covariate scenario: columns in alphabetical order put "age" before "sample"
+    metadata_extra = pd.DataFrame([
+        {"age": "12", "condition": "Control",   "sample": "SampleA_R1.fq.gz"},
+        {"age": "15", "condition": "Control",   "sample": "SampleB_R1.fq.gz"},
+        {"age": "16", "condition": "Treatment", "sample": "SampleC_R1.fq.gz"},
+        {"age": "17", "condition": "Treatment", "sample": "SampleD_R1.fq.gz"},
+    ])
+    meta2, counts2 = _align_samples(metadata_extra, counts)
+    report("Extra-covariate: 4 samples aligned", len(counts2.columns) == 4)
+    report("Extra-covariate: 'age' column kept", "age" in meta2.columns)
+
 
 def test_deseq2_simple():
     """Test DESeq2 with 2-group design (no contrasts)."""

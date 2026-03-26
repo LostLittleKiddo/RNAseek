@@ -59,6 +59,8 @@ def run_stage2_stats(submission):
 
     primary_group = column_mapping.get("primary_group")
     batch_effect = column_mapping.get("batch_effect")
+    # Accept both frontend key names for covariates
+    covariates = column_mapping.get("additional_covariates") or column_mapping.get("covariates", [])
 
     if not primary_group:
         raise RuntimeError(
@@ -88,7 +90,10 @@ def run_stage2_stats(submission):
     # ── Step 2: Conditional batch correction ──
     if has_batch:
         logger.info("Batch column '%s' detected – running ComBat_seq", batch_effect)
-        counts_df = _combat_seq(counts_df, metadata, batch_effect, primary_group)
+        counts_df = _combat_seq(
+            counts_df, metadata, batch_effect, primary_group,
+            covariates=covariates or None,
+        )
         corrected_path = os.path.join(stats_dir, "batch_corrected_counts.csv")
         counts_df.to_csv(corrected_path)
 
