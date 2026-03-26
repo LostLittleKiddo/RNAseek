@@ -90,6 +90,16 @@ class TusdHookViewTest(TestCase):
         req.session_obj = self.session
         return TusdHookView.as_view()(req)
 
+    def _post_no_header(self, payload):
+        """Send a POST without Hook-Name header (tusd v2 behaviour)."""
+        req = self.factory.post(
+            "/api/tusd-hooks/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        req.session_obj = self.session
+        return TusdHookView.as_view()(req)
+
     # ── Happy path ──
 
     def test_post_finish_creates_file_asset(self):
@@ -280,6 +290,25 @@ class TusdHookViewTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertIn("asset_id", data)
+
+    def test_tusd_v2_no_hook_name_header(self):
+        """tusd v2 sends Type in body, not as Hook-Name header."""
+        payload = self._build_payload()
+        resp = self._post_no_header(payload)
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertIn("asset_id", data)
+        asset = FileAsset.objects.get(id=data["asset_id"])
+        self.assertEqual(asset.file_role, "RAW_FASTQ")
+
+    def test_tusd_v2_non_post_finish_type_ignored(self):
+        """tusd v2 body with Type != post-finish returns 200 empty."""
+        payload = self._build_payload()
+        payload["Type"] = "pre-create"
+        resp = self._post_no_header(payload)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(json.loads(resp.content), {})
+        self.assertEqual(FileAsset.objects.count(), 0)
 
     def test_cross_filesystem_move_fallback(self):
         """When shutil.move fails (cross-filesystem), copy2 + remove is used."""

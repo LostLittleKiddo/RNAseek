@@ -120,7 +120,7 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 | Component              | Role                                                              | Communicates With                                                                        |
 | ---------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | **Nginx**              | SSL termination, reverse proxy, static serving, WebSocket upgrade | Daphne (upstream), tusd (upstream for `/files/`)                                         |
-| **tusd**               | Tus protocol resumable uploads, webhook notification              | Nginx (reverse proxy), Django (post-finish webhook), Filesystem (upload writes)          |
+| **tusd**               | Tus protocol resumable uploads, webhook notification              | Nginx (reverse proxy), Django (post-finish webhook at `/api/tusd-hooks/`), Filesystem (upload writes). tusd v2 sends event type as `"Type": "post-finish"` in the JSON body (not as an HTTP header). |
 | **Daphne**             | ASGI server: HTTP requests + WebSocket connections                | Redis (channels layer), Database (ORM), Filesystem (uploads)                             |
 | **Django Views**       | Request handling, validation, template rendering                  | Database (ORM), Redis (task dispatch)                                                    |
 | **WebSocket Consumer** | Real-time progress push to browser                                | Redis (channel group pub/sub)                                                            |
@@ -436,8 +436,9 @@ This is the primary data flow. BAM and Matrix entry points skip to steps 5 and 6
     │  3. Final PATCH lands    │                          │                    │                 │
     │                          │                          │── POST webhook ──► │                 │
     │                          │                          │   /api/tusd-hooks/ │                 │
-    │                          │                          │   Hook-Name:       │                 │
-    │                          │                          │   post-finish      │                 │
+    │                          │                          │   Body:            │                 │
+    │                          │                          │   {Type:           │                 │
+    │                          │                          │    "post-finish"}  │                 │
     │                          │                          │                    │── move file     │
     │                          │                          │                    │   to submission  │
     │                          │                          │                    │   subdir ──────► │

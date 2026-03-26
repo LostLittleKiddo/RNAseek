@@ -613,12 +613,6 @@ class TusdHookView(View):
     http_method_names = ["post"]
 
     def post(self, request):
-        hook_name = request.headers.get("Hook-Name", "")
-
-        # Acknowledge non-post-finish hooks immediately.
-        if hook_name != "post-finish":
-            return JsonResponse({}, content_type="application/json")
-
         # ── Parse payload ──
         try:
             payload = json.loads(request.body)
@@ -628,6 +622,14 @@ class TusdHookView(View):
                 status=400,
                 content_type="application/json",
             )
+
+        # tusd v1 sends event type as Hook-Name header;
+        # tusd v2 sends it as "Type" in the JSON body.
+        hook_name = request.headers.get("Hook-Name", "") or payload.get("Type", "")
+
+        # Acknowledge non-post-finish hooks immediately.
+        if hook_name != "post-finish":
+            return JsonResponse({}, content_type="application/json")
 
         try:
             upload = payload["Event"]["Upload"]

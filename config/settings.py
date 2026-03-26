@@ -212,6 +212,9 @@ if IS_PRODUCTION:
     # Nginx terminates SSL and forwards via X-Forwarded-Proto
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = True
+    # Exempt internal service-to-service webhook paths from SSL redirect
+    # (tusd calls Django over localhost HTTP, not through Nginx)
+    SECURE_REDIRECT_EXEMPT = [r"^api/tusd-hooks/"]
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 31536000

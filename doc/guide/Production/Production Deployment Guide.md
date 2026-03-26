@@ -81,8 +81,16 @@ REDIS_URL=redis://127.0.0.1:6379/0
 CELERY_BROKER_URL=redis://127.0.0.1:6379/0
 CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/0
 MEDIA_ROOT=/home/ubuntu/apps/rnaseek/media
-DJANGO_ALLOWED_HOSTS=rnaseek.ca,www.rnaseek.ca
+DJANGO_ALLOWED_HOSTS=rnaseek.ca,www.rnaseek.ca,127.0.0.1
 CSRF_TRUSTED_ORIGINS=https://rnaseek.ca,https://www.rnaseek.ca
+```
+
+`127.0.0.1` must be in `DJANGO_ALLOWED_HOSTS` because tusd sends its webhook POST to `http://127.0.0.1:8000/api/tusd-hooks/`.
+
+If `SECURE_SSL_REDIRECT` is enabled, add an exemption in `settings.py` so the internal HTTP webhook is not redirected to HTTPS:
+
+```python
+SECURE_REDIRECT_EXEMPT = [r"^api/tusd-hooks/"]
 ```
 
 ### 3.2 Run Migrations and Collect Static
@@ -141,7 +149,7 @@ tusd handles resumable file uploads via the Tus protocol. Install it as a standa
 
 ```bash
 # Download tusd v2 binary
-wget https://github.com/tus/tusd/releases/download/v2.6.0/tusd_linux_amd64.tar.gz
+wget https://github.com/tus/tusd/releases/download/v2.9.2/tusd_linux_amd64.tar.gz
 tar xzf tusd_linux_amd64.tar.gz
 sudo mv tusd_linux_amd64/tusd /usr/local/bin/tusd
 sudo chmod +x /usr/local/bin/tusd
@@ -166,6 +174,7 @@ ExecStart=/usr/local/bin/tusd \
     -base-path /files/ \
     -hooks-http http://127.0.0.1:8000/api/tusd-hooks/ \
     -hooks-http-forward-headers Cookie,X-Session-ID \
+    -hooks-enabled-events post-finish \
     -behind-proxy \
     -max-size 0
 

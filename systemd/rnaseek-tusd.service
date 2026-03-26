@@ -6,7 +6,7 @@
 #
 # On post-finish, POSTs to Django /api/tusd-hooks/ with:
 #   - Cookie + X-Session-ID headers forwarded (session resolution)
-#   - HMAC-SHA256 signature for webhook integrity
+#   - Event type sent as "Type": "post-finish" in the JSON body (tusd v2)
 # ============================================================
 
 [Unit]

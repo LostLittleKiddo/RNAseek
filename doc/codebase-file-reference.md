@@ -58,7 +58,7 @@
 | File          | Lines | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `__init__.py` | 22    | Re-exports all view classes for clean imports                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `api.py`      | ~670  | 10 API views: `FileAssetDelete`, `CreateSubmissionView`, `DeleteSubmissionView`, `ChunkUploadView` (25 MB concurrent chunks, SSD-buffered with merge-on-complete, path-traversal sanitized), `CorePipelineView` (facade → validators → Celery dispatch), `JobStatusView` (stale-job detection via AsyncResult), `SessionAssetsView`, `FileDownloadView`, `ModuleRunView` (12 approved modules), `TusdHookView` (Tus post-finish webhook: moves uploaded file, creates FileAsset). Helpers: `_subdir_for_role()`, `_merge_and_move()`, `UPLOAD_BUFFER_ROOT` |
+| `api.py`      | ~690  | 10 API views: `FileAssetDelete`, `CreateSubmissionView`, `DeleteSubmissionView`, `ChunkUploadView` (25 MB concurrent chunks, SSD-buffered with merge-on-complete, path-traversal sanitized), `CorePipelineView` (facade -> validators -> Celery dispatch), `JobStatusView` (stale-job detection via AsyncResult), `SessionAssetsView`, `FileDownloadView`, `ModuleRunView` (12 approved modules), `TusdHookView` (Tus post-finish webhook: supports tusd v1 Hook-Name header and v2 body-based Type field, moves uploaded file, creates FileAsset, cross-filesystem fallback). Helpers: `_subdir_for_role()`, `_merge_and_move()`, `UPLOAD_BUFFER_ROOT` |
 | `pages.py`    | 203   | 6 template-based views: `HomeView`, `TutorialsView`, `WorkspacesView`, `NewSubmissionView` (genome list context), `ProcessingView` (pipeline steps context), `CoreHubView` (plot data, download links, module jobs, BAM presence check)                                                                                                                                                                                                                                 |
 
 ### `pipeline/tasks/` — Celery Task Layer
@@ -154,7 +154,7 @@
 | `test_dev_dataset.py`       | 259   | Dev dataset validation (metadata, sample matching)                                                            |
 | `test_e2e.py`               | 373   | Full end-to-end: synthetic yeast FASTQ → Stage 1 → Stage 2 (used in GitHub Actions CI)                        |
 | `test_genome_indices.py`    | 155   | Genome index resolution, pre-built index verification                                                         |
-| `test_tusd_hooks.py`        | ~200  | TusdHookView: 18 tests covering post-finish file creation, file move, sidecar cleanup, file_role handling, session validation, error cases |
+| `test_tusd_hooks.py`        | ~320  | TusdHookView: 21 tests covering post-finish file creation, file move, sidecar cleanup, file_role handling, session validation, error cases, tusd v2 body-based type detection, cross-filesystem fallback |
 
 ---
 
@@ -204,6 +204,7 @@
 | `rnaseek-web.service`    | systemd unit for Daphne ASGI server                   |
 | `rnaseek-worker.service` | systemd unit for Celery worker (prefork, CPU-matched) |
 | `rnaseek-beat.service`   | systemd unit for Celery Beat scheduler                |
+| `rnaseek-tusd.service`   | systemd unit for tusd v2 upload daemon on port 1080 with HTTP webhook to Django |
 
 ---
 
@@ -212,6 +213,7 @@
 | File                            | Purpose                                                                                            |
 | ------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `benchmark-upload-capacity.sh`  | Non-disruptive production benchmark: network bandwidth (iperf3/curl), NFS disk I/O (dd/fio)        |
+| `e2e_tus_test.sh`               | End-to-end test for the Tus resumable upload pipeline (session, submission, tus upload, webhook, FileAsset verification) |
 
 ---
 
