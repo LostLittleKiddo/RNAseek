@@ -27,10 +27,15 @@ RNASEEK_ENV = os.environ.get("RNASEEK_ENV", "development")
 IS_PRODUCTION = RNASEEK_ENV == "production"
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-f#6y2$)m)+_2bd$+%c539^1n+b+tvf$@emcc1lwj7d5uc%f3l@",
-)
+if IS_PRODUCTION:
+    SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+    if not SECRET_KEY:
+        raise ValueError("DJANGO_SECRET_KEY must be set in production")
+else:
+    SECRET_KEY = os.environ.get(
+        "DJANGO_SECRET_KEY",
+        "django-insecure-f#6y2$)m)+_2bd$+%c539^1n+b+tvf$@emcc1lwj7d5uc%f3l@",
+    )
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = not IS_PRODUCTION
@@ -174,7 +179,9 @@ MEDIA_URL = '/media/'
 
 # ── Tus Upload (tusd webhook) ──
 TUS_DATA_DIR = os.environ.get("TUS_DATA_DIR", str(MEDIA_ROOT / "tusd-data"))
-TUS_HOOK_SECRET = os.environ.get("TUS_HOOK_SECRET", "changeme-in-production")
+TUS_HOOK_SECRET = os.environ.get("TUS_HOOK_SECRET", "")
+if IS_PRODUCTION and not TUS_HOOK_SECRET:
+    raise ValueError("TUS_HOOK_SECRET must be set in production")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -210,6 +217,9 @@ if IS_PRODUCTION:
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+    X_FRAME_OPTIONS = "DENY"
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 # ── Logging ──
 LOGGING = {

@@ -28,7 +28,8 @@ def _verify_hook_signature(request):
     """
     secret = getattr(settings, "TUS_HOOK_SECRET", "")
     if not secret:
-        return True  # no secret configured — skip verification
+        logger.warning("TUS_HOOK_SECRET is not configured — rejecting webhook")
+        return False
 
     sig_header = request.headers.get("Hook-Signature", "")
     if not sig_header.startswith("sha256="):
