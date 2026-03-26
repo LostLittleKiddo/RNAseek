@@ -32,7 +32,8 @@ test/            All tests (NOT pipeline/tests.py)
   test_e2e.py            Full E2E yeast pipeline test
   test_hisat2_pipeline.py
   test_dev_dataset.py
-  test_assay_tracks.py
+  test_assay_tracks.py   44 assay track tests
+  test_wgcna.py          24 WGCNA module tests
 ```
 
 ---
@@ -78,8 +79,8 @@ File roles: `RAW_FASTQ` · `ALIGNMENT_BAM` · `USER_COUNT_MATRIX` · `COUNT_MATR
 | `_routes.py` | `_route_alignment(submission, job)` · `_route_matrix(submission, job)` · `_register_stage2_assets(submission, stats_result, qc_dir)` |
 | `_track_standard.py` | `_route_fastq(submission, job)` — FastQC → Trim → HISAT2 → featureCounts → MultiQC → Stage 2 |
 | `_track_mirna.py` | `_route_small_rna(submission, job)` — Bowtie → miRBase |
-| `_track_chipseq.py` | `_route_chip_seq(submission, job)` — BWA → MACS2 |
-| `_track_methyl.py` | `_route_methylation(submission, job)` — Bismark |
+| `_track_chipseq.py` | `_route_chip_seq(submission, job)` — BWA → MACS2 → Consensus SAF → featureCounts → DESeq2 |
+| `_track_methyl.py` | `_route_methylation(submission, job)` — Bismark → methylKit |
 
 **Core routing logic in `run_core_pipeline`:**
 - `input_data_type == "fastq"` → branch on `assay_type` to one of 4 track functions
@@ -154,7 +155,7 @@ Custom genome: uploads FASTA + GTF to `custom_genome/` subdir. `_route_fastq` ru
 
 ## Current Implementation State (Phase 5 complete)
 
-Completed: all 4 pipeline tracks · Stage 2 stats (DESeq2 + ComBat + outliers + plots + annotations) · 4 Plotly plots · 7-page frontend · chunked upload · WebSocket progress · anonymous session middleware · dev/prod env split · 32 + 26 + E2E tests passing · yeast R64 reference genome built.
+Completed: all 4 pipeline tracks · Stage 2 stats (DESeq2 + ComBat + outliers + plots + annotations) · 4 Plotly plots · 7-page frontend · chunked upload · WebSocket progress · anonymous session middleware · dev/prod env split · 100 tests passing (32 entry points + 44 assay tracks + 24 WGCNA) · 26 standalone stats tests + E2E · yeast R64 reference genome built.
 
 Pending (Phases 6–8):
 - 12 Tier 2 module implementations (ModuleRunView dispatch shell exists; individual module logic not yet implemented)

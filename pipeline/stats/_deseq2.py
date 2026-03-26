@@ -6,15 +6,22 @@ import re
 
 import numpy as np
 
-from pipeline.stats._r_bridge import (
-    _R_CORES,
-    _converter,
-    importr,
-    localconverter,
-    ro,
-)
+import pipeline.stats._r_bridge as _rb
+from pipeline.stats._r_bridge import _R_CORES, _ensure_rpy2
 
 logger = logging.getLogger(__name__)
+
+
+def _get_covariates(column_mapping):
+    """Return covariate list from column_mapping, accepting both key names.
+
+    The frontend sends 'covariates'; legacy code uses 'additional_covariates'.
+    Accept both for backward compatibility.
+    """
+    covs = column_mapping.get("additional_covariates")
+    if not covs:
+        covs = column_mapping.get("covariates", [])
+    return list(covs)
 
 
 def _build_formula_string(column_mapping):
@@ -25,7 +32,7 @@ def _build_formula_string(column_mapping):
     """
     terms = []
 
-    for cov in column_mapping.get("additional_covariates", []):
+    for cov in _get_covariates(column_mapping):
         terms.append(cov)
 
     batch = column_mapping.get("batch_effect")
@@ -87,59 +94,123 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
 
     Returns a list of result file paths.
     """
+    _ensure_rpy2()
     import pandas as pd
 
     primary_group = column_mapping["primary_group"]
+    covariates = _get_covariates(column_mapping)
     formula_str = _build_formula_string(column_mapping)
     logger.info("DESeq2 design formula: %s", formula_str)
 
-    with localconverter(_converter):
-        deseq2 = importr("DESeq2")
-        base = importr("base")
+    with _rb.localconverter(_rb._converter):
+        deseq2 = _rb.importr("DESeq2")
+        base = _rb.importr("base")
 
         try:
-            biocparallel = importr("BiocParallel")
-            ro.r('register(MulticoreParam(%d))' % _R_CORES)
+            biocparallel = _rb.importr("BiocParallel")
+            _rb.ro.r('register(MulticoreParam(%d))' % _R_CORES)
             logger.info("BiocParallel: using %d cores", _R_CORES)
         except Exception:
             logger.info("BiocParallel not available — DESeq2 will run single-threaded")
 
         # ── Prepare count matrix in R ──
-        count_matrix_r = ro.r["as.matrix"](counts_df.values.astype(int))
-        ro.r.assign("count_matrix", count_matrix_r)
-        ro.r(
+        count_matrix_r = _rb.ro.r["as.matrix"](counts_df.values.astype(int))
+        _rb.ro.r.assign("count_matrix", count_matrix_r)
+        _rb.ro.r(
             'rownames(count_matrix) <- c(%s)' % _r_string_vector(counts_df.index.tolist())
         )
-        ro.r(
+        _rb.ro.r(
             'colnames(count_matrix) <- c(%s)' % _r_string_vector(counts_df.columns.tolist())
         )
 
         # ── Build colData ──
-        formula_cols = list(column_mapping.get("additional_covariates", []))
+        formula_cols = list(covariates)
         if column_mapping.get("batch_effect"):
             formula_cols.append(column_mapping["batch_effect"])
         formula_cols.append(primary_group)
 
         col_data = metadata[formula_cols].copy()
 
+        # Detect which columns are numeric (continuous covariates like age, weight)
+        numeric_cols = set()
         for c in col_data.columns:
+            try:
+                pd.to_numeric(col_data[c])
+                # Only treat as numeric if it's a covariate, not the primary group or batch
+                if c in covariates:
+                    numeric_cols.add(c)
+                    col_data[c] = pd.to_numeric(col_data[c]).astype(float)
+                    continue
+            except (ValueError, TypeError):
+                pass
             col_data[c] = col_data[c].astype(str)
 
-        col_data, level_maps = _sanitize_factor_levels(col_data, column_mapping)
+        # Only sanitize factor (non-numeric) columns
+        factor_col_data = col_data[[c for c in col_data.columns if c not in numeric_cols]]
+        factor_col_data, level_maps = _sanitize_factor_levels(factor_col_data, column_mapping)
+        for c in factor_col_data.columns:
+            col_data[c] = factor_col_data[c]
 
         # Reverse lookup: original -> sanitized
         primary_level_map = {v: k for k, v in level_maps.get(primary_group, {}).items()}
 
-        ro.r.assign("col_data", col_data)
+        # ── Validate contrast levels exist ──
+        if contrasts_list:
+            sanitized_levels = set(col_data[primary_group].unique())
+            for pair in contrasts_list:
+                target, reference = pair[0], pair[1]
+                safe_target = primary_level_map.get(target, target)
+                safe_reference = primary_level_map.get(reference, reference)
+                for label, safe_val in [("target", safe_target), ("reference", safe_reference)]:
+                    if safe_val not in sanitized_levels:
+                        available = sorted(
+                            level_maps.get(primary_group, {}).values()
+                        ) or sorted(sanitized_levels)
+                        raise RuntimeError(
+                            "Contrast %s '%s' not found in primary group '%s'. "
+                            "Available levels: %s"
+                            % (label, pair[0] if label == "target" else pair[1],
+                               primary_group, available)
+                        )
+
+        # ── Proactive rank-deficiency check ──
+        from patsy import dmatrix, PatsyError
+        try:
+            design_df = col_data.copy()
+            for c in design_df.columns:
+                if c not in numeric_cols:
+                    design_df[c] = design_df[c].astype("category")
+            dm = dmatrix(formula_str, design_df, return_type="dataframe")
+            rank = np.linalg.matrix_rank(dm.values)
+            if rank < dm.shape[1]:
+                raise RuntimeError(
+                    "DESeq2 error: The model matrix is not full rank (%d/%d). "
+                    "This typically means your experimental design has perfect "
+                    "confounding between variables (e.g., batch and condition are "
+                    "identical). Please review your metadata column assignments "
+                    "and remove redundant or perfectly correlated variables."
+                    % (rank, dm.shape[1])
+                )
+        except PatsyError as exc:
+            raise RuntimeError(
+                "Failed to construct design matrix: %s" % exc
+            ) from exc
+        except ImportError:
+            logger.debug("patsy not installed — skipping proactive rank check")
+
+        _rb.ro.r.assign("col_data", col_data)
 
         for c in formula_cols:
-            ro.r('col_data$%s <- as.factor(col_data$%s)' % (c, c))
+            if c in numeric_cols:
+                _rb.ro.r('col_data$%s <- as.numeric(col_data$%s)' % (c, c))
+            else:
+                _rb.ro.r('col_data$%s <- as.factor(col_data$%s)' % (c, c))
 
         # ── Run DESeq2 ──
-        ro.r('design_formula <- as.formula("%s")' % formula_str)
+        _rb.ro.r('design_formula <- as.formula("%s")' % formula_str)
 
         try:
-            ro.r('''
+            _rb.ro.r('''
                 dds <- DESeqDataSetFromMatrix(
                     countData = count_matrix,
                     colData = col_data,
@@ -161,7 +232,7 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
                 logger.warning(
                     "DESeq2 dispersion fit failed — falling back to gene-wise estimates."
                 )
-                ro.r('''
+                _rb.ro.r('''
                     dds <- DESeqDataSetFromMatrix(
                         countData = count_matrix,
                         colData = col_data,
@@ -178,10 +249,10 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
                 ) from exc
 
         # ── Extract normalized counts ──
-        ro.r('norm_counts <- counts(dds, normalized = TRUE)')
-        ro.r('norm_df <- as.data.frame(norm_counts)')
-        ro.r('norm_df$gene_id <- rownames(norm_df)')
-        norm_df = ro.r("norm_df")
+        _rb.ro.r('norm_counts <- counts(dds, normalized = TRUE)')
+        _rb.ro.r('norm_df <- as.data.frame(norm_counts)')
+        _rb.ro.r('norm_df$gene_id <- rownames(norm_df)')
+        norm_df = _rb.ro.r("norm_df")
         norm_df.to_csv(norm_output, index=False)
 
         # ── Extract DEG results ──
@@ -198,7 +269,7 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
                 safe_reference = primary_level_map.get(reference, reference)
 
                 try:
-                    ro.r(
+                    _rb.ro.r(
                         'res <- results(dds, contrast=c(%s, %s, %s))'
                         % (
                             _r_string_vector([primary_group]),
@@ -206,10 +277,10 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
                             _r_string_vector([safe_reference]),
                         )
                     )
-                    ro.r('res_df <- as.data.frame(res)')
-                    ro.r('res_df$gene_id <- rownames(res_df)')
+                    _rb.ro.r('res_df <- as.data.frame(res)')
+                    _rb.ro.r('res_df$gene_id <- rownames(res_df)')
 
-                    res_df = ro.r("res_df")
+                    res_df = _rb.ro.r("res_df")
                     res_df["contrast"] = contrast_label
                     res_df["significant"] = (
                         (res_df["padj"] <= adj_pvalue_cutoff)
@@ -238,11 +309,11 @@ def _run_deseq2(counts_df, metadata, column_mapping, contrasts_list,
         else:
             deg_path = os.path.join(stats_dir, "deg_results.csv")
 
-            ro.r('res <- results(dds)')
-            ro.r('res_df <- as.data.frame(res)')
-            ro.r('res_df$gene_id <- rownames(res_df)')
+            _rb.ro.r('res <- results(dds)')
+            _rb.ro.r('res_df <- as.data.frame(res)')
+            _rb.ro.r('res_df$gene_id <- rownames(res_df)')
 
-            res_df = ro.r("res_df")
+            res_df = _rb.ro.r("res_df")
             res_df["significant"] = (
                 (res_df["padj"] <= adj_pvalue_cutoff)
                 & (

@@ -60,10 +60,20 @@ def _route_fastq(submission, job):
         if not genome_fasta or not os.path.isfile(genome_fasta):
             raise RuntimeError(
                 f"Custom genome FASTA file not found. "
-                f"Expected path: {genome_fasta or 'N/A'}"
+                f"Expected path: {genome_fasta or 'N/A'}. "
+                f"If you uploaded a .fa.zip file, it may be corrupt or empty."
             )
-        idx_prefix = os.path.join(work_dir, "custom_genome", "hisat2_index")
-        _run(f"hisat2-build -p {_CPU_COUNT} {_q(genome_fasta)} {_q(idx_prefix)}")
+        idx_dir = os.path.join(work_dir, "custom_genome", "hisat2_index")
+        os.makedirs(idx_dir, exist_ok=True)
+        idx_prefix = os.path.join(idx_dir, "genome")
+        try:
+            _run(f"hisat2-build -p {_CPU_COUNT} {_q(genome_fasta)} {_q(idx_prefix)}")
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"HISAT2 index build failed for '{os.path.basename(genome_fasta)}'. "
+                f"Ensure the FASTA file is valid, uncompressed, and not truncated. "
+                f"Detail: {exc}"
+            ) from exc
         hisat2_idx = idx_prefix
         _update_step(job, "hisat2_build", completed=True)
 

@@ -11,7 +11,6 @@ Samples:
   - GSM9346170_NaCl_Rep1_dev.fastq.gz       → 0.4 M NaCl (45 min)
 """
 
-import json
 import os
 import shutil
 import sys

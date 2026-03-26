@@ -27,6 +27,7 @@
 
     <!-- CSRF token for JS -->
     <meta name="csrf-token" content="{{ csrf_token }}">
+    <meta name="rnaseek-is-production" content="{% if is_production %}1{% else %}0{% endif %}">
 </head>
 
 <body>
@@ -67,10 +68,6 @@
                 <span class="rna-nav-step {% if nav_step == 3 %}step-active{% else %}step-inactive{% endif %}">
                     Core Hub
                 </span>
-                <i class="bi bi-arrow-right-circle-fill rna-step-arrow-icon"></i>
-                <span class="rna-nav-step {% if nav_step == 4 %}step-active{% else %}step-inactive{% endif %}">
-                    Advanced
-                </span>
             </div>
         </div>
 
@@ -88,7 +85,7 @@
 
     <!-- ═══ Footer ═══ -->
     <footer class="rna-footer">
-        RNAseek Enterprise &middot; Session-based &middot; Data purged after 14 days
+        RNAseek v1 &middot; Session-based &middot; Data purged after 14 days
     </footer>
 
     {% block extra_js %}{% endblock %}

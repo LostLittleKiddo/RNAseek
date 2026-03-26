@@ -7,9 +7,7 @@ Tests:
   4. Error case: model matrix not full rank (perfect confounding)
 """
 
-import json
 import os
-import shutil
 import sys
 import tempfile
 
@@ -114,6 +112,17 @@ def test_align_samples():
     report("4 samples aligned", len(counts_aligned.columns) == 4)
     report("Metadata rows match", len(meta_aligned) == 4)
     report("Condition column present", "condition" in meta_aligned.columns)
+
+    # Extra-covariate scenario: columns in alphabetical order put "age" before "sample"
+    metadata_extra = pd.DataFrame([
+        {"age": "12", "condition": "Control",   "sample": "SampleA_R1.fq.gz"},
+        {"age": "15", "condition": "Control",   "sample": "SampleB_R1.fq.gz"},
+        {"age": "16", "condition": "Treatment", "sample": "SampleC_R1.fq.gz"},
+        {"age": "17", "condition": "Treatment", "sample": "SampleD_R1.fq.gz"},
+    ])
+    meta2, counts2 = _align_samples(metadata_extra, counts)
+    report("Extra-covariate: 4 samples aligned", len(counts2.columns) == 4)
+    report("Extra-covariate: 'age' column kept", "age" in meta2.columns)
 
 
 def test_deseq2_simple():

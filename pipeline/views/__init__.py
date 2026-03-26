@@ -1,7 +1,6 @@
 """Pipeline views package — re-exports all views for backward compatibility."""
 
 from pipeline.views.pages import (          # noqa: F401
-    AdvancedView,
     CoreHubView,
     HomeView,
     NewSubmissionView,
@@ -14,8 +13,16 @@ from pipeline.views.api import (            # noqa: F401
     ChunkUploadView,
     CorePipelineView,
     CreateSubmissionView,
+    DeleteSubmissionView,
+    FileAssetDeleteView,
     FileDownloadView,
     JobStatusView,
     ModuleRunView,
     SessionAssetsView,
+    TusdHookView,
+)
+
+from pipeline.views.tus_webhook import (    # noqa: F401
+    TusWebhookView,
+    TusAssetLookupView,
 )

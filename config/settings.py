@@ -27,10 +27,15 @@ RNASEEK_ENV = os.environ.get("RNASEEK_ENV", "development")
 IS_PRODUCTION = RNASEEK_ENV == "production"
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-f#6y2$)m)+_2bd$+%c539^1n+b+tvf$@emcc1lwj7d5uc%f3l@",
-)
+if IS_PRODUCTION:
+    SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+    if not SECRET_KEY:
+        raise ValueError("DJANGO_SECRET_KEY must be set in production")
+else:
+    SECRET_KEY = os.environ.get(
+        "DJANGO_SECRET_KEY",
+        "django-insecure-f#6y2$)m)+_2bd$+%c539^1n+b+tvf$@emcc1lwj7d5uc%f3l@",
+    )
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = not IS_PRODUCTION
@@ -172,6 +177,12 @@ STORAGES = {
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", str(BASE_DIR / "media")))
 MEDIA_URL = '/media/'
 
+# ── Tus Upload (tusd webhook) ──
+TUS_DATA_DIR = os.environ.get("TUS_DATA_DIR", str(MEDIA_ROOT / "tusd-data"))
+TUS_HOOK_SECRET = os.environ.get("TUS_HOOK_SECRET", "")
+if IS_PRODUCTION and not TUS_HOOK_SECRET:
+    raise ValueError("TUS_HOOK_SECRET must be set in production")
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -201,11 +212,17 @@ if IS_PRODUCTION:
     # Nginx terminates SSL and forwards via X-Forwarded-Proto
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = True
+    # Exempt internal service-to-service webhook paths from SSL redirect
+    # (tusd calls Django over localhost HTTP, not through Nginx)
+    SECURE_REDIRECT_EXEMPT = [r"^api/tusd-hooks/"]
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+    X_FRAME_OPTIONS = "DENY"
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 # ── Logging ──
 LOGGING = {
@@ -225,12 +242,22 @@ LOGGING = {
     },
     "root": {
         "handlers": ["console"],
-        "level": "INFO" if IS_PRODUCTION else "DEBUG",
+        "level": "WARNING",
     },
     "loggers": {
         "django": {
             "handlers": ["console"],
-            "level": "INFO" if IS_PRODUCTION else "DEBUG",
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "daphne": {
+            "handlers": ["console"],
+            "level": "ERROR",
             "propagate": False,
         },
         "pipeline": {

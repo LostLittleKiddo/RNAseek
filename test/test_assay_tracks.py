@@ -13,7 +13,7 @@ Covers:
 import json
 import os
 import tempfile
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from django.test import RequestFactory, TestCase
 
@@ -172,7 +172,10 @@ class CorePipelineViewAssayTypeTest(TestCase):
             file_role=FileAsset.FileRole.RAW_FASTQ,
             local_path="/tmp/s1.fq.gz",
         )
-        resp = self._post(self._base_body(assay_type="small_rna"))
+        resp = self._post(self._base_body(
+            assay_type="small_rna",
+            reference_genome="hg38",
+        ))
         self.assertEqual(resp.status_code, 200)
         job_id = json.loads(resp.content)["job_id"]
         job = AnalysisJob.objects.get(job_id=job_id)
@@ -192,15 +195,27 @@ class CorePipelineViewAssayTypeTest(TestCase):
             file_role=FileAsset.FileRole.RAW_FASTQ,
             local_path="/tmp/s1.fq.gz",
         )
-        resp = self._post(self._base_body(assay_type="chip_seq"))
+        chip_meta = {
+            "samples": [
+                {"_sample_name": "s1", "condition": "treated"},
+                {"_sample_name": "s2", "condition": "input"},
+            ],
+            "column_mapping": {"primary_group": "condition"},
+            "contrasts": [],
+        }
+        resp = self._post(self._base_body(
+            assay_type="chip_seq",
+            metadata_payload=chip_meta,
+        ))
         self.assertEqual(resp.status_code, 200)
         job_id = json.loads(resp.content)["job_id"]
         job = AnalysisJob.objects.get(job_id=job_id)
         steps = job.step_progress["pipeline_steps"]
         self.assertIn("bwa_align", steps)
         self.assertIn("macs2_peaks", steps)
+        self.assertIn("featurecounts", steps)
+        self.assertIn("deseq2", steps)
         self.assertNotIn("hisat2", steps)
-        self.assertNotIn("deseq2", steps)
 
     @patch("pipeline.views.api.run_core_pipeline")
     def test_methylation_pipeline_steps(self, mock_task):
@@ -231,7 +246,18 @@ class CorePipelineViewAssayTypeTest(TestCase):
             file_role=FileAsset.FileRole.RAW_FASTQ,
             local_path="/tmp/s1.fq.gz",
         )
-        resp = self._post(self._base_body(assay_type="chip_seq"))
+        chip_meta = {
+            "samples": [
+                {"_sample_name": "s1", "condition": "treated"},
+                {"_sample_name": "s2", "condition": "input"},
+            ],
+            "column_mapping": {"primary_group": "condition"},
+            "contrasts": [],
+        }
+        resp = self._post(self._base_body(
+            assay_type="chip_seq",
+            metadata_payload=chip_meta,
+        ))
         self.assertEqual(resp.status_code, 200)
         self.submission.refresh_from_db()
         self.assertEqual(self.submission.assay_type, "chip_seq")
@@ -575,18 +601,21 @@ class ChIPSeqRouteTest(TestCase):
             module_name="CORE_PIPELINE",
             step_progress={
                 "pipeline_steps": ["fastqc", "trimmomatic", "bwa_align",
-                                   "macs2_peaks", "multiqc"],
+                                   "macs2_peaks", "featurecounts", "multiqc",
+                                   "deseq2"],
                 "completed_steps": [],
                 "current_step": None,
                 "failed_step": None,
             },
         )
 
+    @patch("pipeline.stats.run_stage2_stats", return_value={"deseq2_results": "/tmp/r"})
+    @patch("pipeline.tasks._featurecounts._featurecounts_to_csv")
     @patch("pipeline.tasks._helpers._run")
     @patch("pipeline.tasks._track_chipseq._run")
     @patch("pipeline.tasks._track_chipseq._resolve_genome", return_value=("/idx/ht2", "/ref/genome.fa", "/ref/genes.gtf"))
     @patch("pipeline.tasks._track_chipseq._resolve_bwa_index", return_value="/ref/genome.fa")
-    def test_route_calls_bwa_and_macs2(self, mock_bwa_idx, mock_genome, mock_run, mock_helpers_run):
+    def test_route_calls_bwa_and_macs2(self, mock_bwa_idx, mock_genome, mock_run, mock_helpers_run, mock_fc_csv, mock_stats):
         from pipeline.tasks import _route_chip_seq
 
         mock_run.return_value = MagicMock(stdout="")
@@ -597,6 +626,11 @@ class ChIPSeqRouteTest(TestCase):
         os.makedirs(peaks_dir, exist_ok=True)
         peak_file = os.path.join(peaks_dir, "chip_peaks_narrowPeak")
         with open(peak_file, "w") as f:
+            f.write("chr1\t100\t200\n")
+
+        # Create dummy consensus_peaks.bed for _build_consensus_saf
+        consensus_bed = os.path.join(peaks_dir, "consensus_peaks.bed")
+        with open(consensus_bed, "w") as f:
             f.write("chr1\t100\t200\n")
 
         job = self._make_job()
@@ -614,15 +648,15 @@ class ChIPSeqRouteTest(TestCase):
         self.assertTrue(has_macs2, "Missing macs2 callpeak call")
         self.assertTrue(has_multiqc, "Missing multiqc call")
 
-        # No DESeq2 for ChIP-seq
-        self.assertNotIn("deseq2_results", result)
         self.assertIn("peaks_dir", result)
 
+    @patch("pipeline.stats.run_stage2_stats", return_value={"deseq2_results": "/tmp/r"})
+    @patch("pipeline.tasks._featurecounts._featurecounts_to_csv")
     @patch("pipeline.tasks._helpers._run")
     @patch("pipeline.tasks._track_chipseq._run")
     @patch("pipeline.tasks._track_chipseq._resolve_genome", return_value=("/idx/ht2", "/ref/genome.fa", "/ref/genes.gtf"))
     @patch("pipeline.tasks._track_chipseq._resolve_bwa_index", return_value="/ref/genome.fa")
-    def test_chip_registers_peak_file_assets(self, mock_bwa_idx, mock_genome, mock_run, mock_helpers_run):
+    def test_chip_registers_peak_file_assets(self, mock_bwa_idx, mock_genome, mock_run, mock_helpers_run, mock_fc_csv, mock_stats):
         from pipeline.tasks import _route_chip_seq
 
         mock_run.return_value = MagicMock(stdout="")
@@ -632,6 +666,11 @@ class ChIPSeqRouteTest(TestCase):
         os.makedirs(peaks_dir, exist_ok=True)
         peak_file = os.path.join(peaks_dir, "chip_peaks_narrowPeak")
         with open(peak_file, "w") as f:
+            f.write("chr1\t100\t200\n")
+
+        # Create dummy consensus_peaks.bed for _build_consensus_saf
+        consensus_bed = os.path.join(peaks_dir, "consensus_peaks.bed")
+        with open(consensus_bed, "w") as f:
             f.write("chr1\t100\t200\n")
 
         job = self._make_job()
@@ -724,6 +763,14 @@ class MethylationRouteTest(TestCase):
             assay_type="methylation",
             library_type="single",
             reference_genome="hg38",
+            metadata_payload={
+                "samples": [
+                    {"_sample_name": "s1", "condition": "treated"},
+                    {"_sample_name": "s2", "condition": "control"},
+                ],
+                "column_mapping": {"primary_group": "condition"},
+                "contrasts": [],
+            },
         )
         os.makedirs(self.sub.upload_dir, exist_ok=True)
         fq_dir = os.path.join(self.sub.upload_dir, "raw")
@@ -744,18 +791,20 @@ class MethylationRouteTest(TestCase):
             module_name="CORE_PIPELINE",
             step_progress={
                 "pipeline_steps": ["fastqc", "trimmomatic", "bismark_prep",
-                                   "bismark_align", "bismark_extract", "multiqc"],
+                                   "bismark_align", "bismark_extract", "multiqc",
+                                   "diff_methyl"],
                 "completed_steps": [],
                 "current_step": None,
                 "failed_step": None,
             },
         )
 
+    @patch("pipeline.stats._methylkit.run_differential_methylation", return_value={"diff_methyl_results": "/tmp/dm"})
     @patch("pipeline.tasks._helpers._run")
     @patch("pipeline.tasks._track_methyl._run")
     @patch("pipeline.tasks._track_methyl._resolve_genome", return_value=("/idx/ht2", "/ref/genome.fa", "/ref/genes.gtf"))
     @patch("pipeline.tasks._track_methyl._resolve_bismark_genome", return_value="/ref")
-    def test_route_calls_bismark_tools(self, mock_bis_genome, mock_genome, mock_run, mock_helpers_run):
+    def test_route_calls_bismark_tools(self, mock_bis_genome, mock_genome, mock_run, mock_helpers_run, mock_diff_methyl):
         from pipeline.tasks import _route_methylation
 
         mock_run.return_value = MagicMock(stdout="")
@@ -782,15 +831,14 @@ class MethylationRouteTest(TestCase):
         self.assertTrue(has_extract, "Missing bismark_methylation_extractor call")
         self.assertTrue(has_multiqc, "Missing multiqc call")
 
-        # No DESeq2 for methylation
-        self.assertNotIn("deseq2_results", result)
         self.assertIn("methyl_dir", result)
 
+    @patch("pipeline.stats._methylkit.run_differential_methylation", return_value={"diff_methyl_results": "/tmp/dm"})
     @patch("pipeline.tasks._helpers._run")
     @patch("pipeline.tasks._track_methyl._run")
     @patch("pipeline.tasks._track_methyl._resolve_genome", return_value=("/idx/ht2", "/ref/genome.fa", "/ref/genes.gtf"))
     @patch("pipeline.tasks._track_methyl._resolve_bismark_genome", return_value="/ref")
-    def test_methylation_registers_report_assets(self, mock_bis, mock_genome, mock_run, mock_helpers_run):
+    def test_methylation_registers_report_assets(self, mock_bis, mock_genome, mock_run, mock_helpers_run, mock_diff_methyl):
         from pipeline.tasks import _route_methylation
 
         mock_run.return_value = MagicMock(stdout="")
@@ -929,7 +977,7 @@ class GenomeResolverTest(TestCase):
             with open(fasta, "w") as f:
                 f.write(">chr1\nACGT\n")
 
-            result = _resolve_bwa_index(fasta)
+            result = _resolve_bwa_index(genome_fasta=fasta, custom=True)
             self.assertEqual(result, fasta)
             mock_run.assert_called_once()
             self.assertIn("bwa index", mock_run.call_args.args[0])
@@ -946,7 +994,7 @@ class GenomeResolverTest(TestCase):
             with open(bwt, "w") as f:
                 f.write("index")
 
-            result = _resolve_bwa_index(fasta)
+            result = _resolve_bwa_index(genome_fasta=fasta)
             self.assertEqual(result, fasta)
             mock_run.assert_not_called()
 
@@ -955,9 +1003,8 @@ class GenomeResolverTest(TestCase):
         from pipeline.tasks import _resolve_bismark_genome
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            result = _resolve_bismark_genome(tmpdir)
+            result = _resolve_bismark_genome(genome_dir=tmpdir, custom=True)
             self.assertEqual(result, tmpdir)
-            mock_run.assert_called_once()
             self.assertIn("bismark_genome_preparation", mock_run.call_args.args[0])
 
     @patch("pipeline.tasks._genome._run")
@@ -966,6 +1013,6 @@ class GenomeResolverTest(TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             os.makedirs(os.path.join(tmpdir, "Bisulfite_Genome"))
-            result = _resolve_bismark_genome(tmpdir)
+            result = _resolve_bismark_genome(genome_dir=tmpdir)
             self.assertEqual(result, tmpdir)
             mock_run.assert_not_called()

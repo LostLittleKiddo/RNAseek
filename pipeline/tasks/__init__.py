@@ -48,6 +48,7 @@ from pipeline.tasks._helpers import (  # noqa: F401
 
 # ── Genome ──
 from pipeline.tasks._genome import (  # noqa: F401
+    _decompress_if_needed,
     _genome_paths,
     _resolve_bismark_genome,
     _resolve_bwa_index,
@@ -89,6 +90,12 @@ from pipeline.tasks._routes import (  # noqa: F401
 
 # ── WGCNA module ──
 from pipeline.tasks._module_wgcna import execute_wgcna_and_pathways  # noqa: F401
+
+# ── RNA Editing module ──
+from pipeline.tasks._module_rna_editing import execute_rna_editing  # noqa: F401
+
+# ── Alt Splicing module ──
+from pipeline.tasks._module_alt_splicing import execute_alt_splicing  # noqa: F401
 
 # ── Celery tasks (must be importable for autodiscovery) ──
 from pipeline.tasks.core import (  # noqa: F401

@@ -82,34 +82,35 @@
 <section class="rna-container rna-mt-3 rna-mb-3">
     <div class="rna-text-center rna-mb-3">
         <h2 class="rna-section-title">How It Works</h2>
-        <p class="rna-section-subtitle">Four simple steps from raw data to actionable insights.</p>
+        <p class="rna-section-subtitle">Three streamlined steps from raw data to actionable biological insights.</p>
     </div>
 
-    <div class="rna-grid-4 rna-mb-3">
+    <div class="rna-grid-3 rna-mb-3" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
+
         <div class="rna-card rna-feature-card">
             <i class="step-badge">1</i>
-            <h3>Upload</h3>
-            <p>Drag &amp; drop <code>.fq.gz</code> / <code>.fastq.gz</code> reads, select a reference genome, and map
-                each sample to biological conditions, batches, and timepoints.</p>
+            <h3>Upload &amp; Configure</h3>
+            <p>Bring your raw FASTQs, pre-aligned reads, or count matrices. Our high-speed chunked uploader securely
+                transfers massive datasets directly to our computational fleet. Select a reference genome and map your
+                metadata.</p>
         </div>
+
         <div class="rna-card rna-feature-card">
             <i class="step-badge">2</i>
-            <h3>Process</h3>
-            <p>FastQC quality check, Trimmomatic adapter trimming, HISAT2 alignment, featureCounts quantification, batch
-                correction, and DESeq2 differential expression.</p>
+            <h3>Automated Processing</h3>
+            <p>Our Master Router dynamically executes the correct biological track (e.g., standard RNA-seq, small RNA,
+                or epigenomics). The pipeline handles alignment, batch correction (ComBat-seq), and statistical
+                normalization (DESeq2) automatically.</p>
         </div>
+
         <div class="rna-card rna-feature-card">
             <i class="step-badge">3</i>
-            <h3>Explore</h3>
-            <p>Interactive PCA, UMAP, Volcano &amp; MA plots, DEG heatmaps. Download CRAM files, raw &amp; normalized
-                count matrices, DEG tables, and MultiQC reports.</p>
+            <h3>The CoreHub</h3>
+            <p>Enter your isolated, secure workspace. Instantly explore interactive PCA and Volcano plots, download
+                standardized matrices, and seamlessly trigger our 12 advanced analytical modules or single-cell
+                deconvolutions right from the dashboard.</p>
         </div>
-        <div class="rna-card rna-feature-card">
-            <i class="step-badge">4</i>
-            <h3>Advance</h3>
-            <p>Deconvolve bulk RNA into pseudo-single-cell profiles, then unlock trajectory inference, spatial tissue
-                mapping, and Moran&rsquo;s I autocorrelation.</p>
-        </div>
+
     </div>
 </section>
 

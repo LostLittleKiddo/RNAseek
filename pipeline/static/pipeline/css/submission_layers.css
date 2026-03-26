@@ -1,0 +1,2032 @@
+/* ═══════════════════════════════════════════════════════════════════
+   RNAseek – Submission Wizard Styles (v2)
+   5-Step Split-Screen Wizard for Core Pipeline Setup
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Viewport-fitting Wizard Layout ── */
+.wizard-page {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 52px);
+    /* viewport minus navbar */
+    overflow: hidden;
+}
+
+.wizard-header {
+    flex: 0 0 auto;
+}
+
+.wizard-body {
+    flex: 1 1 0;
+    min-height: 0;
+    /* allow flex child to shrink below content */
+    overflow: hidden;
+    /* children handle their own scroll */
+    padding-bottom: 42px;
+    /* space for fixed wizard-nav bar */
+}
+
+/* Remove outer margins inside wizard steps — space is tight */
+.wizard-step>.rna-container.rna-mt-3 {
+    margin-top: .5rem;
+}
+
+.wizard-step>.rna-container.rna-mb-4 {
+    margin-bottom: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Wizard Step Progress Bar (inside nav)
+   ═══════════════════════════════════════════════════════════════════ */
+.wizard-progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: .35rem 0;
+}
+
+.wizard-step-ind {
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .2rem .5rem;
+    border-radius: 50px;
+    cursor: default;
+    transition: all .3s ease;
+    white-space: nowrap;
+}
+
+.wizard-step-ind .wstep-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    font-size: .65rem;
+    font-weight: 700;
+    background: var(--rna-grey-200);
+    color: var(--rna-grey-500);
+    transition: all .3s ease;
+}
+
+.wizard-step-ind .wstep-label {
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--rna-grey-500);
+    transition: all .3s ease;
+}
+
+.wizard-step-ind.active .wstep-num {
+    background: var(--rna-teal);
+    color: #fff;
+}
+
+.wizard-step-ind.active .wstep-label {
+    color: var(--rna-navy);
+}
+
+.wizard-step-ind.completed .wstep-num {
+    background: var(--rna-accent-green);
+    color: #fff;
+}
+
+.wizard-step-ind.completed .wstep-label {
+    color: var(--rna-accent-green);
+}
+
+.wizard-step-ind.completed {
+    cursor: pointer;
+}
+
+.wizard-step-ind.completed:hover {
+    opacity: .8;
+}
+
+.wizard-step-ind.skipped .wstep-num {
+    background: var(--rna-grey-300);
+    color: var(--rna-grey-500);
+    text-decoration: line-through;
+}
+
+.wizard-step-ind.skipped .wstep-label {
+    color: var(--rna-grey-400);
+    text-decoration: line-through;
+}
+
+.wizard-step-line {
+    flex: 0 0 20px;
+    height: 2px;
+    background: var(--rna-grey-300);
+    transition: background .3s ease;
+}
+
+.wizard-step-line.completed {
+    background: var(--rna-accent-green);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Wizard Step Containers
+   ═══════════════════════════════════════════════════════════════════ */
+.wizard-step {
+    display: none;
+    animation: wizardFadeIn .35s ease;
+    height: 100%;
+}
+
+.wizard-step.active {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.wizard-step>.rna-container {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+@keyframes wizardFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Split-Screen Layout (1/3 + 2/3)
+   ═══════════════════════════════════════════════════════════════════ */
+.wizard-split {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 1.5rem;
+    flex: 1 1 0;
+    min-height: 0;
+    align-items: stretch;
+}
+
+.wizard-split-left {
+    padding-right: .5rem;
+    overflow-y: auto;
+    padding-bottom: 48px;
+    zoom: 0.8;
+}
+
+.wizard-split-right {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow-y: auto;
+    padding-bottom: 48px;
+}
+
+/* ── Step Placeholder Graphic Panels ── */
+.step-graphic {
+    width: 100%;
+    height: 100%;
+    min-height: 320px;
+    border-radius: var(--rna-radius-lg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    text-align: center;
+    padding: 2.5rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.step-graphic-1 {
+    background: linear-gradient(135deg, rgba(2, 66, 110, .06) 0%, rgba(5, 154, 152, .08) 50%, rgba(106, 191, 176, .06) 100%);
+    border: 1px solid rgba(5, 154, 152, .15);
+}
+
+.step-graphic-2 {
+    background: linear-gradient(145deg, rgba(20, 100, 142, .07) 0%, rgba(5, 154, 152, .06) 60%, rgba(106, 191, 176, .04) 100%);
+    border: 1px solid rgba(20, 100, 142, .15);
+}
+
+.step-graphic-3 {
+    background: linear-gradient(160deg, rgba(2, 66, 110, .08) 0%, rgba(36, 129, 147, .06) 50%, rgba(5, 154, 152, .04) 100%);
+    border: 1px solid rgba(2, 66, 110, .12);
+}
+
+.step-graphic-4 {
+    background: linear-gradient(150deg, rgba(5, 154, 152, .07) 0%, rgba(2, 66, 110, .06) 50%, rgba(106, 191, 176, .05) 100%);
+    border: 1px solid rgba(2, 66, 110, .12);
+}
+
+.step-graphic-5 {
+    background: linear-gradient(140deg, rgba(5, 154, 152, .06) 0%, rgba(106, 191, 176, .08) 50%, rgba(2, 66, 110, .04) 100%);
+    border: 1px solid rgba(5, 154, 152, .15);
+}
+
+.step-graphic-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.2rem;
+    background: var(--rna-brand-gradient);
+    color: #fff;
+    box-shadow: 0 8px 25px rgba(2, 66, 110, .2);
+}
+
+.step-graphic-title {
+    font-family: var(--rna-font-heading);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--rna-navy);
+    margin: 0;
+}
+
+.step-graphic-desc {
+    font-size: .82rem;
+    color: var(--rna-grey-500);
+    max-width: 340px;
+    line-height: 1.55;
+    margin: 0;
+}
+
+.step-graphic-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+    justify-content: center;
+    margin-top: .5rem;
+}
+
+.step-graphic-features .sgf-chip {
+    padding: .25rem .65rem;
+    background: rgba(255, 255, 255, .7);
+    border: 1px solid rgba(5, 154, 152, .2);
+    border-radius: 50px;
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--rna-navy);
+}
+
+/* Decorative floating dots */
+.step-graphic::before,
+.step-graphic::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    opacity: .12;
+}
+
+.step-graphic::before {
+    width: 180px;
+    height: 180px;
+    background: var(--rna-teal);
+    top: -50px;
+    right: -40px;
+}
+
+.step-graphic::after {
+    width: 120px;
+    height: 120px;
+    background: var(--rna-navy);
+    bottom: -30px;
+    left: -20px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Wizard Navigation Bar (fixed at bottom – thinner)
+   ═══════════════════════════════════════════════════════════════════ */
+.wizard-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1020;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .35rem 1.5rem;
+    background: #fff;
+    border-top: 1px solid var(--rna-grey-200);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, .06);
+}
+
+/* Compact nav buttons — match btn-rna-sm sizing */
+.wizard-nav .btn-rna {
+    height: 34px;
+    padding: 0 .9rem;
+    min-width: 100px;
+    font-size: .8rem;
+}
+
+/* Progress bar inside nav */
+.wizard-progress-nav {
+    flex: 1;
+    max-width: 600px;
+    margin: 0 1rem;
+    padding: 0;
+}
+
+.wizard-nav-info {
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--rna-grey-600);
+}
+
+/* Submit button in nav */
+.btn-submit-nav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .4rem;
+    height: 34px;
+    padding: 0 .9rem;
+    font-family: var(--rna-font-heading);
+    font-size: .8rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--rna-teal);
+    border: none;
+    border-radius: var(--rna-radius-md);
+    cursor: pointer;
+    transition: all .3s ease;
+    box-shadow: 0 0 15px rgba(5, 154, 152, .3), 0 2px 8px rgba(5, 154, 152, .2);
+    position: relative;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.btn-submit-nav::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, var(--rna-teal), var(--rna-mint), var(--rna-teal));
+    background-size: 200% 200%;
+    z-index: -1;
+    animation: glowPulse 3s ease-in-out infinite;
+}
+
+.btn-submit-nav:hover {
+    box-shadow: 0 0 25px rgba(5, 154, 152, .45), 0 4px 14px rgba(5, 154, 152, .3);
+    transform: translateY(-1px);
+}
+
+.btn-submit-nav:disabled {
+    opacity: .4;
+    pointer-events: none;
+    box-shadow: none;
+    transform: none;
+}
+
+.btn-submit-nav:disabled::before {
+    animation: none;
+}
+
+main {
+    padding-bottom: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Toast Notification System
+   ═══════════════════════════════════════════════════════════════════ */
+.toast-container {
+    position: fixed;
+    top: 70px;
+    right: 1.5rem;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    max-width: 400px;
+    pointer-events: none;
+}
+
+.rna-toast {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+    padding: .8rem 1rem;
+    background: #fff;
+    border-radius: var(--rna-radius-md);
+    box-shadow: var(--rna-shadow-lg);
+    border-left: 4px solid var(--rna-accent-red);
+    animation: toastSlideIn .35s ease;
+    pointer-events: auto;
+    max-width: 100%;
+}
+
+.rna-toast.toast-success {
+    border-left-color: var(--rna-accent-green);
+}
+
+.rna-toast.toast-warning {
+    border-left-color: var(--rna-accent-amber);
+}
+
+.rna-toast.toast-info {
+    border-left-color: var(--rna-teal);
+}
+
+.rna-toast .toast-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    margin-top: .1rem;
+}
+
+.rna-toast .toast-icon.toast-error-icon {
+    color: var(--rna-accent-red);
+}
+
+.rna-toast .toast-icon.toast-success-icon {
+    color: var(--rna-accent-green);
+}
+
+.rna-toast .toast-icon.toast-warning-icon {
+    color: var(--rna-accent-amber);
+}
+
+.rna-toast .toast-icon.toast-info-icon {
+    color: var(--rna-teal);
+}
+
+.rna-toast .toast-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.rna-toast .toast-title {
+    font-size: .8rem;
+    font-weight: 700;
+    color: var(--rna-grey-900);
+    margin: 0 0 .15rem;
+}
+
+.rna-toast .toast-message {
+    font-size: .76rem;
+    color: var(--rna-grey-600);
+    margin: 0;
+    line-height: 1.45;
+}
+
+.rna-toast .toast-close {
+    background: none;
+    border: none;
+    font-size: 1rem;
+    color: var(--rna-grey-400);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.rna-toast .toast-close:hover {
+    color: var(--rna-grey-700);
+}
+
+.rna-toast.toast-exit {
+    animation: toastSlideOut .3s ease forwards;
+}
+
+@keyframes toastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes toastSlideOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateX(100px);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Submission Name Input (Step 1)
+   ═══════════════════════════════════════════════════════════════════ */
+.submission-name-field {
+    margin-bottom: 1.25rem;
+}
+
+.submission-name-field .rna-input {
+    font-size: .88rem;
+    padding: .6rem .85rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Radio Cards (Entry Point + Assay Type)
+   ═══════════════════════════════════════════════════════════════════ */
+.radio-card-group {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+}
+
+.radio-card {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    padding: .5rem .7rem;
+    background: var(--rna-grey-50);
+    border: 2px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+    cursor: pointer;
+    transition: all .2s ease;
+    position: relative;
+}
+
+.radio-card:hover {
+    border-color: var(--rna-teal-light);
+    background: rgba(5, 154, 152, .03);
+}
+
+.radio-card.selected {
+    border-color: var(--rna-teal);
+    background: rgba(5, 154, 152, .06);
+    box-shadow: 0 0 0 3px rgba(5, 154, 152, .12);
+}
+
+.radio-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.radio-card:focus-visible {
+    outline: 2px solid var(--rna-teal);
+    outline-offset: 2px;
+}
+
+.rc-icon {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    background: rgba(5, 154, 152, .1);
+    color: var(--rna-teal);
+    flex-shrink: 0;
+}
+
+.rc-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.rc-title {
+    font-weight: 600;
+    font-size: .82rem;
+    color: var(--rna-navy);
+    margin-bottom: .1rem;
+}
+
+.rc-desc {
+    font-size: .72rem;
+    color: var(--rna-grey-600);
+    line-height: 1.4;
+}
+
+.rc-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .2rem;
+    margin-top: .3rem;
+}
+
+.rc-tag {
+    padding: .1rem .4rem;
+    background: rgba(2, 66, 110, .08);
+    color: var(--rna-navy);
+    border-radius: 4px;
+    font-size: .62rem;
+    font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Library Type Cards (Step 2)
+   ═══════════════════════════════════════════════════════════════════ */
+.library-type-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .5rem;
+}
+
+.library-type-card {
+    display: block;
+    padding: .6rem .85rem;
+    background: var(--rna-grey-50);
+    border: 2px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.library-type-card:hover {
+    border-color: var(--rna-teal-light);
+}
+
+.library-type-card.selected {
+    border-color: var(--rna-teal);
+    background: rgba(5, 154, 152, .06);
+}
+
+.library-type-card:focus-visible {
+    outline: 2px solid var(--rna-teal);
+    outline-offset: 2px;
+}
+
+.lt-title {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    font-weight: 600;
+    font-size: .8rem;
+    color: var(--rna-navy);
+    margin-bottom: .1rem;
+}
+
+.lt-desc {
+    font-size: .7rem;
+    color: var(--rna-grey-600);
+    padding-left: 1.2rem;
+}
+
+.naming-tip {
+    margin-top: .6rem;
+    padding: .55rem .85rem;
+    background: rgba(5, 154, 152, .05);
+    border: 1px solid rgba(5, 154, 152, .2);
+    border-radius: var(--rna-radius-sm);
+    font-size: .75rem;
+    color: var(--rna-grey-700);
+    line-height: 1.5;
+    display: none;
+}
+
+.naming-tip.visible {
+    display: block;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Modern Tooltips
+   ═══════════════════════════════════════════════════════════════════ */
+.input-tip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-left: .3rem;
+    cursor: help;
+    vertical-align: middle;
+}
+
+.input-tip i {
+    font-size: .78rem;
+    color: var(--rna-grey-400);
+    transition: color .2s ease;
+}
+
+.input-tip:hover i {
+    color: var(--rna-teal);
+}
+
+.input-tip .tip-text,
+.tip-text-clone {
+    position: fixed;
+    width: 270px;
+    padding: .65rem .85rem;
+    background: var(--rna-navy);
+    color: rgba(255, 255, 255, .92);
+    font-size: .72rem;
+    font-weight: 400;
+    line-height: 1.55;
+    border-radius: var(--rna-radius-md);
+    box-shadow: 0 8px 30px rgba(2, 66, 110, .35);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity .25s cubic-bezier(.4, 0, .2, 1), visibility .25s;
+    z-index: 100000;
+    white-space: normal;
+}
+
+.input-tip .tip-text::after,
+.tip-text-clone::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 100%;
+    transform: translateY(-50%);
+    border: 6px solid transparent;
+    border-right-color: var(--rna-navy);
+}
+
+.input-tip:hover .tip-text {
+    /* Visibility handled by JS clone on <body> to escape
+       overflow/zoom containers — keep original hidden */
+    opacity: 0;
+    visibility: hidden;
+}
+
+/* Flipped tooltip (renders to the left when near viewport edge) */
+.tip-text.tip-flip-left::after,
+.tip-text-clone.tip-flip-left::after {
+    right: auto;
+    left: 100%;
+    border-right-color: transparent;
+    border-left-color: var(--rna-navy);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Card Header Tags
+   ═══════════════════════════════════════════════════════════════════ */
+.header-tag {
+    float: right;
+    padding: .15rem .55rem;
+    background: rgba(255, 255, 255, .2);
+    border-radius: 50px;
+    font-size: .65rem;
+    font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Drop Zone Uniform Sizing
+   ═══════════════════════════════════════════════════════════════════ */
+.rna-drop-zone {
+    min-height: 175px;
+    max-height: 210px;
+    position: relative;
+}
+
+.rna-drop-zone:focus-visible {
+    outline: 2px solid var(--rna-teal);
+    outline-offset: 2px;
+}
+
+.rna-drop-zone-sm {
+    min-height: 90px;
+    max-height: 130px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Parse Spinner Overlay
+   ═══════════════════════════════════════════════════════════════════ */
+.parse-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    background: rgba(255, 255, 255, .85);
+    border-radius: var(--rna-radius-md);
+    z-index: 5;
+}
+
+.parse-spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--rna-grey-200);
+    border-top-color: var(--rna-teal);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.parse-overlay-text {
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--rna-grey-500);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   File Pills
+   ═══════════════════════════════════════════════════════════════════ */
+.file-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    padding: .25rem .55rem;
+    margin: .1rem;
+    background: rgba(5, 154, 152, .08);
+    border: 1px solid rgba(5, 154, 152, .2);
+    border-radius: 50px;
+    font-size: .7rem;
+    font-weight: 500;
+    color: var(--rna-navy);
+    white-space: nowrap;
+}
+
+.file-pill .remove-file {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    font-size: .62rem;
+    cursor: pointer;
+    color: var(--rna-grey-500);
+    transition: all .2s ease;
+}
+
+.file-pill .remove-file:hover {
+    background: var(--rna-accent-red);
+    color: #fff;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Validation Messages
+   ═══════════════════════════════════════════════════════════════════ */
+.validation-msg {
+    padding: .5rem .8rem;
+    border-radius: var(--rna-radius-sm);
+    font-size: .76rem;
+    line-height: 1.5;
+}
+
+.validation-msg.error {
+    background: rgba(239, 68, 68, .08);
+    border: 1px solid rgba(239, 68, 68, .25);
+    color: #b91c1c;
+}
+
+.validation-msg.success {
+    background: rgba(22, 163, 74, .08);
+    border: 1px solid rgba(22, 163, 74, .25);
+    color: #15803d;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Custom Genome Section
+   ═══════════════════════════════════════════════════════════════════ */
+.custom-genome-section {
+    display: none;
+    margin-top: .85rem;
+    padding: .85rem;
+    background: var(--rna-grey-50);
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+}
+
+.custom-genome-section.visible {
+    display: block;
+}
+
+.custom-genome-heading {
+    font-size: .84rem;
+    font-weight: 600;
+    color: var(--rna-navy);
+    margin: 0 0 .65rem;
+}
+
+.custom-genome-field {
+    margin-bottom: .75rem;
+}
+
+.custom-genome-field:last-child {
+    margin-bottom: 0;
+}
+
+.genome-file-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    position: relative;
+}
+
+.genome-file-input-wrap input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.genome-file-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    padding: .4rem .75rem;
+    background: var(--rna-teal);
+    color: #fff;
+    border-radius: var(--rna-radius-sm);
+    font-size: .76rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .2s ease;
+}
+
+.genome-file-btn:hover {
+    background: var(--rna-blue-teal);
+}
+
+.genome-file-name {
+    font-size: .76rem;
+    color: var(--rna-grey-500);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Metadata Toggle — now uses .library-type-group / .library-type-card
+   (same pattern as Step 2 library type selection)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   CSV Format Hint & Example Table
+   ═══════════════════════════════════════════════════════════════════ */
+.csv-format-hint {
+    padding: .5rem .75rem;
+    background: rgba(5, 154, 152, .04);
+    border: 1px solid rgba(5, 154, 152, .15);
+    border-radius: var(--rna-radius-sm);
+    font-size: .72rem;
+    color: var(--rna-grey-700);
+    line-height: 1.5;
+    margin-bottom: .75rem;
+}
+
+.csv-example {
+    margin-top: .75rem;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+    overflow: hidden;
+}
+
+.csv-example-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .4rem .75rem;
+    background: var(--rna-grey-100);
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--rna-grey-600);
+}
+
+.csv-example table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .72rem;
+}
+
+.csv-example th {
+    padding: .35rem .55rem;
+    text-align: left;
+    background: var(--rna-navy);
+    color: #fff;
+    font-weight: 600;
+    font-size: .68rem;
+}
+
+.csv-example td {
+    padding: .35rem .55rem;
+    border-bottom: 1px solid var(--rna-grey-100);
+    color: var(--rna-grey-700);
+}
+
+.csv-example .col-optional {
+    color: var(--rna-grey-400);
+    font-style: italic;
+}
+
+.manual-teaser {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .75rem;
+    background: rgba(5, 154, 152, .04);
+    border: 1px dashed rgba(5, 154, 152, .3);
+    border-radius: var(--rna-radius-md);
+    font-size: .78rem;
+    color: var(--rna-grey-600);
+}
+
+.manual-teaser i {
+    font-size: 1.15rem;
+    color: var(--rna-teal);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CSV Viewer Section
+   ═══════════════════════════════════════════════════════════════════ */
+.csv-viewer-info {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .65rem;
+    margin-bottom: .65rem;
+    font-size: .76rem;
+    color: var(--rna-grey-600);
+}
+
+.csv-viewer-info .matched-badge {
+    padding: .2rem .5rem;
+    background: rgba(22, 163, 74, .1);
+    border-radius: 50px;
+    color: #15803d;
+    font-weight: 600;
+    font-size: .7rem;
+}
+
+.csv-viewer-info .total-badge {
+    padding: .2rem .5rem;
+    background: var(--rna-grey-100);
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: .7rem;
+}
+
+.csv-viewer-table-wrap {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-sm);
+}
+
+.csv-viewer-table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .76rem;
+}
+
+.csv-viewer-table-wrap th {
+    position: sticky;
+    top: 0;
+    padding: .45rem .6rem;
+    background: var(--rna-navy);
+    color: #fff;
+    font-weight: 600;
+    font-size: .7rem;
+    text-align: left;
+    z-index: 5;
+}
+
+.csv-viewer-table-wrap td {
+    padding: .4rem .6rem;
+    border-bottom: 1px solid var(--rna-grey-100);
+    color: var(--rna-grey-700);
+    white-space: nowrap;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.csv-viewer-table-wrap tr:hover td {
+    background: rgba(5, 154, 152, .03);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Manual Metadata Builder
+   ═══════════════════════════════════════════════════════════════════ */
+.metadata-builder-top {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.group-input-row {
+    display: flex;
+    gap: .45rem;
+    align-items: center;
+}
+
+.group-input-row .rna-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.group-input-row .btn-rna {
+    flex-shrink: 0;
+}
+
+.group-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+}
+
+.group-chips-scroll {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-height: none;
+    padding-bottom: .25rem;
+    margin-bottom: .5rem;
+}
+
+.group-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .2rem;
+    padding: .2rem .5rem;
+    background: rgba(2, 66, 110, .08);
+    border: 1px solid rgba(2, 66, 110, .15);
+    border-radius: 50px;
+    font-size: .7rem;
+    font-weight: 500;
+    color: var(--rna-navy);
+}
+
+.group-chip.protected {
+    background: rgba(5, 154, 152, .1);
+    border-color: rgba(5, 154, 152, .25);
+    color: var(--rna-teal);
+}
+
+.group-chip .remove-group {
+    cursor: pointer;
+    font-size: .68rem;
+    color: var(--rna-grey-500);
+    transition: color .2s ease;
+}
+
+.group-chip .remove-group:hover {
+    color: var(--rna-accent-red);
+}
+
+.group-chip .chip-col-label {
+    font-size: .62rem;
+    color: var(--rna-grey-700);
+    font-weight: 600;
+}
+
+.condition-chip {
+    background: rgba(245, 158, 11, .08);
+    border-color: rgba(245, 158, 11, .2);
+    color: #92400e;
+}
+
+.metadata-table-wrap {
+    overflow-x: auto;
+    flex: 1 1 0;
+    overflow-y: auto;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+}
+
+.metadata-table-wrap .rna-table {
+    min-width: 100%;
+}
+
+.metadata-table-wrap .rna-table th {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.metadata-table-wrap .meta-cell-input {
+    width: 100%;
+    min-width: 90px;
+    padding: .3rem .5rem;
+    font-size: .76rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Step 4: Full-Width Metadata + Roles/Contrast
+   ═══════════════════════════════════════════════════════════════════ */
+.step4-meta-display {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+    height: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Column Mapping & Contrast Builder
+   ═══════════════════════════════════════════════════════════════════ */
+.roles-contrast-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.column-mapping-grid {
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+}
+
+.covariate-check-label {
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .2rem 0;
+    font-size: .76rem;
+    color: var(--rna-grey-700);
+    cursor: pointer;
+}
+
+.covariate-check-label input[type="checkbox"] {
+    accent-color: var(--rna-teal);
+}
+
+.contrast-hint {
+    padding: .5rem .75rem;
+    background: rgba(5, 154, 152, .04);
+    border: 1px solid rgba(5, 154, 152, .15);
+    border-radius: var(--rna-radius-sm);
+    font-size: .76rem;
+    color: var(--rna-grey-600);
+}
+
+.contrast-row {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    padding: .65rem 0;
+    border-bottom: 1px solid var(--rna-grey-100);
+}
+
+.contrast-row:last-child {
+    border-bottom: none;
+}
+
+.contrast-label {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--rna-grey-600);
+    white-space: nowrap;
+}
+
+.contrast-vs {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: .72rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--rna-navy);
+    flex-shrink: 0;
+}
+
+.contrast-select {
+    flex: 1;
+    min-width: 100px;
+    padding: .4rem .55rem;
+    font-size: .78rem;
+}
+
+.contrast-remove {
+    min-width: auto !important;
+    width: 28px;
+    height: 28px;
+    padding: 0 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Threshold Fields (Step 5)
+   ═══════════════════════════════════════════════════════════════════ */
+.threshold-field {
+    margin-bottom: .85rem;
+}
+
+.threshold-field:last-of-type {
+    margin-bottom: 0;
+}
+
+.threshold-field .rna-input {
+    max-width: 100%;
+}
+
+.threshold-summary {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .65rem .85rem;
+    background: rgba(5, 154, 152, .05);
+    border: 1px solid rgba(5, 154, 152, .2);
+    border-radius: var(--rna-radius-md);
+    font-size: .78rem;
+    color: var(--rna-grey-700);
+}
+
+.threshold-icon {
+    color: var(--rna-teal);
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Glowing Submit Button (Teal CTA)
+   ═══════════════════════════════════════════════════════════════════ */
+.btn-submit-glow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    width: 100%;
+    height: 48px;
+    padding: 0 1.5rem;
+    font-family: var(--rna-font-heading);
+    font-size: .95rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--rna-teal);
+    border: none;
+    border-radius: var(--rna-radius-md);
+    cursor: pointer;
+    transition: all .3s ease;
+    box-shadow: 0 0 20px rgba(5, 154, 152, .35), 0 4px 14px rgba(5, 154, 152, .25);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-submit-glow::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, var(--rna-teal), var(--rna-mint), var(--rna-teal));
+    background-size: 200% 200%;
+    z-index: -1;
+    animation: glowPulse 3s ease-in-out infinite;
+}
+
+.btn-submit-glow:hover {
+    box-shadow: 0 0 30px rgba(5, 154, 152, .5), 0 6px 20px rgba(5, 154, 152, .35);
+    transform: translateY(-1px);
+}
+
+.btn-submit-glow:disabled {
+    opacity: .4;
+    pointer-events: none;
+    box-shadow: none;
+    transform: none;
+}
+
+.btn-submit-glow:disabled::before {
+    animation: none;
+}
+
+@keyframes glowPulse {
+
+    0%,
+    100% {
+        background-position: 0% 50%;
+        opacity: .6;
+    }
+
+    50% {
+        background-position: 100% 50%;
+        opacity: 1;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Validation Summary (Step 5)
+   ═══════════════════════════════════════════════════════════════════ */
+.validation-summary {
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+    margin-bottom: 1rem;
+}
+
+.val-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .74rem;
+    font-weight: 600;
+    color: var(--rna-grey-400);
+    white-space: nowrap;
+}
+
+.val-item.valid {
+    color: var(--rna-accent-green);
+}
+
+.val-item.valid i::before {
+    content: "\F26A";
+}
+
+.val-item.invalid {
+    color: var(--rna-accent-red);
+}
+
+.val-item.invalid i::before {
+    content: "\F622";
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Upload Status Modal
+   ═══════════════════════════════════════════════════════════════════ */
+.upload-modal-body {
+    padding: 1.25rem;
+}
+
+.upload-modal-step {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .55rem 0;
+    border-bottom: 1px solid var(--rna-grey-100);
+}
+
+.upload-modal-step:last-child {
+    border-bottom: none;
+}
+
+.upload-modal-step .ums-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: .72rem;
+    flex-shrink: 0;
+}
+
+.ums-icon.pending {
+    background: var(--rna-grey-200);
+    color: var(--rna-grey-500);
+}
+
+.ums-icon.active {
+    background: rgba(5, 154, 152, .15);
+    color: var(--rna-teal);
+    animation: rna-spin .8s linear infinite;
+}
+
+.ums-icon.done {
+    background: rgba(22, 163, 74, .12);
+    color: var(--rna-accent-green);
+}
+
+.ums-icon.error {
+    background: rgba(239, 68, 68, .12);
+    color: var(--rna-accent-red);
+}
+
+.upload-modal-step .ums-label {
+    flex: 1;
+    font-size: .8rem;
+    font-weight: 500;
+    color: var(--rna-grey-700);
+}
+
+.upload-modal-step .ums-detail {
+    font-size: .7rem;
+    color: var(--rna-grey-500);
+}
+
+.upload-modal-progress {
+    margin-top: .5rem;
+}
+
+.upload-modal-queued {
+    text-align: center;
+    padding: 1.5rem 1rem;
+}
+
+.upload-modal-queued .umq-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: rgba(22, 163, 74, .12);
+    color: var(--rna-accent-green);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    margin-bottom: .75rem;
+}
+
+.upload-modal-queued h4 {
+    font-family: var(--rna-font-heading);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--rna-navy);
+    margin: 0 0 .25rem;
+}
+
+.upload-modal-queued p {
+    font-size: .8rem;
+    color: var(--rna-grey-500);
+    margin: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   REQUIRED Asterisk
+   ═══════════════════════════════════════════════════════════════════ */
+.required {
+    color: var(--rna-accent-red);
+    font-family: var(--rna-font-body);
+    font-weight: 700;
+    font-size: .95rem;
+    line-height: 1;
+    margin-left: .15rem;
+}
+
+/* In flex section titles, collapse the gap so spacing comes only from margin */
+.wiz-section-title>.required {
+    margin-left: -.2rem;
+}
+
+/* Screen-reader only (accessible label for required fields) */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Spinner
+   ═══════════════════════════════════════════════════════════════════ */
+@keyframes rna-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.rna-processing {
+    animation: rna-spin .8s linear infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Section Spacing in Left Panel
+   ═══════════════════════════════════════════════════════════════════ */
+.wiz-section {
+    margin-bottom: 0.85rem;
+}
+
+.wiz-section:last-child {
+    margin-bottom: 0;
+}
+
+.wiz-section-title {
+    font-family: var(--rna-font-heading);
+    font-size: .88rem;
+    font-weight: 700;
+    color: var(--rna-navy);
+    margin: 0 0 .45rem;
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+}
+
+.wiz-section-title i {
+    font-size: .82rem;
+    color: var(--rna-teal);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Responsive
+   ═══════════════════════════════════════════════════════════════════ */
+@media (max-width: 960px) {
+    .wizard-split {
+        grid-template-columns: 1fr;
+    }
+
+    /* Hide only decorative graphic panels; keep interactive panels visible */
+    .wizard-split-right .step-graphic {
+        display: none;
+    }
+
+    /* Collapse the right panel when it only contains a graphic */
+    .wizard-split-right:has(> .step-graphic:only-child) {
+        display: none;
+    }
+
+    .wizard-split-left {
+        position: static;
+        max-height: none;
+        padding-right: 0;
+        zoom: 1;
+    }
+
+    .wizard-split-right {
+        overflow-y: auto;
+        padding-bottom: 0;
+    }
+
+    .radio-card-group {
+        gap: .4rem;
+    }
+
+    .library-type-group {
+        grid-template-columns: 1fr;
+    }
+
+    .metadata-builder-top {
+        flex-direction: column;
+    }
+
+    .roles-contrast-row {
+        grid-template-columns: 1fr;
+    }
+
+    .column-mapping-grid {
+        flex-direction: column;
+    }
+
+    .wizard-step-ind .wstep-label {
+        display: none;
+    }
+
+    .wizard-progress {
+        gap: 0;
+    }
+}
+
+@media (max-width: 575px) {
+    .wizard-nav {
+        padding: .6rem 1rem;
+    }
+
+    .toast-container {
+        right: .5rem;
+        left: .5rem;
+        max-width: none;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Navbar Step Bar (overrides from base)
+   ═══════════════════════════════════════════════════════════════════ */
+.rna-navbar-steps {
+    display: flex;
+    align-items: center;
+}
+
+.rna-step-bar {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+}
+
+.rna-nav-step {
+    font-size: .72rem;
+    font-weight: 600;
+    padding: .25rem .55rem;
+    border-radius: 50px;
+    white-space: nowrap;
+}
+
+.rna-nav-step.step-active {
+    background: rgba(5, 154, 152, .12);
+    color: var(--rna-navy);
+}
+
+.rna-nav-step.step-inactive {
+    color: var(--rna-grey-400);
+}
+
+.rna-step-arrow-icon {
+    font-size: .55rem;
+    color: var(--rna-grey-300);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   File Management Panel (Step 2 Right Panel)
+   ═══════════════════════════════════════════════════════════════════ */
+.file-mgmt-panel {
+    width: 100%;
+    align-self: stretch;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.file-mgmt-panel>.rna-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.file-mgmt-panel>.rna-card>.rna-card-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.file-mgmt-list {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+}
+
+.file-mgmt-row {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .65rem .85rem;
+    background: var(--rna-grey-50);
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+    transition: all .2s ease;
+}
+
+.file-mgmt-row:hover {
+    border-color: var(--rna-teal-light);
+    background: rgba(5, 154, 152, .03);
+}
+
+.file-mgmt-icon {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 1.05rem;
+    background: rgba(5, 154, 152, .1);
+    color: var(--rna-teal);
+    flex-shrink: 0;
+}
+
+.file-mgmt-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.file-mgmt-name {
+    font-weight: 600;
+    font-size: .82rem;
+    color: var(--rna-navy);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-mgmt-size {
+    font-size: .7rem;
+    color: var(--rna-grey-500);
+}
+
+.file-mgmt-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--rna-grey-400);
+    cursor: pointer;
+    font-size: .85rem;
+    transition: all .2s ease;
+    flex-shrink: 0;
+}
+
+.file-mgmt-remove:hover {
+    background: rgba(239, 68, 68, .1);
+    color: var(--rna-accent-red);
+}
+
+.file-mgmt-empty {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--rna-grey-400);
+    font-size: .82rem;
+}
+
+.file-mgmt-empty i {
+    font-size: 2rem;
+    display: block;
+    margin-bottom: .5rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   File Management – Upload Status Indicators
+   ═══════════════════════════════════════════════════════════════════ */
+.file-mgmt-row.file-mgmt-removing {
+    opacity: .45;
+    pointer-events: none;
+    transition: opacity .3s ease;
+}
+
+.file-mgmt-row.file-mgmt-uploading {
+    border-color: var(--rna-teal-light);
+}
+
+.file-mgmt-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .7rem;
+    font-weight: 600;
+    flex-shrink: 0;
+    min-width: 28px;
+    height: 22px;
+    border-radius: 50px;
+    padding: 0 .45rem;
+}
+
+.file-mgmt-status-pending {
+    color: var(--rna-grey-400);
+}
+
+.file-mgmt-status-uploading {
+    background: rgba(5, 154, 152, .1);
+    color: var(--rna-teal);
+}
+
+.file-mgmt-status-done {
+    color: var(--rna-accent-green);
+    font-size: .9rem;
+}
+
+.file-mgmt-status-failed {
+    color: var(--rna-accent-red);
+    font-size: .9rem;
+}
+
+.file-mgmt-status-removing i {
+    animation: rna-spin 1s linear infinite;
+}
+
+.file-mgmt-progress {
+    width: 100%;
+    height: 3px;
+    background: var(--rna-grey-200);
+    border-radius: 2px;
+    margin-top: 4px;
+    overflow: hidden;
+}
+
+.file-mgmt-progress-bar {
+    height: 100%;
+    background: var(--rna-teal);
+    border-radius: 2px;
+    transition: width .3s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Banner Info (Dev/Prod)
+   ═══════════════════════════════════════════════════════════════════ */
+.banner-info {
+    display: flex;
+    align-items: center;
+}
+
+.banner-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .25rem .7rem;
+    background: rgba(5, 154, 152, .1);
+    border: 1px solid rgba(5, 154, 152, .2);
+    border-radius: 50px;
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--rna-navy);
+    white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Step 4 CSV Drop Zone — match File Management sizing
+   ═══════════════════════════════════════════════════════════════════ */
+.csv-drop-zone-match {
+    min-height: 175px;
+    max-height: 210px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Step 4 CSV Viewer — match File Management panel
+   ═══════════════════════════════════════════════════════════════════ */
+.csv-viewer-match-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.csv-viewer-match-panel>.rna-card-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Step 4 CSV Format Example Image
+   ═══════════════════════════════════════════════════════════════════ */
+.csv-format-example {
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-sm);
+    overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Step 4 Manual Metadata Panel — match File Management sizing
+   ═══════════════════════════════════════════════════════════════════ */
+.manual-meta-match-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.manual-meta-match-panel>.rna-card-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Token 5: Right-align CSV filename container */
+#csv-file-name {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .35rem;
+}
+
+/* CSV Remove button */
+.btn-csv-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: .5rem;
+    padding: .2rem;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--rna-grey-300);
+    border-radius: var(--rna-radius-sm);
+    background: transparent;
+    color: var(--rna-grey-400);
+    cursor: pointer;
+    transition: background .2s, color .2s, border-color .2s;
+}
+
+.btn-csv-remove:hover {
+    background: rgba(239, 68, 68, .1);
+    color: var(--rna-accent-red);
+    border-color: var(--rna-accent-red);
+}
+
+.csv-trash-icon {
+    display: block;
+    flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Covariates — Horizontal Scrolling List
+   ═══════════════════════════════════════════════════════════════════ */
+.covariates-horiz-list {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: .4rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: .3rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.covariates-horiz-list::-webkit-scrollbar {
+    height: 4px;
+}
+
+.covariates-horiz-list::-webkit-scrollbar-thumb {
+    background: var(--rna-grey-300);
+    border-radius: 2px;
+}
+
+.covariates-horiz-list .covariate-check-label {
+    flex-shrink: 0;
+    white-space: nowrap;
+}

@@ -586,6 +586,10 @@ a:hover {
     display: flex;
     align-items: center;
     gap: .5rem;
+    flex: 1 1 auto;
+    /* ADDED: Allows text area to take available space */
+    min-width: 0;
+    /* ADDED: Prevents long text from pushing the button out */
 }
 
 .rna-download-item .file-info i {
@@ -614,6 +618,8 @@ a:hover {
     cursor: pointer;
     transition: all .2s ease;
     font-size: .9rem;
+    flex-shrink: 0;
+    /* ADDED: Locks the button size so it never squishes */
 }
 
 .rna-icon-btn-download {
@@ -857,21 +863,27 @@ a:hover {
 }
 
 .rna-progress-bar.animated {
-    background-size: 30px 30px;
-    background-image: linear-gradient(135deg,
+    background-size: 30px 30px, auto;
+    background-image:
+        linear-gradient(135deg,
             rgba(255, 255, 255, .15) 25%, transparent 25%,
             transparent 50%, rgba(255, 255, 255, .15) 50%,
-            rgba(255, 255, 255, .15) 75%, transparent 75%, transparent);
+            rgba(255, 255, 255, .15) 75%, transparent 75%, transparent),
+        var(--rna-brand-gradient);
+
+    /* Layer 1 (stripes) starts at 0 0, Layer 2 (gradient) starts at 0 0 */
+    background-position: 0 0, 0 0;
     animation: rna-progress-stripe 1s linear infinite;
 }
 
 @keyframes rna-progress-stripe {
     from {
-        background-position: 30px 0;
+        /* Move ONLY the top layer (stripes) by 30px. Keep bottom layer at 0 0 */
+        background-position: 30px 0, 0 0;
     }
 
     to {
-        background-position: 0 0;
+        background-position: 0 0, 0 0;
     }
 }
 
@@ -1387,4 +1399,1021 @@ a:hover {
 .rna-gateway-card:hover {
     border-color: var(--rna-teal);
     box-shadow: 0 6px 24px rgba(5, 154, 152, .15);
+}
+
+/* ── Tab Bar ── */
+.rna-tab-bar {
+    display: flex;
+    gap: .5rem;
+    border-bottom: 2px solid var(--rna-grey-200);
+    padding-bottom: 0;
+}
+
+.rna-tab {
+    padding: .65rem 1.25rem;
+    font-family: var(--rna-font-heading);
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--rna-grey-500);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: color .2s ease, border-color .2s ease;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+
+.rna-tab:hover {
+    color: var(--rna-teal);
+}
+
+.rna-tab.active {
+    color: var(--rna-teal);
+    border-bottom-color: var(--rna-teal);
+}
+
+.rna-tab-panel {
+    display: none;
+}
+
+.rna-tab-panel.active {
+    display: block;
+}
+
+/* ── Module Status Badges ── */
+.rna-module-status-badge {
+    position: absolute;
+    top: .6rem;
+    right: .6rem;
+    font-size: .65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    padding: .15rem .5rem;
+    border-radius: 999px;
+    display: none;
+}
+
+.rna-module-status-badge.status-running {
+    display: inline-block;
+    background: rgba(245, 158, 11, .15);
+    color: var(--rna-accent-amber);
+    animation: rna-pulse 2s ease-in-out infinite;
+}
+
+.rna-module-status-badge.status-done {
+    display: inline-block;
+    background: rgba(22, 163, 74, .12);
+    color: var(--rna-accent-green);
+}
+
+.rna-module-status-badge.status-failed {
+    display: inline-block;
+    background: rgba(231, 76, 60, .12);
+    color: #e74c3c;
+}
+
+.rna-module-card.rna-module-running {
+    border-color: var(--rna-accent-amber);
+}
+
+.rna-module-card.rna-module-done {
+    border-color: var(--rna-accent-green);
+}
+
+.rna-module-card.rna-module-done::before {
+    opacity: 1;
+    background: var(--rna-accent-green);
+}
+
+.rna-module-card.rna-module-failed {
+    border-color: #e74c3c;
+}
+
+.rna-module-card.rna-module-failed::before {
+    opacity: 1;
+    background: #e74c3c;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Master-Detail Layout – Modules Tab
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Split Pane Container ── */
+.md-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 1.25rem;
+    min-height: 600px;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .md-layout {
+        grid-template-columns: 1fr;
+        min-height: auto;
+    }
+}
+
+/* ── Master Pane ── */
+.md-master {
+    background: #fff;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-lg);
+    box-shadow: var(--rna-shadow-sm);
+    overflow: hidden;
+    position: sticky;
+    top: 68px;
+    max-height: calc(100vh - 90px);
+    display: flex;
+    flex-direction: column;
+}
+
+.md-master-header {
+    padding: .75rem 1rem;
+    font-family: var(--rna-font-heading);
+    font-weight: 600;
+    font-size: .82rem;
+    color: #fff;
+    background: var(--rna-card-gradient);
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    flex-shrink: 0;
+}
+
+.md-master-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: .35rem 0;
+}
+
+/* ── Category Labels ── */
+.md-category-label {
+    font-family: var(--rna-font-heading);
+    font-size: .65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--rna-grey-400);
+    padding: .65rem .85rem .25rem;
+}
+
+.md-category-label:first-child {
+    padding-top: .35rem;
+}
+
+/* ── Module List Items ── */
+.md-module-item {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .6rem .85rem;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: all .2s ease;
+    position: relative;
+}
+
+.md-module-item:hover {
+    background: rgba(5, 154, 152, .04);
+    border-left-color: var(--rna-teal-light);
+}
+
+.md-module-item.active {
+    background: rgba(5, 154, 152, .08);
+    border-left-color: var(--rna-teal);
+}
+
+.md-module-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: .9rem;
+    flex-shrink: 0;
+}
+
+.md-module-icon.cat-transcriptome {
+    background: rgba(5, 154, 152, .1);
+    color: var(--rna-teal);
+}
+
+.md-module-icon.cat-systems {
+    background: rgba(2, 66, 110, .1);
+    color: var(--rna-navy);
+}
+
+.md-module-icon.cat-clinical {
+    background: rgba(22, 163, 74, .1);
+    color: var(--rna-accent-green);
+}
+
+.md-module-icon.cat-multiomics {
+    background: rgba(245, 158, 11, .1);
+    color: var(--rna-accent-amber);
+}
+
+.md-module-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.md-module-info h4 {
+    font-family: var(--rna-font-heading);
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--rna-grey-900);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.md-module-info p {
+    font-size: .68rem;
+    color: var(--rna-grey-500);
+    margin: 0;
+}
+
+/* ── Locked Module Items (Single-Cell spokes) ── */
+.md-module-item.locked {
+    opacity: .45;
+    pointer-events: none;
+}
+
+/* ── Master Badge (aggregate status) ── */
+.md-module-badge {
+    font-size: .6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: .15rem .45rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    display: none;
+    flex-shrink: 0;
+}
+
+.md-module-badge.badge-running {
+    display: inline-block;
+    background: rgba(245, 158, 11, .15);
+    color: var(--rna-accent-amber);
+    animation: rna-pulse 2s ease-in-out infinite;
+}
+
+.md-module-badge.badge-done {
+    display: inline-block;
+    background: rgba(22, 163, 74, .12);
+    color: var(--rna-accent-green);
+}
+
+.md-module-badge.badge-failed {
+    display: inline-block;
+    background: rgba(231, 76, 60, .12);
+    color: #e74c3c;
+}
+
+/* ── Detail Pane ── */
+.md-detail {
+    background: #fff;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-lg);
+    box-shadow: var(--rna-shadow-sm);
+    min-height: 600px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+}
+
+#md-detail-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.md-detail-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 500px;
+    color: var(--rna-grey-400);
+    text-align: center;
+    padding: 2rem;
+}
+
+.md-detail-empty i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: .4;
+}
+
+.md-detail-empty h3 {
+    font-family: var(--rna-font-heading);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--rna-grey-500);
+    margin: 0 0 .5rem;
+}
+
+.md-detail-empty p {
+    font-size: .82rem;
+    max-width: 320px;
+    margin: 0;
+}
+
+/* ── Detail Header ── */
+.md-detail-header {
+    padding: 1rem 1.25rem;
+    background: var(--rna-card-gradient);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+}
+
+.md-detail-header h3 {
+    font-family: var(--rna-font-heading);
+    font-size: .95rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.md-detail-body {
+    padding: 1.25rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ── History List ── */
+.md-history-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.md-history-toolbar h4 {
+    font-family: var(--rna-font-heading);
+    font-size: .88rem;
+    font-weight: 600;
+    color: var(--rna-navy);
+    margin: 0;
+}
+
+.md-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+}
+
+.md-history-entry {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .75rem 1rem;
+    background: var(--rna-grey-50);
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.md-history-entry:hover {
+    border-color: var(--rna-teal-light);
+    box-shadow: var(--rna-shadow-sm);
+}
+
+.md-history-entry.entry-completed {
+    border-left: 3px solid var(--rna-accent-green);
+}
+
+.md-history-entry.entry-running {
+    border-left: 3px solid var(--rna-accent-amber);
+}
+
+.md-history-entry.entry-failed {
+    border-left: 3px solid var(--rna-accent-red);
+}
+
+.md-history-entry-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.md-history-entry-info .entry-label {
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--rna-grey-800);
+}
+
+.md-history-entry-info .entry-date {
+    font-size: .72rem;
+    color: var(--rna-grey-500);
+}
+
+.md-history-badge {
+    font-size: .65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: .2rem .55rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.md-history-badge.hb-completed {
+    background: rgba(22, 163, 74, .12);
+    color: var(--rna-accent-green);
+}
+
+.md-history-badge.hb-running {
+    background: rgba(245, 158, 11, .15);
+    color: var(--rna-accent-amber);
+    animation: rna-pulse 2s ease-in-out infinite;
+}
+
+.md-history-badge.hb-failed {
+    background: rgba(231, 76, 60, .12);
+    color: #e74c3c;
+}
+
+.md-history-badge.hb-pending {
+    background: rgba(158, 158, 158, .12);
+    color: var(--rna-grey-600);
+}
+
+/* ── New Run Form ── */
+.md-form-section {
+    margin-bottom: 1.25rem;
+}
+
+.md-form-section:last-child {
+    margin-bottom: 0;
+}
+
+.md-form-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: .5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rna-grey-200);
+    margin-top: auto;
+}
+
+/* ── Drag & Drop Zone ── */
+.md-dropzone {
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    background: var(--rna-grey-50);
+    border: 2px dashed var(--rna-grey-400);
+    border-radius: var(--rna-radius-md);
+    color: var(--rna-grey-600);
+    font-weight: 600;
+    font-size: .82rem;
+    cursor: pointer;
+    transition: all .25s ease;
+    position: relative;
+    text-align: center;
+    padding: 1rem;
+}
+
+.md-dropzone:hover,
+.md-dropzone.drag-over {
+    border-color: var(--rna-teal);
+    background: rgba(5, 154, 152, .04);
+    color: var(--rna-teal);
+}
+
+.md-dropzone.has-file {
+    border-style: solid;
+    border-color: var(--rna-accent-green);
+    background: rgba(22, 163, 74, .04);
+}
+
+.md-dropzone i {
+    font-size: 1.8rem;
+    opacity: .5;
+}
+
+.md-dropzone .dz-hint {
+    font-size: .72rem;
+    font-weight: 400;
+    color: var(--rna-grey-500);
+}
+
+.md-dropzone .dz-filename {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--rna-accent-green);
+    margin-top: .25rem;
+}
+
+.md-dropzone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+/* ── Upload Progress Bar ── */
+.md-upload-progress {
+    margin-top: .5rem;
+    display: none;
+}
+
+.md-upload-progress.active {
+    display: block;
+}
+
+.md-upload-bar {
+    width: 100%;
+    height: 6px;
+    background: var(--rna-grey-200);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.md-upload-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--rna-brand-gradient);
+    border-radius: 3px;
+    transition: width .25s ease;
+}
+
+.md-upload-label {
+    font-size: .7rem;
+    color: var(--rna-grey-500);
+    margin-top: .25rem;
+    text-align: right;
+}
+
+/* ── Data Input Tabs (Upload / Example / Manual) ── */
+.md-data-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--rna-grey-200);
+    margin-bottom: 1rem;
+}
+
+.md-data-tab {
+    padding: .45rem .85rem;
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--rna-grey-500);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.md-data-tab:hover {
+    color: var(--rna-teal);
+}
+
+.md-data-tab.active {
+    color: var(--rna-teal);
+    border-bottom-color: var(--rna-teal);
+}
+
+.md-data-panel {
+    display: none;
+}
+
+.md-data-panel.active {
+    display: block;
+}
+
+/* ── Example Table ── */
+.md-example-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: .78rem;
+    margin-top: .5rem;
+}
+
+.md-example-table thead th {
+    background: var(--rna-navy);
+    color: #fff;
+    padding: .5rem .75rem;
+    font-size: .72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+
+.md-example-table thead th:first-child {
+    border-radius: var(--rna-radius-sm) 0 0 0;
+}
+
+.md-example-table thead th:last-child {
+    border-radius: 0 var(--rna-radius-sm) 0 0;
+}
+
+.md-example-table tbody td {
+    padding: .45rem .75rem;
+    border-bottom: 1px solid var(--rna-grey-100);
+    color: var(--rna-grey-700);
+}
+
+.md-example-table tbody tr:last-child td:first-child {
+    border-radius: 0 0 0 var(--rna-radius-sm);
+}
+
+.md-example-table tbody tr:last-child td:last-child {
+    border-radius: 0 0 var(--rna-radius-sm) 0;
+}
+
+.md-example-note {
+    font-size: .72rem;
+    color: var(--rna-grey-500);
+    margin-top: .5rem;
+    font-style: italic;
+}
+
+/* ── Manual Table Builder ── */
+.md-builder-controls {
+    display: flex;
+    gap: .5rem;
+    margin-bottom: .5rem;
+}
+
+.md-builder-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .3rem .65rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--rna-navy);
+    background: rgba(2, 66, 110, .06);
+    border: 1px solid rgba(2, 66, 110, .18);
+    border-radius: var(--rna-radius-sm);
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.md-builder-btn:hover {
+    background: var(--rna-navy);
+    color: #fff;
+}
+
+.md-builder-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-sm);
+}
+
+.md-builder-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .78rem;
+}
+
+.md-builder-table th {
+    background: var(--rna-grey-100);
+    padding: .4rem .5rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--rna-grey-700);
+    border-bottom: 1px solid var(--rna-grey-200);
+    min-width: 100px;
+}
+
+.md-builder-table th input {
+    width: 100%;
+    font-size: .72rem;
+    font-weight: 600;
+    padding: .2rem .3rem;
+    border: 1px solid var(--rna-grey-300);
+    border-radius: 4px;
+    background: #fff;
+}
+
+.md-builder-table td {
+    padding: .25rem .35rem;
+    border-bottom: 1px solid var(--rna-grey-100);
+}
+
+.md-builder-table td input {
+    width: 100%;
+    font-size: .75rem;
+    padding: .25rem .35rem;
+    border: 1px solid var(--rna-grey-300);
+    border-radius: 4px;
+    background: #fff;
+    transition: border-color .2s ease;
+}
+
+.md-builder-table td input:focus {
+    outline: none;
+    border-color: var(--rna-teal);
+    box-shadow: 0 0 0 2px rgba(5, 154, 152, .12);
+}
+
+.md-builder-table .row-delete {
+    width: 24px;
+    padding: .25rem;
+    text-align: center;
+}
+
+.md-builder-table .row-delete button {
+    background: none;
+    border: none;
+    color: var(--rna-grey-400);
+    cursor: pointer;
+    font-size: .75rem;
+    padding: .15rem .3rem;
+    border-radius: 4px;
+    transition: all .15s ease;
+}
+
+.md-builder-table .row-delete button:hover {
+    color: var(--rna-accent-red);
+    background: rgba(239, 68, 68, .08);
+}
+
+/* ── Result View ── */
+.md-result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: .75rem;
+}
+
+.md-result-header h4 {
+    font-family: var(--rna-font-heading);
+    font-size: .95rem;
+    font-weight: 600;
+    color: var(--rna-navy);
+    margin: 0;
+}
+
+.md-result-meta {
+    font-size: .78rem;
+    color: var(--rna-grey-500);
+    margin-bottom: 1rem;
+}
+
+.md-result-section {
+    margin-bottom: 1.25rem;
+}
+
+.md-result-section h5 {
+    font-family: var(--rna-font-heading);
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--rna-grey-800);
+    margin: 0 0 .5rem;
+}
+
+.md-stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: var(--rna-grey-50);
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+    padding: .75rem 1.25rem;
+    min-width: 7rem;
+}
+
+.md-stat-value {
+    font-family: var(--rna-font-heading);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--rna-teal);
+}
+
+.md-stat-label {
+    font-size: .72rem;
+    color: var(--rna-grey-500);
+    margin-top: .15rem;
+}
+
+.btn-rna-download {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .45rem .9rem;
+    font-size: .78rem;
+    font-weight: 600;
+    color: #fff;
+    background: var(--rna-teal);
+    border: none;
+    border-radius: var(--rna-radius-md);
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.btn-rna-download:hover {
+    background: var(--rna-navy);
+    box-shadow: var(--rna-shadow-sm);
+}
+
+.btn-rna-back {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .35rem .75rem;
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--rna-grey-600);
+    background: var(--rna-grey-100);
+    border: 1px solid var(--rna-grey-300);
+    border-radius: var(--rna-radius-sm);
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.btn-rna-back:hover {
+    color: var(--rna-navy);
+    border-color: var(--rna-navy);
+    background: rgba(2, 66, 110, .04);
+}
+
+/* ── Toast Notifications ── */
+.rna-toast-container {
+    position: fixed;
+    top: 68px;
+    right: 1.25rem;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    pointer-events: none;
+}
+
+.rna-toast {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    padding: .75rem 1.15rem;
+    background: #fff;
+    border: 1px solid var(--rna-grey-200);
+    border-left: 4px solid var(--rna-accent-green);
+    border-radius: var(--rna-radius-md);
+    box-shadow: var(--rna-shadow-lg);
+    font-size: .82rem;
+    color: var(--rna-grey-800);
+    pointer-events: auto;
+    animation: rna-toast-in .35s ease;
+    max-width: 380px;
+}
+
+.rna-toast.toast-error {
+    border-left-color: var(--rna-accent-red);
+}
+
+.rna-toast i {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.rna-toast .toast-msg {
+    flex: 1;
+    font-weight: 500;
+}
+
+.rna-toast .toast-close {
+    background: none;
+    border: none;
+    color: var(--rna-grey-400);
+    cursor: pointer;
+    font-size: .85rem;
+    padding: .15rem .3rem;
+}
+
+@keyframes rna-toast-in {
+    from {
+        opacity: 0;
+        transform: translateX(40px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes rna-toast-out {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateX(40px);
+    }
+}
+
+/* ╔══════════════════════════════════════════════════════════════════╗
+   ║  Alt Splicing – Input Mode Toggle Cards                        ║
+   ╚══════════════════════════════════════════════════════════════════╝ */
+
+.splicing-mode-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .75rem;
+}
+
+.splicing-mode-card {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .85rem 1rem;
+    background: var(--rna-grey-50);
+    border: 2px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+    cursor: pointer;
+    transition: border-color .2s, background .2s, box-shadow .2s;
+}
+
+.splicing-mode-card:hover {
+    border-color: var(--rna-teal-light);
+    background: rgba(5, 154, 152, .04);
+}
+
+.splicing-mode-card.active {
+    border-color: var(--rna-teal);
+    background: rgba(5, 154, 152, .06);
+    box-shadow: 0 0 0 3px rgba(5, 154, 152, .12);
+}
+
+.splicing-mode-card input[type="radio"] {
+    display: none;
+}
+
+.splicing-mode-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--rna-radius-sm);
+    background: var(--rna-grey-200);
+    color: var(--rna-grey-600);
+    font-size: 1.15rem;
+    flex-shrink: 0;
+    transition: background .2s, color .2s;
+}
+
+.splicing-mode-card.active .splicing-mode-icon {
+    background: var(--rna-teal);
+    color: #fff;
+}
+
+.splicing-mode-content {
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+}
+
+.splicing-mode-title {
+    font-family: var(--rna-font-heading);
+    font-weight: 600;
+    font-size: .875rem;
+    color: var(--rna-grey-800);
+}
+
+.splicing-mode-desc {
+    font-size: .75rem;
+    color: var(--rna-grey-500);
+    line-height: 1.3;
+}
+
+.splicing-mode-desc code {
+    background: var(--rna-grey-200);
+    padding: .1rem .3rem;
+    border-radius: 3px;
+    font-size: .7rem;
+}
+
+.splicing-bam-name {
+    font-family: 'Roboto Mono', monospace;
+    font-size: .8rem;
+    color: var(--rna-grey-700);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 280px;
 }

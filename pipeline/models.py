@@ -58,6 +58,7 @@ class AnalysisSubmission(models.Model):
     session = models.ForeignKey(
         Session, on_delete=models.CASCADE, related_name="submissions"
     )
+    submission_name = models.CharField(max_length=200, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     input_data_type = models.CharField(
@@ -159,6 +160,14 @@ class AnalysisJob(models.Model):
     session = models.ForeignKey(
         Session, on_delete=models.CASCADE, related_name="analysis_jobs"
     )
+    parent_submission = models.ForeignKey(
+        AnalysisSubmission,
+        on_delete=models.CASCADE,
+        related_name="jobs",
+        null=True,
+        blank=True,
+    )
+    is_core_pipeline = models.BooleanField(default=True)
     module_name = models.CharField(max_length=50)
     status = models.CharField(
         max_length=10, choices=Status.choices, default=Status.PENDING

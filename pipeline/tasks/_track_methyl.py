@@ -131,14 +131,18 @@ def _route_methylation(submission, job):
     genome_key = submission.reference_genome
 
     # Resolve genome FASTA directory + Bismark preparation
+    is_custom = genome_key == "custom"
     _, genome_fasta, _ = _resolve_genome(
         genome_key, work_dir, submission=submission,
     )
-    genome_dir = os.path.dirname(genome_fasta) if genome_fasta else None
 
     # --- Step 0: Bismark genome preparation (if needed) ---
     _update_step(job, "bismark_prep")
-    genome_dir = _resolve_bismark_genome(genome_dir)
+    if is_custom:
+        genome_dir = os.path.dirname(genome_fasta) if genome_fasta else None
+        genome_dir = _resolve_bismark_genome(genome_dir=genome_dir, custom=True)
+    else:
+        genome_dir = _resolve_bismark_genome(genome_key=genome_key)
     _update_step(job, "bismark_prep", completed=True)
 
     # --- Step 1: FastQC ---

@@ -1,0 +1,32 @@
+# ============================================================
+# RNAseek — Bitbucket Pipelines: Auto-Deploy to Production
+# ============================================================
+# Triggered on push to the prod branch. SSHs into the
+# production server and runs the deploy script.
+#
+# Required Bitbucket Repository Variables (Settings > Pipelines > Repository variables):
+#   SSH_DEPLOY_KEY  — Base64-encoded private SSH key
+#
+# Required Bitbucket SSH Known Hosts (Settings > Pipelines > SSH keys):
+#   Add your server's host key fingerprint
+# ============================================================
+
+pipelines:
+  branches:
+    prod:
+      - step:
+          name: Deploy to Production
+          script:
+            - pipe: atlassian/ssh-run:0.8.1
+              variables:
+                SSH_USER: 'ubuntu'
+                SERVER: 'rnaseek.ca'
+                COMMAND: |
+                  set -euo pipefail
+                  cd /home/ubuntu/apps/rnaseek
+                  git fetch origin prod
+                  git checkout prod
+                  git reset --hard origin/prod
+                  source /opt/miniconda3/etc/profile.d/conda.sh
+                  conda activate rnaseek
+                  bash deploy.sh

@@ -1,65 +1,669 @@
 {% extends "pipeline/base.html" %}
 {% load static %}
 
-{% block title %}RNAseek – Tutorials{% endblock %}
+{% block title %}RNAseek – Tutorials &amp; User Guide{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── Tutorial-specific styles ── */
+    .tut-toc {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+    }
+
+    .tut-toc-card {
+        display: flex;
+        align-items: center;
+        gap: .85rem;
+        padding: 1rem 1.15rem;
+        background: #fff;
+        border: 1px solid var(--rna-grey-200);
+        border-radius: var(--rna-radius-md);
+        text-decoration: none;
+        color: inherit;
+        transition: all .2s ease;
+    }
+
+    .tut-toc-card:hover {
+        border-color: var(--rna-teal);
+        box-shadow: var(--rna-shadow-hover);
+        transform: translateY(-2px);
+    }
+
+    .tut-toc-num {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        background: var(--rna-brand-gradient);
+        color: #fff;
+        font-weight: 700;
+        font-size: .95rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .tut-toc-label {
+        font-weight: 600;
+        font-size: .82rem;
+        color: var(--rna-grey-900);
+    }
+
+    .tut-toc-desc {
+        font-size: .72rem;
+        color: var(--rna-grey-500);
+        margin-top: .15rem;
+    }
+
+    .tut-anchor {
+        scroll-margin-top: 4.5rem;
+    }
+
+    /* Highlight boxes */
+    .tut-info-box {
+        display: flex;
+        align-items: flex-start;
+        gap: .75rem;
+        padding: .85rem 1.15rem;
+        border-radius: var(--rna-radius-md);
+        font-size: .82rem;
+        line-height: 1.65;
+    }
+
+    .tut-info-box i {
+        font-size: 1.1rem;
+        margin-top: .1rem;
+        flex-shrink: 0;
+    }
+
+    .tut-info-box.info {
+        background: rgba(5, 154, 152, .06);
+        border: 1px solid rgba(5, 154, 152, .2);
+        color: var(--rna-navy);
+    }
+
+    .tut-info-box.info i {
+        color: var(--rna-teal);
+    }
+
+    .tut-info-box.success {
+        background: rgba(22, 163, 74, .06);
+        border: 1px solid rgba(22, 163, 74, .2);
+        color: #14532d;
+    }
+
+    .tut-info-box.success i {
+        color: var(--rna-accent-green);
+    }
+
+    .tut-info-box.tip {
+        background: rgba(20, 100, 142, .06);
+        border: 1px solid rgba(20, 100, 142, .2);
+        color: var(--rna-navy-dark);
+    }
+
+    .tut-info-box.tip i {
+        color: var(--rna-blue-mid);
+    }
+
+    /* Section divider */
+    .tut-divider {
+        border: none;
+        border-top: 2px solid var(--rna-grey-200);
+        margin: 2rem 0;
+    }
+
+    /* Numbered section header */
+    .tut-section-head {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .tut-section-num {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: var(--rna-brand-gradient);
+        color: #fff;
+        font-weight: 700;
+        font-size: 1rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .tut-section-title {
+        font-family: var(--rna-font-heading);
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--rna-navy);
+        margin: 0;
+    }
+
+    .tut-section-sub {
+        font-size: .78rem;
+        color: var(--rna-grey-500);
+        margin: .1rem 0 0;
+    }
+
+    /* Sub-section headers */
+    .tut-sub-head {
+        font-size: .88rem;
+        font-weight: 600;
+        color: var(--rna-grey-900);
+        margin: 1.5rem 0 .65rem;
+        display: flex;
+        align-items: center;
+        gap: .45rem;
+    }
+
+    .tut-sub-head i {
+        color: var(--rna-teal);
+        font-size: .95rem;
+    }
+
+    /* Prose */
+    .tut-prose {
+        font-size: .82rem;
+        line-height: 1.75;
+        color: var(--rna-grey-700);
+    }
+
+    .tut-prose strong {
+        color: var(--rna-grey-900);
+    }
+
+    .tut-prose code {
+        background: var(--rna-grey-100);
+        padding: .1rem .35rem;
+        border-radius: 4px;
+        font-size: .78rem;
+    }
+
+    /* Checklist */
+    .tut-checklist {
+        list-style: none;
+        padding: 0;
+        margin: .5rem 0;
+    }
+
+    .tut-checklist li {
+        display: flex;
+        align-items: flex-start;
+        gap: .55rem;
+        font-size: .82rem;
+        line-height: 1.65;
+        padding: .3rem 0;
+        color: var(--rna-grey-700);
+    }
+
+    .tut-checklist li i {
+        color: var(--rna-accent-green);
+        font-size: .85rem;
+        margin-top: .2rem;
+        flex-shrink: 0;
+    }
+
+    /* Feature pills */
+    .tut-pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .5rem;
+        margin: .75rem 0;
+    }
+
+    .tut-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        background: rgba(5, 154, 152, .08);
+        border: 1px solid rgba(5, 154, 152, .18);
+        border-radius: 20px;
+        padding: .3rem .75rem;
+        font-size: .72rem;
+        font-weight: 500;
+        color: var(--rna-navy);
+    }
+
+    .tut-pill i {
+        font-size: .75rem;
+        color: var(--rna-teal);
+    }
+
+    /* Code block */
+    .tut-code {
+        background: var(--rna-grey-900);
+        color: #e0e0e0;
+        border-radius: var(--rna-radius-md);
+        padding: .85rem 1.15rem;
+        font-size: .78rem;
+        font-family: 'Roboto Mono', monospace;
+        overflow-x: auto;
+        line-height: 1.6;
+        margin: .65rem 0;
+    }
+
+    .tut-code .cmd {
+        color: var(--rna-mint-pale);
+    }
+
+    /* Quick-ref FAQ */
+    .tut-faq-item {
+        display: flex;
+        gap: 1rem;
+        padding: .75rem 0;
+        border-bottom: 1px solid var(--rna-grey-100);
+        font-size: .82rem;
+    }
+
+    .tut-faq-item:last-child {
+        border-bottom: none;
+    }
+
+    .tut-faq-q {
+        font-weight: 600;
+        color: var(--rna-grey-900);
+        min-width: 220px;
+        flex-shrink: 0;
+    }
+
+    .tut-faq-a {
+        color: var(--rna-grey-600);
+        line-height: 1.55;
+    }
+
+    @media (max-width: 768px) {
+        .tut-toc {
+            grid-template-columns: 1fr;
+        }
+
+        .tut-faq-item {
+            flex-direction: column;
+            gap: .25rem;
+        }
+
+        .tut-faq-q {
+            min-width: unset;
+        }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<section class="rna-container" style="padding-top: 2rem; padding-bottom: 3rem;">
-    <h1 class="rna-section-title rna-mb-1">Tutorials &amp; Documentation</h1>
-    <p class="rna-section-subtitle">Everything you need to know to prepare your data for RNAseek.</p>
+<section class="rna-container" style="padding-top: 1.25rem; padding-bottom: 3rem;">
 
-    <!-- File Format Guide -->
-    <div class="rna-card rna-mb-3">
-        <div class="rna-card-header">
-            <i class="bi bi-file-earmark-zip"></i>&ensp;File Format Guide
+    <!-- ═══════════════════════════════════════════════════════════
+         PAGE BANNER
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="dash-welcome-banner" style="margin-bottom: 1.25rem;">
+        <div>
+            <p class="dash-greeting">Tutorials &amp; Documentation</p>
+            <h1 class="dash-tagline">RNAseek &mdash; User Guide</h1>
         </div>
-        <div class="rna-card-body">
-            <h3 style="font-size: .88rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .65rem;">Accepted
-                Raw Read Formats</h3>
-            <p class="rna-text-sm" style="line-height: 1.7;">
-                RNAseek accepts <strong><code>.fq.gz</code></strong> or <strong><code>.fastq.gz</code></strong>
-                (compressed FASTQ) files.
-                You must upload <em>at least two experimental groups</em> (e.g., 3 Control + 3 Treatment samples)
-                for statistical testing to be valid.
-            </p>
-
-            <div class="rna-banner-warn rna-mt-2 rna-mb-2">
-                <i class="bi bi-exclamation-triangle"></i>
-                <span>Uncompressed <code>.fastq</code> or <code>.fq</code> files are <strong>not accepted</strong>.
-                    Please gzip your files before uploading.</span>
+        <div class="dash-stats-banner">
+            <div class="dash-stats-inner">
+                <span class="dash-stat-label">Everything you need &mdash; from first upload to publication-ready
+                    figures</span>
             </div>
-
-            <h3 style="font-size: .88rem; font-weight: 600; color: var(--rna-grey-900); margin: 1.25rem 0 .65rem;">
-                Paired-End Reads</h3>
-            <p class="rna-text-sm" style="line-height: 1.7;">
-                If your experiment uses paired-end sequencing, ensure filenames follow the standard convention:
-                <code>SampleName_R1.fq.gz</code> and <code>SampleName_R2.fq.gz</code>.
-                The system auto-detects read pairs, but you can also manually toggle Paired-End mode during setup.
-            </p>
         </div>
     </div>
 
-    <!-- Metadata Guide -->
+    <!-- ═══════════════════════════════════════════════════════════
+         TABLE OF CONTENTS
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="tut-toc rna-mb-3">
+        <a href="#getting-started" class="tut-toc-card">
+            <span class="tut-toc-num">1</span>
+            <div>
+                <div class="tut-toc-label">Getting Started</div>
+                <div class="tut-toc-desc">Sessions, prerequisites &amp; quick-start</div>
+            </div>
+        </a>
+        <a href="#uploading-data" class="tut-toc-card">
+            <span class="tut-toc-num">2</span>
+            <div>
+                <div class="tut-toc-label">Uploading Data</div>
+                <div class="tut-toc-desc">Formats, metadata &amp; genome selection</div>
+            </div>
+        </a>
+        <a href="#viewing-results" class="tut-toc-card">
+            <span class="tut-toc-num">3</span>
+            <div>
+                <div class="tut-toc-label">Viewing Results</div>
+                <div class="tut-toc-desc">Plots, downloads &amp; advanced modules</div>
+            </div>
+        </a>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         SECTION 1 — GETTING STARTED
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="getting-started" class="tut-anchor"></div>
     <div class="rna-card rna-mb-3">
         <div class="rna-card-header">
-            <i class="bi bi-table"></i>&ensp;Metadata Mapping Guide
+            <i class="bi bi-rocket-takeoff"></i>&ensp;Getting Started
         </div>
         <div class="rna-card-body">
-            <h3 style="font-size: .88rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .65rem;">Condition
-                Mapping (Required)</h3>
-            <p class="rna-text-sm rna-mb-2" style="line-height: 1.7;">
-                Every uploaded sample must be assigned to a biological condition for the statistical contrast.
-                You can map conditions interactively in the Setup Wizard or upload a <code>.csv</code> file.
+
+            <!-- 1.1 No Account Required -->
+            <h3 class="tut-sub-head"><i class="bi bi-shield-check"></i> No Account Required &mdash; Just Open and Go
+            </h3>
+            <p class="tut-prose">
+                RNAseek removes every barrier between you and your analysis. There are <strong>no usernames, no
+                    passwords,
+                    and no registration forms</strong>. The moment you open the platform in your browser, a secure,
+                private
+                session is created for you automatically.
+            </p>
+            <p class="tut-prose">
+                Behind the scenes, RNAseek assigns your browser a <strong>cryptographically random session ID</strong>
+                (a UUID) stored as a secure, HttpOnly cookie. This ID links your uploads, pipeline runs, and results to
+                your browser session &mdash; and <em>only</em> your browser session. No one else can access your data.
             </p>
 
+            <!-- 1.2 14-Day Window -->
+            <h3 class="tut-sub-head"><i class="bi bi-calendar-event"></i> Your 14-Day Session Window</h3>
+            <p class="tut-prose">
+                Your session and all data associated with it remains <strong>active for 14&nbsp;days</strong> from the
+                moment it is created. During that window you can:
+            </p>
+            <ul class="tut-checklist">
+                <li><i class="bi bi-check-circle-fill"></i> Upload new datasets and launch analyses at any time.</li>
+                <li><i class="bi bi-check-circle-fill"></i> Return to the platform and pick up exactly where you left
+                    off.</li>
+                <li><i class="bi bi-check-circle-fill"></i> Download any results, reports, or visualizations you have
+                    generated.</li>
+            </ul>
+            <div class="rna-banner-warn rna-mt-2 rna-mb-2">
+                <i class="bi bi-exclamation-triangle"></i>
+                <span>After 14&nbsp;days the session expires and an automated janitor <strong>permanently
+                        deletes</strong>
+                    all uploaded files and results. There is no way to recover data after expiration &mdash; download
+                    everything you need before your session ends.</span>
+            </div>
+            <div class="tut-info-box tip rna-mt-2">
+                <i class="bi bi-lightbulb"></i>
+                <span><strong>Tip:</strong> Bookmark the RNAseek URL in the <em>same browser</em> you used for your
+                    first
+                    visit. Your session cookie is browser-specific &mdash; opening RNAseek in a different browser or in
+                    private/incognito mode will start a brand-new session.</span>
+            </div>
+
+            <!-- 1.3 What You Need -->
+            <h3 class="tut-sub-head"><i class="bi bi-list-check"></i> What You Need Before You Begin</h3>
+            <div class="rna-card" style="overflow-x: auto;">
+                <table class="rna-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th style="text-align:center;">Required?</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Raw sequencing reads</strong></td>
+                            <td style="text-align:center;"><i class="bi bi-check-circle-fill"
+                                    style="color:var(--rna-accent-green);"></i></td>
+                            <td><code>.fq.gz</code> or <code>.fastq.gz</code> files. At least two experimental groups
+                                (e.g., 3&nbsp;Control + 3&nbsp;Treated).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Reference genome</strong></td>
+                            <td style="text-align:center;"><i class="bi bi-check-circle-fill"
+                                    style="color:var(--rna-accent-green);"></i></td>
+                            <td>Select from 11 pre-indexed genomes or upload your own FASTA + GTF/GFF.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Condition mapping</strong></td>
+                            <td style="text-align:center;"><i class="bi bi-check-circle-fill"
+                                    style="color:var(--rna-accent-green);"></i></td>
+                            <td>A table or CSV assigning every sample to a biological group (e.g., Control vs. Treated).
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Batch IDs</strong></td>
+                            <td style="text-align:center;"><span class="rna-text-muted">Optional</span></td>
+                            <td>Include a Batch column to trigger automatic ComBat-seq batch-effect correction.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Timepoints</strong></td>
+                            <td style="text-align:center;"><span class="rna-text-muted">Optional</span></td>
+                            <td>Include a Timepoint column to switch DESeq2 to the Likelihood Ratio Test (time-series).
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="tut-info-box info rna-mt-2">
+                <i class="bi bi-info-circle"></i>
+                <span>Already have aligned BAM/CRAM files or a pre-computed count matrix? You can skip the alignment
+                    step entirely &mdash; see <a href="#alt-entry"><strong>Alternative Entry Points</strong></a>
+                    below.</span>
+            </div>
+
+            <!-- 1.4 Assay Tracks -->
+            <h3 class="tut-sub-head"><i class="bi bi-signpost-split"></i> Supported Analysis Types (Assay Tracks)</h3>
+            <p class="tut-prose">
+                RNAseek supports four core assay types. Choose the one that matches your experiment during the Setup
+                Wizard:
+            </p>
+            <div class="rna-card" style="overflow-x: auto;">
+                <table class="rna-table">
+                    <thead>
+                        <tr>
+                            <th>Assay</th>
+                            <th>Best For</th>
+                            <th>Aligner</th>
+                            <th>Key Tools</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Standard RNA-Seq</strong> (Poly-A)</td>
+                            <td>Gene expression profiling</td>
+                            <td>HISAT2 (splice-aware)</td>
+                            <td>featureCounts, DESeq2</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Small RNA / miRNA</strong></td>
+                            <td>Regulatory RNA quantification</td>
+                            <td>Bowtie (miRBase)</td>
+                            <td>samtools idxstats, DESeq2</td>
+                        </tr>
+                        <tr>
+                            <td><strong>ChIP-seq</strong></td>
+                            <td>Histone / TF binding sites</td>
+                            <td>BWA MEM</td>
+                            <td>MACS2 peak calling, featureCounts</td>
+                        </tr>
+                        <tr>
+                            <td><strong>DNA Methylation</strong></td>
+                            <td>Bisulfite sequencing</td>
+                            <td>Bismark</td>
+                            <td>methylKit differential methylation</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="tut-info-box success rna-mt-2">
+                <i class="bi bi-bacteria"></i>
+                <span><strong>Microbial / Bacterial Transcriptomics:</strong> Upload an unannotated bacterial FASTA and
+                    RNAseek will automatically dispatch it to a local <strong>BASys2</strong> engine that generates
+                    complete
+                    structural, operon, and metabolome annotations in roughly <strong>10&nbsp;seconds</strong> &mdash;
+                    no
+                    manual annotation required.</span>
+            </div>
+
+            <!-- 1.5 Quick-Start Walkthrough -->
+            <h3 class="tut-sub-head"><i class="bi bi-lightning-charge"></i> Quick-Start Walkthrough</h3>
+            <div class="rna-flex rna-flex-center rna-gap-2 rna-flex-wrap rna-mb-2"
+                style="max-width: 100%; margin-left: auto; margin-right: auto;">
+                <div class="rna-step completed"><i class="bi bi-cloud-arrow-up"></i> Upload</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step completed"><i class="bi bi-sliders2"></i> Configure</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step completed"><i class="bi bi-cpu"></i> Stage&nbsp;1</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step completed"><i class="bi bi-graph-up-arrow"></i> Stage&nbsp;2</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step active"><i class="bi bi-grid-3x3-gap"></i> Core Hub</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step"><i class="bi bi-puzzle"></i> Modules</div>
+            </div>
+            <ol class="tut-prose" style="padding-left: 1.25rem;">
+                <li><strong>Navigate</strong> to RNAseek in your browser &mdash; your session starts automatically.</li>
+                <li><strong>Create a new submission</strong> from the Active Workspace page.</li>
+                <li><strong>Upload</strong> your compressed FASTQ files (the uploader handles large files seamlessly).
+                </li>
+                <li><strong>Map your conditions</strong> using the interactive table or a CSV upload.</li>
+                <li><strong>Select a reference genome</strong> from the dropdown (or upload a custom genome).</li>
+                <li><strong>Launch</strong> the core pipeline and watch progress in real time via live progress bars.
+                </li>
+                <li><strong>Explore results</strong> in the Core Hub &mdash; interactive plots, downloadable tables, and
+                    12&nbsp;advanced modules.</li>
+            </ol>
+        </div>
+    </div>
+
+    <hr class="tut-divider">
+
+    <!-- ═══════════════════════════════════════════════════════════
+         SECTION 2 — UPLOADING DATA
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="uploading-data" class="tut-anchor"></div>
+    <div class="rna-card rna-mb-3">
+        <div class="rna-card-header">
+            <i class="bi bi-cloud-arrow-up"></i>&ensp;Uploading Data
+        </div>
+        <div class="rna-card-body">
+
+            <!-- 2.1 Chunked Uploader -->
+            <h3 class="tut-sub-head"><i class="bi bi-hdd-stack"></i> The Chunked Uploader &mdash; Built for Large Files
+            </h3>
+            <p class="tut-prose">
+                Genomics files are large. A single paired-end RNA-seq experiment can easily produce tens of gigabytes of
+                compressed FASTQ data. RNAseek&rsquo;s uploader is specifically engineered for this reality.
+            </p>
+            <div class="tut-pill-row">
+                <span class="tut-pill"><i class="bi bi-box-seam"></i> 5&nbsp;MB binary chunks</span>
+                <span class="tut-pill"><i class="bi bi-lock"></i> HTTPS encrypted</span>
+                <span class="tut-pill"><i class="bi bi-arrow-repeat"></i> Auto-retry on failure</span>
+                <span class="tut-pill"><i class="bi bi-infinity"></i> No file-count limit</span>
+            </div>
+            <p class="tut-prose">
+                Your browser automatically splits each file into <strong>5&nbsp;MB binary chunks</strong> before
+                transmission. Each chunk is sent individually over HTTPS and reassembled on the server. If a network
+                interruption occurs mid-upload, only the affected chunk needs to be retransmitted &mdash; you do not
+                lose the entire file. Upload files of any size, even over slower connections.
+            </p>
+
+            <!-- 2.2 Accepted Formats -->
+            <h3 class="tut-sub-head"><i class="bi bi-file-earmark-zip"></i> Accepted File Formats</h3>
+            <div class="rna-card" style="overflow-x: auto;">
+                <table class="rna-table">
+                    <thead>
+                        <tr>
+                            <th>Input Type</th>
+                            <th>Accepted Formats</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Raw reads</td>
+                            <td><code>.fq.gz</code>, <code>.fastq.gz</code></td>
+                            <td>Must be gzip-compressed.</td>
+                        </tr>
+                        <tr>
+                            <td>Aligned reads</td>
+                            <td><code>.bam</code>, <code>.cram</code></td>
+                            <td>Skips alignment; proceeds to quantification.</td>
+                        </tr>
+                        <tr>
+                            <td>Count matrix</td>
+                            <td><code>.csv</code>, <code>.tsv</code></td>
+                            <td>Rows = genes, columns = samples. Non-negative integers only.</td>
+                        </tr>
+                        <tr>
+                            <td>Metadata</td>
+                            <td><code>.csv</code></td>
+                            <td>Condition mapping, batch IDs, timepoints.</td>
+                        </tr>
+                        <tr>
+                            <td>Custom genome</td>
+                            <td><code>.fa</code> / <code>.fasta</code> + <code>.gtf</code> / <code>.gff</code></td>
+                            <td>Triggers on-demand HISAT2 index build. Not available for Small&nbsp;RNA track.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="rna-banner-warn rna-mt-2 rna-mb-2">
+                <i class="bi bi-exclamation-triangle"></i>
+                <span>Uncompressed <code>.fastq</code> or <code>.fq</code> files are <strong>not accepted</strong>.
+                    Compress them first: <code>gzip sample_R1.fastq</code></span>
+            </div>
+
+            <!-- 2.3 Paired-End -->
+            <h3 class="tut-sub-head"><i class="bi bi-arrow-left-right"></i> Paired-End Read Detection</h3>
+            <p class="tut-prose">
+                If your experiment uses paired-end sequencing, name your files with the standard
+                <code>_R1</code> / <code>_R2</code> convention:
+            </p>
+            <div class="tut-code">
+                SampleA<span class="cmd">_R1</span>.fq.gz &ensp; SampleA<span class="cmd">_R2</span>.fq.gz<br>
+                SampleB<span class="cmd">_R1</span>.fq.gz &ensp; SampleB<span class="cmd">_R2</span>.fq.gz
+            </div>
+            <p class="tut-prose">
+                RNAseek auto-detects paired reads from filenames. You can also manually toggle between Single-End and
+                Paired-End mode in the Setup Wizard if your naming convention differs.
+            </p>
+
+            <!-- 2.4 Metadata Mapping -->
+            <h3 class="tut-sub-head"><i class="bi bi-table"></i> Mapping Experimental Conditions (Metadata)</h3>
+            <p class="tut-prose">
+                After your files finish uploading, the Setup Wizard asks you to define the experimental design.
+                You have two options:
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: .75rem 0;">
+                <div class="rna-card" style="padding: 1rem;">
+                    <h4 style="font-size: .82rem; font-weight: 600; color: var(--rna-teal); margin: 0 0 .5rem;">
+                        <i class="bi bi-hand-index-thumb"></i> Option A &mdash; Interactive Table
+                    </h4>
+                    <p class="tut-prose" style="margin: 0;">
+                        Best for small experiments. The wizard pre-populates a table with your uploaded filenames
+                        &mdash;
+                        just pick a condition from the dropdown for each sample.
+                    </p>
+                </div>
+                <div class="rna-card" style="padding: 1rem;">
+                    <h4 style="font-size: .82rem; font-weight: 600; color: var(--rna-teal); margin: 0 0 .5rem;">
+                        <i class="bi bi-filetype-csv"></i> Option B &mdash; CSV Upload
+                    </h4>
+                    <p class="tut-prose" style="margin: 0;">
+                        Best for large experiments. Prepare a <code>.csv</code> with <strong>Filename</strong> and
+                        <strong>Condition</strong> columns (required), plus optional <strong>Batch</strong> and
+                        <strong>Timepoint</strong>.
+                    </p>
+                </div>
+            </div>
+
+            <p class="tut-prose" style="margin-bottom: .35rem;">Example metadata CSV:</p>
             <div class="rna-card" style="overflow-x: auto;">
                 <table class="rna-table">
                     <thead>
                         <tr>
                             <th>Filename</th>
                             <th>Condition</th>
-                            <th>Batch ID (optional)</th>
-                            <th>Timepoint (optional)</th>
+                            <th>Batch <span class="rna-text-muted" style="font-weight:400;">(optional)</span></th>
+                            <th>Timepoint <span class="rna-text-muted" style="font-weight:400;">(optional)</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -76,6 +680,12 @@
                             <td>Day 0</td>
                         </tr>
                         <tr>
+                            <td><code>WT_rep3_R1.fq.gz</code></td>
+                            <td>Control</td>
+                            <td>Batch_2</td>
+                            <td>Day 0</td>
+                        </tr>
+                        <tr>
                             <td><code>KO_rep1_R1.fq.gz</code></td>
                             <td>Treated</td>
                             <td>Batch_2</td>
@@ -84,61 +694,63 @@
                         <tr>
                             <td><code>KO_rep2_R1.fq.gz</code></td>
                             <td>Treated</td>
-                            <td>Batch_2</td>
+                            <td>Batch_1</td>
+                            <td>Day 7</td>
+                        </tr>
+                        <tr>
+                            <td><code>KO_rep3_R1.fq.gz</code></td>
+                            <td>Treated</td>
+                            <td>Batch_1</td>
                             <td>Day 7</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-
-            <div style="margin-top: 1rem;">
-                <p class="rna-text-sm"><strong>Batch ID</strong> &ndash; If provided, triggers automatic ComBat-seq
-                    batch correction in Stage 2.</p>
-                <p class="rna-text-sm"><strong>Timepoint</strong> &ndash; If provided, switches DESeq2 to the Likelihood
-                    Ratio Test (LRT) for time-series analysis.</p>
+            <div style="margin-top: .75rem;">
+                <p class="tut-prose"><strong>Batch</strong> &ndash; Providing batch IDs automatically triggers
+                    <strong>ComBat-seq</strong> batch correction during normalization, removing technical sequencing
+                    noise between batches.
+                </p>
+                <p class="tut-prose"><strong>Timepoint</strong> &ndash; Providing timepoints switches the statistical
+                    model from the Wald test to the <strong>Likelihood Ratio Test (LRT)</strong>, which is more
+                    appropriate for time-series experimental designs.</p>
             </div>
-        </div>
-    </div>
 
-    <!-- Workflow Diagram -->
-    <div class="rna-card rna-mb-3">
-        <div class="rna-card-header">
-            <i class="bi bi-diagram-3"></i>&ensp;Pipeline Workflow
-        </div>
-        <div class="rna-card-body rna-text-center">
-            <!-- PLACEHOLDER: Workflow diagram image -->
-            <!-- Image needed: 1 image, approx 900×400px, workflow diagram showing:
-           Upload → Stage 1 (Alignment/QC) → Stage 2 (DEG) → Core Hub → Deconvolution → Advanced Spokes -->
-            <div class="rna-plot-container" style="min-height: 280px;">
-                <div style="text-align: center;">
-                    <i class="bi bi-image" style="font-size: 2.5rem; display: block; margin-bottom: .5rem;"></i>
-                    <span class="rna-text-sm rna-text-muted">Workflow diagram placeholder (900 &times; 400px)</span>
+            <!-- 2.5 Alternative Entry Points -->
+            <div id="alt-entry" class="tut-anchor"></div>
+            <h3 class="tut-sub-head"><i class="bi bi-skip-forward-circle"></i> Alternative Entry Points</h3>
+            <p class="tut-prose">Not starting from raw reads? RNAseek supports two shortcut entry points:</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: .75rem 0;">
+                <div class="rna-card" style="padding: 1rem;">
+                    <h4 style="font-size: .82rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .5rem;">
+                        <i class="bi bi-file-earmark-binary" style="color:var(--rna-teal);"></i> Pre-Aligned Reads
+                        (BAM/CRAM)
+                    </h4>
+                    <p class="tut-prose" style="margin: 0;">
+                        Upload aligned BAM or CRAM files. RNAseek skips QC &amp; alignment and proceeds directly to
+                        gene quantification (featureCounts) &rarr; Stage&nbsp;2 normalization &amp; DEG testing.
+                    </p>
+                </div>
+                <div class="rna-card" style="padding: 1rem;">
+                    <h4 style="font-size: .82rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .5rem;">
+                        <i class="bi bi-file-earmark-spreadsheet" style="color:var(--rna-teal);"></i> Count Matrix
+                        (CSV/TSV)
+                    </h4>
+                    <p class="tut-prose" style="margin: 0;">
+                        Upload a gene-level count matrix. Bypasses Stage&nbsp;1 entirely and jumps straight to
+                        filtering,
+                        normalization, DESeq2, and visualization. Requires: rows = genes, columns = samples,
+                        non-negative integers.
+                    </p>
                 </div>
             </div>
 
-            <div class="rna-flex rna-flex-center rna-gap-2 rna-flex-wrap rna-mt-3"
-                style="max-width: 800px; margin-left: auto; margin-right: auto;">
-                <div class="rna-step completed"><i class="bi bi-cloud-arrow-up"></i> Upload</div>
-                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
-                <div class="rna-step completed"><i class="bi bi-cpu"></i> Stage 1: Align &amp; QC</div>
-                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
-                <div class="rna-step completed"><i class="bi bi-graph-up-arrow"></i> Stage 2: DEG</div>
-                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
-                <div class="rna-step active"><i class="bi bi-grid-3x3-gap"></i> Core Hub</div>
-                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
-                <div class="rna-step"><i class="bi bi-layers"></i> Deconvolution</div>
-                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
-                <div class="rna-step"><i class="bi bi-pin-map"></i> Spatial Spokes</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Reference Genomes -->
-    <div class="rna-card rna-mb-3">
-        <div class="rna-card-header">
-            <i class="bi bi-database"></i>&ensp;Supported Reference Genomes
-        </div>
-        <div class="rna-card-body">
+            <!-- 2.6 Reference Genomes -->
+            <h3 class="tut-sub-head"><i class="bi bi-database"></i> Selecting a Reference Genome</h3>
+            <p class="tut-prose">
+                Choose the reference genome that matches your organism. RNAseek ships with <strong>11 pre-indexed
+                    genomes</strong>:
+            </p>
             <div class="rna-card" style="overflow-x: auto;">
                 <table class="rna-table">
                     <thead>
@@ -160,24 +772,507 @@
                             <td>Ensembl / UCSC</td>
                         </tr>
                         <tr>
+                            <td>Mus musculus</td>
+                            <td>GRCm38 (mm10)</td>
+                            <td>Ensembl / UCSC</td>
+                        </tr>
+                        <tr>
                             <td>Rattus norvegicus</td>
-                            <td>mRatBN7.2</td>
+                            <td>mRatBN7.2 (rn7)</td>
                             <td>Ensembl</td>
                         </tr>
                         <tr>
                             <td>Danio rerio</td>
-                            <td>GRCz11</td>
+                            <td>GRCz11 (danRer11)</td>
+                            <td>Ensembl</td>
+                        </tr>
+                        <tr>
+                            <td>Gallus gallus</td>
+                            <td>GRCg6a (galGal6)</td>
+                            <td>Ensembl</td>
+                        </tr>
+                        <tr>
+                            <td>Sus scrofa</td>
+                            <td>Sscrofa11.1 (susScr11)</td>
                             <td>Ensembl</td>
                         </tr>
                         <tr>
                             <td>Drosophila melanogaster</td>
-                            <td>BDGP6</td>
+                            <td>BDGP6 (dm6)</td>
+                            <td>Ensembl</td>
+                        </tr>
+                        <tr>
+                            <td>C. elegans</td>
+                            <td>WBcel235</td>
+                            <td>Ensembl</td>
+                        </tr>
+                        <tr>
+                            <td>S. cerevisiae (Yeast)</td>
+                            <td>sacCer3 (R64-1-1)</td>
+                            <td>Ensembl</td>
+                        </tr>
+                        <tr>
+                            <td>A. thaliana</td>
+                            <td>TAIR10</td>
                             <td>Ensembl</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
+
+            <div class="tut-info-box info rna-mt-2">
+                <i class="bi bi-plus-circle"></i>
+                <span><strong>Custom Genomes:</strong> If your organism is not listed, upload a FASTA
+                    (<code>.fa</code> / <code>.fasta</code>) and annotation (<code>.gtf</code> / <code>.gff</code>).
+                    RNAseek builds a HISAT2 index on-demand before alignment begins. Available for the Standard RNA-Seq
+                    and ChIP-seq tracks. The Small&nbsp;RNA track requires species-specific miRBase indices and does not
+                    support custom genomes.</span>
+            </div>
+            <div class="tut-info-box success rna-mt-2">
+                <i class="bi bi-bacteria"></i>
+                <span><strong>Bacterial Genomes:</strong> For unannotated microbial FASTA files, RNAseek automatically
+                    invokes its local <strong>BASys2</strong> engine to produce full structural and metabolic
+                    annotations
+                    &mdash; no GTF upload needed.</span>
+            </div>
+
+            <!-- 2.7 Launching -->
+            <h3 class="tut-sub-head"><i class="bi bi-play-circle"></i> Launching the Pipeline</h3>
+            <p class="tut-prose">Once your files are uploaded, metadata is mapped, and a genome is selected:</p>
+            <ol class="tut-prose" style="padding-left: 1.25rem;">
+                <li>Review your configuration in the Setup Wizard summary panel.</li>
+                <li>Click <strong>Launch Pipeline</strong>.</li>
+                <li>You will be redirected to the <strong>Processing</strong> page with real-time progress bars
+                    tracking every step.</li>
+            </ol>
         </div>
     </div>
+
+    <hr class="tut-divider">
+
+    <!-- ═══════════════════════════════════════════════════════════
+         SECTION 3 — VIEWING RESULTS
+         ═══════════════════════════════════════════════════════════ -->
+    <div id="viewing-results" class="tut-anchor"></div>
+    <div class="rna-card rna-mb-3">
+        <div class="rna-card-header">
+            <i class="bi bi-bar-chart-line"></i>&ensp;Viewing Results
+        </div>
+        <div class="rna-card-body">
+
+            <!-- 3.1 Real-Time Progress -->
+            <h3 class="tut-sub-head"><i class="bi bi-broadcast"></i> Real-Time Progress Tracking</h3>
+            <p class="tut-prose">
+                After launching the pipeline, the Processing page connects to the server via a live
+                <strong>WebSocket</strong> connection. You will see a step-by-step progress bar updating in real time:
+            </p>
+            <div class="rna-flex rna-flex-center rna-gap-2 rna-flex-wrap rna-mb-2"
+                style="max-width: 100%; margin-left: auto; margin-right: auto;">
+                <div class="rna-step completed"><i class="bi bi-check-lg"></i> Quality Control</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step completed"><i class="bi bi-check-lg"></i> Alignment</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step active"><i class="bi bi-arrow-repeat"></i> Quantification</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step"><i class="bi bi-graph-up-arrow"></i> Normalization</div>
+                <span class="rna-step-arrow"><i class="bi bi-arrow-right"></i></span>
+                <div class="rna-step"><i class="bi bi-palette"></i> Visualizations</div>
+            </div>
+            <div class="tut-info-box tip rna-mt-2">
+                <i class="bi bi-lightbulb"></i>
+                <span>If the WebSocket connection drops, the page automatically falls back to HTTP polling &mdash; you
+                    never lose sight of your pipeline&rsquo;s progress. You can also <strong>close the tab</strong> and
+                    come back later &mdash; your results will be waiting in the Core Hub.</span>
+            </div>
+
+            <!-- 3.2 Core Hub -->
+            <h3 class="tut-sub-head"><i class="bi bi-grid-3x3-gap"></i> The Core Hub &mdash; Your Results Dashboard</h3>
+            <p class="tut-prose">
+                When the pipeline finishes, you are taken to the <strong>Core Hub</strong>, a three-tab dashboard:
+            </p>
+            <div class="rna-grid-3 rna-mb-2" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                <div class="rna-card rna-feature-card">
+                    <i class="bi bi-clipboard-data"></i>
+                    <h3>Overview</h3>
+                    <p>Summary statistics, QC report, downloadable data files.</p>
+                </div>
+                <div class="rna-card rna-feature-card">
+                    <i class="bi bi-puzzle"></i>
+                    <h3>Modules</h3>
+                    <p>12 advanced analytical micro-pipelines, unlocked instantly.</p>
+                </div>
+                <div class="rna-card rna-feature-card">
+                    <i class="bi bi-layers"></i>
+                    <h3>Single-Cell</h3>
+                    <p>Deconvolution gateway and spatial analysis spokes.</p>
+                </div>
+            </div>
+
+            <!-- 3.3 Stage 1 Results -->
+            <h3 class="tut-sub-head"><i class="bi bi-cpu"></i> Stage 1 Results &mdash; Alignment &amp; QC</h3>
+            <p class="tut-prose">The Overview tab provides the foundational outputs of your analysis:</p>
+            <div class="rna-card" style="overflow-x: auto;">
+                <table class="rna-table">
+                    <thead>
+                        <tr>
+                            <th>File</th>
+                            <th>Format</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Compressed Alignments</td>
+                            <td><code>.cram</code></td>
+                            <td>Deeply compressed files showing where every read mapped to the genome.</td>
+                        </tr>
+                        <tr>
+                            <td>Raw Count Matrix</td>
+                            <td><code>.csv</code></td>
+                            <td>Genes &times; Samples matrix of raw read counts.</td>
+                        </tr>
+                        <tr>
+                            <td>QC Report</td>
+                            <td><code>.html</code></td>
+                            <td>Interactive MultiQC report &mdash; Phred scores, GC content, adapter metrics, trimming
+                                stats.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 3.4 Stage 2 Results -->
+            <h3 class="tut-sub-head"><i class="bi bi-graph-up-arrow"></i> Stage 2 Results &mdash; Normalization, DEG
+                Testing &amp; Visualizations</h3>
+            <p class="tut-prose">
+                This is where RNAseek transforms your raw data into biological insight &mdash; <strong>fully
+                    automatically</strong>:
+            </p>
+            <ul class="tut-checklist">
+                <li><i class="bi bi-check-circle-fill"></i> <strong>Low-count filtering</strong> removes genes with
+                    fewer than 10 total reads across all samples.</li>
+                <li><i class="bi bi-check-circle-fill"></i> <strong>Batch correction</strong> (if Batch IDs provided)
+                    applies ComBat-seq to remove technical noise.</li>
+                <li><i class="bi bi-check-circle-fill"></i> <strong>DESeq2 normalization</strong> adjusts for library
+                    size and performs differential gene expression testing with FDR-corrected p-values.</li>
+                <li><i class="bi bi-check-circle-fill"></i> <strong>Outlier detection</strong> uses PCA-based
+                    Mahalanobis distance to flag suspect samples.</li>
+                <li><i class="bi bi-check-circle-fill"></i> <strong>Gene annotation</strong> queries the MyGene.info API
+                    to append human-readable gene descriptions and disease associations to every gene.</li>
+            </ul>
+
+            <p class="tut-prose" style="margin-top: 1rem;"><strong>Downloadable files:</strong></p>
+            <div class="rna-card" style="overflow-x: auto;">
+                <table class="rna-table">
+                    <thead>
+                        <tr>
+                            <th>File</th>
+                            <th>Format</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Normalized Count Matrix</td>
+                            <td><code>.csv</code></td>
+                            <td>Library-size-normalized (and batch-corrected, if applicable) expression values. Ready
+                                for external tools or ML.</td>
+                        </tr>
+                        <tr>
+                            <td>Differential Expression Table</td>
+                            <td><code>.csv</code></td>
+                            <td>Log2 Fold Change, p-value, adjusted p-value (FDR), gene descriptions, and disease
+                                associations.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Interactive Visualizations -->
+            <p class="tut-prose" style="margin-top: 1.25rem;"><strong>Interactive Plotly Visualizations:</strong></p>
+            <p class="tut-prose">
+                Every plot is rendered directly in your browser &mdash; zoom, pan, hover for gene names, and export as
+                PNG or SVG.
+            </p>
+            <div class="rna-grid-3 rna-mb-2"
+                style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: .75rem;">
+                <div class="rna-card rna-feature-card">
+                    <i class="bi bi-scatter-chart"></i>
+                    <h3>PCA Plot (2D/3D)</h3>
+                    <p>Sample clustering via Principal Component Analysis. Variance explained on each axis.</p>
+                </div>
+                <div class="rna-card rna-feature-card">
+                    <i class="bi bi-diagram-2"></i>
+                    <h3>UMAP Plot</h3>
+                    <p>Non-linear dimensionality reduction revealing structure PCA might miss.</p>
+                </div>
+                <div class="rna-card rna-feature-card">
+                    <i class="bi bi-arrow-up-right-circle"></i>
+                    <h3>Volcano Plot</h3>
+                    <p>Log2FC vs. significance. Red = upregulated, blue = downregulated. Hover for gene names.</p>
+                </div>
+            </div>
+            <div class="rna-grid-2 rna-mb-2" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                <div class="rna-card rna-feature-card">
+                    <i class="bi bi-bar-chart-steps"></i>
+                    <h3>MA Plot</h3>
+                    <p>Mean expression vs. Log2FC for every gene, highlighting significant DEGs.</p>
+                </div>
+                <div class="rna-card rna-feature-card">
+                    <i class="bi bi-grid-3x3"></i>
+                    <h3>Heatmap</h3>
+                    <p>Top 50 DEGs with z-score normalization and color-coded group annotations.</p>
+                </div>
+            </div>
+            <div class="tut-info-box tip rna-mt-2">
+                <i class="bi bi-lightbulb"></i>
+                <span><strong>Tip:</strong> Click and drag on any Plotly plot to zoom into a region. Double-click to
+                    reset. Use the camera icon in the toolbar to save the plot as a high-resolution image.</span>
+            </div>
+
+            <!-- 3.5 Advanced Modules -->
+            <h3 class="tut-sub-head"><i class="bi bi-puzzle"></i> Advanced Modules (Tier&nbsp;2)</h3>
+            <p class="tut-prose">
+                After the core pipeline completes, the <strong>Modules</strong> tab unlocks <strong>12 specialized
+                    analytical micro-pipelines</strong>. These modules reuse your existing results &mdash; no
+                re-uploading
+                required. The tab uses a master-detail layout: browse the list on the left, configure and view results
+                on the right.
+            </p>
+
+            <p class="tut-prose" style="margin-top: 1rem;"><strong>Key modules:</strong></p>
+
+            <!-- WGCNA highlight -->
+            <div class="rna-card rna-mb-2" style="border-left: 3px solid var(--rna-teal);">
+                <div class="rna-card-body" style="padding: .85rem 1.15rem;">
+                    <h4 style="font-size: .85rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .4rem;">
+                        <i class="bi bi-diagram-3" style="color:var(--rna-teal);"></i>&ensp;WGCNA &mdash; Weighted Gene
+                        Co-expression Network Analysis
+                    </h4>
+                    <p class="tut-prose" style="margin: 0;">
+                        Identify clusters (modules) of co-expressed genes and correlate them with clinical traits.
+                        Upload a traits CSV or build one interactively. Outputs include module-trait correlation
+                        heatmaps, hub gene lists, and Enrichr pathway enrichment results.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Pathway highlight -->
+            <div class="rna-card rna-mb-2" style="border-left: 3px solid var(--rna-teal);">
+                <div class="rna-card-body" style="padding: .85rem 1.15rem;">
+                    <h4 style="font-size: .85rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .4rem;">
+                        <i class="bi bi-signpost-split" style="color:var(--rna-teal);"></i>&ensp;Pathway &amp; Gene Set
+                        Enrichment
+                    </h4>
+                    <p class="tut-prose" style="margin: 0 0 .5rem;">
+                        Map your differentially expressed genes onto biological pathways and curated gene sets.
+                        RNAseek integrates multiple databases:
+                    </p>
+                    <div class="tut-pill-row" style="margin: 0;">
+                        <span class="tut-pill"><i class="bi bi-node-plus"></i> PathBank (dynamic diagrams)</span>
+                        <span class="tut-pill"><i class="bi bi-collection"></i> MSigDB Hallmark</span>
+                        <span class="tut-pill"><i class="bi bi-collection"></i> C2: KEGG, Reactome</span>
+                        <span class="tut-pill"><i class="bi bi-collection"></i> C5: GO BP/MF/CC</span>
+                        <span class="tut-pill"><i class="bi bi-bacteria"></i> BASys2 Microbial Pathways</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- All modules table -->
+            <p class="tut-prose" style="margin-top: 1rem;"><strong>All available modules:</strong></p>
+            <div class="rna-card" style="overflow-x: auto;">
+                <table class="rna-table">
+                    <thead>
+                        <tr>
+                            <th>Module</th>
+                            <th>What It Does</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>WGCNA</strong></td>
+                            <td>Co-expression network analysis correlating gene modules to clinical traits.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Pathway Enrichment</strong></td>
+                            <td>GSEA/ORA with PathBank, KEGG, Reactome, GO, and BASys2 microbial pathways.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Alternative Splicing</strong></td>
+                            <td>Detects skipped exons and predicts protein domain changes (IsoformSwitchAnalyzeR).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>RNA Editing / SNPs</strong></td>
+                            <td>Identifies A-to-I editing events and high-confidence variants (REDItools2).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Time Series</strong></td>
+                            <td>Models gene expression dynamics over time (ImpulseDE2).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Causal Networks</strong></td>
+                            <td>Infers gene regulatory networks from expression data (GRNBoost2).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Literature NLP</strong></td>
+                            <td>Mines published literature for known gene interactions (INDRA Bio).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Survival Analysis</strong></td>
+                            <td>Correlates gene expression with clinical survival outcomes (lifelines).</td>
+                        </tr>
+                        <tr>
+                            <td><strong>TCGA Comparison</strong></td>
+                            <td>Compares your data against public TCGA cancer cohorts.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Biomarker Discovery</strong></td>
+                            <td>Cross-references DEGs with the MarkerDB clinical biomarker database.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>MOFA</strong></td>
+                            <td>Multi-omics factor analysis for integrating multiple data layers.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>DIABLO</strong></td>
+                            <td>Supervised multi-omics integration with discriminant analysis (mixOmics).</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 3.6 Downloading -->
+            <h3 class="tut-sub-head"><i class="bi bi-download"></i> Downloading Your Data</h3>
+            <p class="tut-prose">
+                Every downloadable file in the Core Hub has a clearly marked download button. You can download:
+            </p>
+            <ul class="tut-checklist">
+                <li><i class="bi bi-check-circle-fill"></i> Individual result files (click the download icon next to any
+                    file).</li>
+                <li><i class="bi bi-check-circle-fill"></i> The complete differential expression table with gene
+                    annotations.</li>
+                <li><i class="bi bi-check-circle-fill"></i> Raw and normalized count matrices for use in R, Python, or
+                    Excel.</li>
+                <li><i class="bi bi-check-circle-fill"></i> The interactive MultiQC HTML report for sharing with
+                    collaborators.</li>
+            </ul>
+            <div class="rna-banner-warn rna-mt-2">
+                <i class="bi bi-exclamation-triangle"></i>
+                <span><strong>Remember:</strong> Your session expires after 14&nbsp;days. Download all files you wish to
+                    keep before the session window closes. Once expired, data is <strong>permanently and irrecoverably
+                        deleted</strong> by the automated cleanup process.</span>
+            </div>
+
+            <!-- 3.7 Single-Cell -->
+            <h3 class="tut-sub-head"><i class="bi bi-layers"></i> Single-Cell &amp; Spatial Analysis (Advanced)</h3>
+            <p class="tut-prose">
+                The <strong>Single-Cell</strong> tab provides access to predictive deconvolution and spatial analysis
+                tools:
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin: .75rem 0;">
+                <div class="rna-card" style="padding: 1rem;">
+                    <h4 style="font-size: .82rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .45rem;">
+                        <i class="bi bi-pie-chart" style="color:var(--rna-teal);"></i> Deconvolution Gateway
+                    </h4>
+                    <p class="tut-prose" style="margin: 0;">
+                        Select a tissue-specific single-cell reference atlas and run computational deconvolution to
+                        estimate cell-type fractions. Toggle between a quick summary and high-resolution
+                        <code>.h5ad</code> pseudo-cell matrix generation.
+                    </p>
+                </div>
+                <div class="rna-card" style="padding: 1rem;">
+                    <h4 style="font-size: .82rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .45rem;">
+                        <i class="bi bi-bezier2" style="color:var(--rna-teal);"></i> Trajectory Inference
+                    </h4>
+                    <p class="tut-prose" style="margin: 0;">
+                        Trace developmental or disease trajectories through predicted cell states using pseudotime
+                        analysis (scanpy / PAGA).
+                    </p>
+                </div>
+                <div class="rna-card" style="padding: 1rem;">
+                    <h4 style="font-size: .82rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .45rem;">
+                        <i class="bi bi-pin-map" style="color:var(--rna-teal);"></i> Spatial Mapping
+                    </h4>
+                    <p class="tut-prose" style="margin: 0;">
+                        Project predicted cell types onto a tissue image (generic template or your own H&amp;E slide)
+                        to visualize where cells physically reside (Tangram).
+                    </p>
+                </div>
+                <div class="rna-card" style="padding: 1rem;">
+                    <h4 style="font-size: .82rem; font-weight: 600; color: var(--rna-grey-900); margin: 0 0 .45rem;">
+                        <i class="bi bi-thermometer-half" style="color:var(--rna-teal);"></i> Spatial Autocorrelation
+                    </h4>
+                    <p class="tut-prose" style="margin: 0;">
+                        Search for specific genes and visualize their spatial expression patterns as heatmaps overlaid
+                        on
+                        the tissue image (Moran&rsquo;s I / Squidpy).
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <hr class="tut-divider">
+
+    <!-- ═══════════════════════════════════════════════════════════
+         QUICK REFERENCE FAQ
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="rna-card rna-mb-3">
+        <div class="rna-card-header">
+            <i class="bi bi-question-circle"></i>&ensp;Quick Reference
+        </div>
+        <div class="rna-card-body">
+            <div class="tut-faq-item">
+                <div class="tut-faq-q">Do I need an account?</div>
+                <div class="tut-faq-a">No. Sessions are anonymous and start automatically when you open the platform.
+                </div>
+            </div>
+            <div class="tut-faq-item">
+                <div class="tut-faq-q">How long does my data persist?</div>
+                <div class="tut-faq-a">14 days from session creation. After that, all data is permanently deleted.</div>
+            </div>
+            <div class="tut-faq-item">
+                <div class="tut-faq-q">What file formats are accepted?</div>
+                <div class="tut-faq-a"><code>.fq.gz</code> / <code>.fastq.gz</code> (reads), <code>.bam</code> /
+                    <code>.cram</code> (alignments), <code>.csv</code> / <code>.tsv</code> (count matrices).</div>
+            </div>
+            <div class="tut-faq-item">
+                <div class="tut-faq-q">Is there a file size limit?</div>
+                <div class="tut-faq-a">The server supports uploads up to 10 GB per file. Files are chunked at 5 MB for
+                    reliability.</div>
+            </div>
+            <div class="tut-faq-item">
+                <div class="tut-faq-q">Can I use a custom genome?</div>
+                <div class="tut-faq-a">Yes. Upload FASTA + GTF/GFF and an index will be built automatically (Standard
+                    RNA-Seq and ChIP-seq tracks).</div>
+            </div>
+            <div class="tut-faq-item">
+                <div class="tut-faq-q">What organisms are supported?</div>
+                <div class="tut-faq-a">11 pre-indexed genomes (Human, Mouse, Rat, Zebrafish, Drosophila,
+                    C.&nbsp;elegans, Yeast, Arabidopsis, Chicken, Pig) plus custom uploads &amp; on-demand bacterial
+                    annotation via BASys2.</div>
+            </div>
+            <div class="tut-faq-item">
+                <div class="tut-faq-q">What statistics are used?</div>
+                <div class="tut-faq-a">DESeq2 for differential expression (Wald test by default; LRT for time-series).
+                    ComBat-seq for batch correction.</div>
+            </div>
+            <div class="tut-faq-item">
+                <div class="tut-faq-q">Are the plots interactive?</div>
+                <div class="tut-faq-a">Yes. All visualizations use Plotly &mdash; zoom, pan, hover for gene names, and
+                    export as PNG/SVG.</div>
+            </div>
+            <div class="tut-faq-item">
+                <div class="tut-faq-q">Can I come back later?</div>
+                <div class="tut-faq-a">Yes. Return in the same browser within 14 days to access all your results.</div>
+            </div>
+            <div class="tut-faq-item">
+                <div class="tut-faq-q">What happens after 14 days?</div>
+                <div class="tut-faq-a">All session data is permanently deleted by an automated cleanup process. Download
+                    results before expiration.</div>
+            </div>
+        </div>
+    </div>
+
 </section>
 {% endblock %}

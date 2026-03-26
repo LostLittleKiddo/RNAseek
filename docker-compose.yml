@@ -6,6 +6,7 @@
 #   worker  — Celery workers (bioinformatics pipeline execution)
 #   beat    — Celery Beat scheduler (nightly purge_expired)
 #   redis   — Message broker + result backend
+#   tusd    — Tus resumable upload daemon (high-speed file uploads)
 #
 # All services that touch pipeline data mount the shared NFS
 # volume at /app/media/ so uploads and results are visible
@@ -93,13 +94,54 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ── Tus Upload Daemon (tusd) ──
+  # Handles resumable file uploads via the Tus protocol.
+  # Nginx routes /files/ here. Writes directly to the shared
+  # NFS media volume so Django/workers can access uploaded files.
+  tusd:
+    image: tusproject/tusd:v2
+    command:
+      - -host=0.0.0.0
+      - -port=1080
+      - -upload-dir=/app/media/uploads
+      - -base-path=/files/
+      # Hook URL: tusd notifies Django when an upload completes
+      # so it can register the FileAsset in the database.
+      - -hooks-http=http://web:8000/api/tusd-hooks/
+      - -hooks-http-forward-headers=Cookie,X-Session-ID
+      # Behind a reverse proxy — trust X-Forwarded-* headers.
+      - -behind-proxy
+      # Maximum upload size: 0 = unlimited (matches Nginx setting).
+      - -max-size=0
+    ports:
+      - "127.0.0.1:1080:1080"
+    volumes:
+      - media-data:/app/media
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:1080/files/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
 volumes:
   # Shared media volume — in production, replace with an NFS driver:
   #   media-data:
   #     driver: local
   #     driver_opts:
   #       type: nfs
-  #       o: addr=<NFS_SERVER_IP>,rw,nfsvers=4.1
+  #       o: addr=<NFS_SERVER_IP>,rw,nfsvers=4.1,async,noatime,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2
   #       device: ":/exports/rnaseek"
+  #
+  # NFS mount flag explanation:
+  #   async      - Client ACKs writes before server confirms (big throughput gain)
+  #   noatime    - Skip access time updates on every read (reduces metadata I/O)
+  #   rsize/wsize=1048576 - 1MB read/write blocks (matches tusd chunk I/O pattern)
+  #   hard       - Retry indefinitely on NFS timeout (prevents data loss)
+  #   timeo=600  - 60s timeout before retry (generous for loaded NFS)
+  #   retrans=2  - Retry twice before marking hard error
   media-data:
   redis-data:

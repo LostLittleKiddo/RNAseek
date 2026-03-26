@@ -5,7 +5,7 @@ import shutil
 
 from celery import shared_task
 
-from pipeline.tasks._helpers import _emit_progress, _update_step
+from pipeline.tasks._helpers import _emit_progress
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +115,18 @@ def run_tier2_module(self, session_id, core_job_id, module_name, params=None):
             result = _dispatch_wgcna(
                 job, session_id, str(submission.submission_id), **params,
             )
+        elif module_name == "RNA_EDITING":
+            result = _dispatch_rna_editing(
+                job, session_id, str(submission.submission_id), **params,
+            )
+        elif module_name == "TIME_SERIES":
+            result = _dispatch_timeseries(
+                job, session_id, str(submission.submission_id), **params,
+            )
+        elif module_name == "SPLICING":
+            result = _dispatch_splicing(
+                job, session_id, str(submission.submission_id), **params,
+            )
         else:
             # Placeholder for unimplemented modules.
             progress = job.step_progress or {}
@@ -165,8 +177,14 @@ def _dispatch_wgcna(job, session_id, submission_id, **kwargs):
 
     Required FileAsset roles on the submission:
         NORMALIZED_COUNTS  - DESeq2 normalized count matrix
-        METADATA_CSV       - sample-level metadata (conditions / traits)
+    Required metadata (one of):
+        METADATA_CSV FileAsset  - user-uploaded metadata CSV
+        submission.metadata_payload["samples"] - manual metadata (JSON)
     """
+    import os
+
+    import pandas as pd
+
     from pipeline.models import AnalysisSubmission, FileAsset
     from pipeline.tasks._module_wgcna import execute_wgcna_and_pathways
 
@@ -179,18 +197,223 @@ def _dispatch_wgcna(job, session_id, submission_id, **kwargs):
         submission=submission,
         file_role=FileAsset.FileRole.NORMALIZED_COUNTS,
     )
-    metadata_asset = FileAsset.objects.get(
+
+    # Resolve metadata: prefer an uploaded METADATA_CSV FileAsset; fall back
+    # to generating a CSV from the submission's metadata_payload JSON (used
+    # when the user chose "manual" metadata mode).
+    metadata_asset = FileAsset.objects.filter(
         session_id=session_id,
         submission=submission,
         file_role=FileAsset.FileRole.METADATA_CSV,
-    )
+    ).first()
+
+    if metadata_asset:
+        metadata_path = metadata_asset.local_path
+    else:
+        payload = submission.metadata_payload or {}
+        samples = payload.get("samples", [])
+        if not samples:
+            raise RuntimeError(
+                "No metadata available for WGCNA: no METADATA_CSV file "
+                "and no samples in submission metadata_payload."
+            )
+        meta_dir = os.path.join(submission.upload_dir, "metadata")
+        os.makedirs(meta_dir, exist_ok=True)
+        metadata_path = os.path.join(meta_dir, "metadata_from_payload.csv")
+        meta_df = pd.DataFrame(samples)
+        # Use _sample_name or sample as index so _load_and_validate (which
+        # reads with index_col=0) sees sample IDs in the index.
+        for col in ("_sample_name", "sample"):
+            if col in meta_df.columns:
+                meta_df = meta_df.set_index(col)
+                break
+        meta_df.to_csv(metadata_path)
 
     return execute_wgcna_and_pathways(
         job_id=str(job.job_id),
         session_id=str(session_id),
         matrix_path=matrix_asset.local_path,
-        metadata_path=metadata_asset.local_path,
+        metadata_path=metadata_path,
         **kwargs,
+    )
+
+
+def _dispatch_rna_editing(job, session_id, submission_id, **kwargs):
+    """Resolve BAM files and genome FASTA, then delegate to the RNA editing engine.
+
+    Required FileAsset roles on the submission:
+        ALIGNMENT_BAM  - one or more aligned BAM files from the core pipeline
+
+    The reference genome FASTA is resolved from the submission's
+    ``reference_genome`` field via ``_genome_paths()``.
+
+    Optional params (forwarded from the frontend form):
+        whole_transcriptome : bool
+        bed_data            : str   (raw BED file content)
+    """
+    import os
+    import tempfile
+
+    from pipeline.models import AnalysisSubmission, FileAsset
+    from pipeline.tasks._genome import _genome_paths, _resolve_genome
+    from pipeline.tasks._module_rna_editing import execute_rna_editing
+
+    submission = AnalysisSubmission.objects.get(
+        submission_id=submission_id, session_id=session_id,
+    )
+
+    # Collect all BAM files produced by the core pipeline for this submission.
+    bam_assets = FileAsset.objects.filter(
+        session_id=session_id,
+        submission=submission,
+        file_role=FileAsset.FileRole.ALIGNMENT_BAM,
+    )
+    bam_paths = [a.local_path for a in bam_assets if os.path.isfile(a.local_path)]
+    if not bam_paths:
+        raise FileNotFoundError(
+            "No aligned BAM files found for this submission. "
+            "Run the core pipeline first."
+        )
+
+    # Resolve the reference genome FASTA.
+    genome_key = submission.reference_genome
+    _, genome_fasta, _ = _resolve_genome(
+        genome_key, submission.upload_dir, submission=submission,
+    )
+    if not genome_fasta:
+        raise FileNotFoundError(
+            f"Could not resolve reference FASTA for genome '{genome_key}'."
+        )
+
+    # If the user provided BED data as text, write it to a temporary file.
+    whole_transcriptome = kwargs.pop("whole_transcriptome", False)
+    bed_data = kwargs.pop("bed_data", None)
+    bed_path = None
+
+    if not whole_transcriptome and bed_data and isinstance(bed_data, str):
+        work_dir = os.path.join(submission.upload_dir, "rna_editing")
+        os.makedirs(work_dir, exist_ok=True)
+        bed_path = os.path.join(work_dir, "target_regions.bed")
+        with open(bed_path, "w") as fh:
+            fh.write(bed_data)
+
+    return execute_rna_editing(
+        job_id=str(job.job_id),
+        session_id=str(session_id),
+        bam_paths=bam_paths,
+        genome_fasta=genome_fasta,
+        bed_path=bed_path,
+        whole_transcriptome=whole_transcriptome,
+    )
+
+
+def _dispatch_timeseries(job, session_id, submission_id, **kwargs):
+    """Resolve normalized count matrix and delegate to the Time Series engine.
+
+    Required FileAsset roles on the submission:
+        NORMALIZED_COUNTS  - DESeq2 normalized count matrix
+
+    Required params (from the frontend form):
+        mapping_data : dict   (sample -> timepoint / condition mapping)
+        time_unit    : str    (minutes, hours, days, weeks)
+    """
+    from pipeline.models import AnalysisSubmission, FileAsset
+    from pipeline.tasks._module_timeseries import execute_timeseries
+
+    submission = AnalysisSubmission.objects.get(
+        submission_id=submission_id, session_id=session_id,
+    )
+
+    matrix_asset = FileAsset.objects.get(
+        session_id=session_id,
+        submission=submission,
+        file_role=FileAsset.FileRole.NORMALIZED_COUNTS,
+    )
+
+    mapping_data = kwargs.pop("mapping_data", None)
+    if not mapping_data:
+        raise ValueError("No sample mapping data provided.")
+
+    time_unit = kwargs.pop("time_unit", "hours")
+
+    return execute_timeseries(
+        job_id=str(job.job_id),
+        session_id=str(session_id),
+        matrix_path=matrix_asset.local_path,
+        mapping_data=mapping_data,
+        time_unit=time_unit,
+    )
+
+
+def _dispatch_splicing(job, session_id, submission_id, **kwargs):
+    """Resolve BAM files and genome GTF, then delegate to the alt splicing engine.
+
+    Required FileAsset roles on the submission:
+        ALIGNMENT_BAM  - one or more aligned BAM files from the core pipeline
+
+    The reference GTF is resolved from the submission's ``reference_genome``
+    field via ``_resolve_genome()``, or from a CUSTOM_GENOME_ANNOTATION asset.
+
+    Required params (from the frontend form):
+        input_mode        : str   ("manual" or "csv")
+        sample_conditions : list  (manual mode: [{file_name, condition}, ...])
+        csv_data          : str   (csv mode: raw CSV text)
+    """
+    import os
+
+    from pipeline.models import AnalysisSubmission, FileAsset
+    from pipeline.tasks._genome import _resolve_genome
+    from pipeline.tasks._module_alt_splicing import (
+        _parse_csv_conditions,
+        execute_alt_splicing,
+    )
+
+    submission = AnalysisSubmission.objects.get(
+        submission_id=submission_id, session_id=session_id,
+    )
+
+    # Collect all BAM files for this submission.
+    bam_assets = FileAsset.objects.filter(
+        session_id=session_id,
+        submission=submission,
+        file_role=FileAsset.FileRole.ALIGNMENT_BAM,
+    )
+    bam_paths = [a.local_path for a in bam_assets if os.path.isfile(a.local_path)]
+    if not bam_paths:
+        raise FileNotFoundError(
+            "No aligned BAM files found for this submission. "
+            "Run the core pipeline first."
+        )
+
+    # Resolve the reference genome GTF.
+    genome_key = submission.reference_genome
+    _, _, genome_gtf = _resolve_genome(
+        genome_key, submission.upload_dir, submission=submission,
+    )
+    if not genome_gtf:
+        raise FileNotFoundError(
+            f"Could not resolve reference GTF for genome '{genome_key}'."
+        )
+
+    # Parse the condition mapping from the frontend payload.
+    input_mode = kwargs.pop("input_mode", "manual")
+    if input_mode == "csv":
+        csv_data = kwargs.pop("csv_data", "")
+        if not csv_data:
+            raise ValueError("CSV mode selected but no CSV data provided.")
+        sample_conditions = _parse_csv_conditions(csv_data)
+    else:
+        sample_conditions = kwargs.pop("sample_conditions", [])
+
+    if not sample_conditions:
+        raise ValueError("No sample-to-condition mapping provided.")
+
+    return execute_alt_splicing(
+        job_id=str(job.job_id),
+        session_id=str(session_id),
+        bam_paths=bam_paths,
+        genome_gtf=genome_gtf,
+        sample_conditions=sample_conditions,
     )
 
 

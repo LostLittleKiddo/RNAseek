@@ -1,5 +1,9 @@
 """Page views — Django TemplateViews for the frontend."""
 
+import csv
+import json
+import os
+
 from django.shortcuts import get_object_or_404
 from django.views.generic import TemplateView
 
@@ -18,11 +22,20 @@ class WorkspacesView(TemplateView):
     template_name = "pipeline/workspaces.html"
 
     def get_context_data(self, **kwargs):
+        from django.conf import settings
+
         ctx = super().get_context_data(**kwargs)
         session_obj = self.request.session_obj
+        ctx["is_production"] = settings.IS_PRODUCTION
         ctx["jobs"] = list(
-            session_obj.analysis_jobs.order_by("-created_at").values(
-                "job_id", "module_name", "status", "created_at"
+            session_obj.analysis_jobs.filter(
+                is_core_pipeline=True,
+            ).order_by("-created_at").values(
+                "job_id",
+                "module_name",
+                "status",
+                "created_at",
+                "parent_submission__submission_name",
             )
         )
         return ctx
@@ -33,8 +46,11 @@ class NewSubmissionView(TemplateView):
     nav_step = 1
 
     def get_context_data(self, **kwargs):
+        from django.conf import settings
+
         ctx = super().get_context_data(**kwargs)
         ctx["nav_step"] = self.nav_step
+        ctx["is_production"] = settings.IS_PRODUCTION
         ctx["genome_choices"] = [
             {"group": "Vertebrates", "options": [
                 {"value": "hg38", "label": "Human (GRCh38 / hg38)"},
@@ -91,6 +107,8 @@ class ProcessingView(TemplateView):
         )
         ctx["job"] = job
         ctx["job_id"] = str(job.job_id)
+        submission = job.parent_submission
+        ctx["submission_name"] = submission.submission_name if submission else ""
         ctx["nav_step"] = self.nav_step
 
         active_keys = set((job.step_progress or {}).get("pipeline_steps", []))
@@ -116,20 +134,73 @@ class CoreHubView(TemplateView):
             file_role=FileAsset.FileRole.H5AD_PSEUDO
         ).exists()
         ctx["nav_step"] = self.nav_step
+
+        # Submission ID for module run API calls
+        submission = job.parent_submission
+        ctx["submission_id"] = str(submission.submission_id) if submission else ""
+        ctx["submission_name"] = submission.submission_name if submission else ""
+
+        # BAM file asset names for Tier 2 module forms (e.g. Alt Splicing)
+        bam_assets = []
+        if submission:
+            bam_assets = list(
+                FileAsset.objects.filter(
+                    submission=submission,
+                    file_role=FileAsset.FileRole.ALIGNMENT_BAM,
+                ).values_list("local_path", flat=True)
+            )
+        bam_basenames = [os.path.basename(p) for p in bam_assets]
+        ctx["bam_files_json"] = json.dumps(bam_basenames)
+        ctx["has_bam_files"] = len(bam_basenames) > 0
+
+        # Sample IDs and normalized counts availability for Tier 2 modules.
+        # ImpulseDE2 (Time Series) requires gene expression count data, so
+        # we hide the module for methylation assays whose NORMALIZED_COUNTS
+        # contain CpG-level methylation percentages, not integer counts.
+        sample_ids = []
+        has_normalized_counts = False
+        if submission:
+            is_methylation = getattr(submission, "assay_type", "") == "methylation"
+            nc_asset = FileAsset.objects.filter(
+                submission=submission,
+                file_role=FileAsset.FileRole.NORMALIZED_COUNTS,
+            ).first()
+            if nc_asset and not is_methylation and os.path.isfile(nc_asset.local_path):
+                has_normalized_counts = True
+                try:
+                    with open(nc_asset.local_path, "r") as fh:
+                        reader = csv.reader(fh)
+                        header = next(reader, [])
+                        # First column is gene/row index; rest are sample names
+                        sample_ids = [h.strip() for h in header[1:] if h.strip()]
+                except Exception:
+                    pass
+        ctx["has_normalized_counts"] = has_normalized_counts
+        ctx["sample_ids_json"] = json.dumps(sample_ids)
+
+        # Module jobs: non-core-pipeline jobs linked to same submission
+        # Returns arrays grouped by module name for history support
+        module_jobs_map = {}
+        if submission:
+            for mj in AnalysisJob.objects.filter(
+                parent_submission=submission,
+                is_core_pipeline=False,
+            ).order_by("-created_at").values(
+                "job_id", "module_name", "status", "result_payload",
+                "updated_at", "created_at",
+            ):
+                key = mj["module_name"]
+                if key not in module_jobs_map:
+                    module_jobs_map[key] = []
+                module_jobs_map[key].append({
+                    "job_id": str(mj["job_id"]),
+                    "status": mj["status"],
+                    "payload": mj["result_payload"] or {},
+                    "updated_at": mj["updated_at"].isoformat() if mj["updated_at"] else None,
+                    "created_at": mj["created_at"].isoformat() if mj["created_at"] else None,
+                })
+        ctx["module_jobs_json"] = json.dumps(module_jobs_map)
+
         return ctx
 
 
-class AdvancedView(TemplateView):
-    template_name = "pipeline/advanced.html"
-    nav_step = 4
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        session_obj = self.request.session_obj
-        job = get_object_or_404(
-            AnalysisJob, job_id=kwargs["job_id"], session=session_obj
-        )
-        ctx["job"] = job
-        ctx["job_id"] = str(job.job_id)
-        ctx["nav_step"] = self.nav_step
-        return ctx
