@@ -94,6 +94,9 @@ from pipeline.tasks._module_wgcna import execute_wgcna_and_pathways  # noqa: F40
 # ── RNA Editing module ──
 from pipeline.tasks._module_rna_editing import execute_rna_editing  # noqa: F401
 
+# ── Alt Splicing module ──
+from pipeline.tasks._module_alt_splicing import execute_alt_splicing  # noqa: F401
+
 # ── Celery tasks (must be importable for autodiscovery) ──
 from pipeline.tasks.core import (  # noqa: F401
     purge_expired_sessions,
