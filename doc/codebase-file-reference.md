@@ -14,7 +14,7 @@
 | `environment.yml`        | —     | Conda environment spec (mirrors requirements.txt for conda-based deployments)                                |
 | `db.sqlite3`             | —     | SQLite database (development only)                                                                           |
 | `Dockerfile`             | —     | Multi-stage: Miniconda base → conda env → pip deps → app code → collectstatic; EXPOSE 8000                   |
-| `docker-compose.yml`     | —     | 4-service production stack: web (Daphne), worker (Celery, 32 GB RAM), beat, redis (7-alpine); shared volumes |
+| `docker-compose.yml`     | —     | 5-service production stack: web (Daphne), worker (Celery, 32 GB RAM), beat, redis (7-alpine), tusd (v2 resumable uploads); shared volumes, NFS mount flags documented |
 | `docker-compose.dev.yml` | —     | Dev override: live code mount, reduced concurrency (2), debug logging                                        |
 | `deploy.sh`              | —     | Server deploy script: .env validation, pip install, migrate, collectstatic, Nginx symlink, systemd reload    |
 | `README.md`              | —     | Project overview and setup instructions                                                                      |
@@ -58,7 +58,7 @@
 | File          | Lines | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `__init__.py` | 22    | Re-exports all view classes for clean imports                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `api.py`      | ~570  | 9 API views: `FileAssetDelete`, `CreateSubmissionView`, `DeleteSubmissionView`, `ChunkUploadView` (25 MB concurrent chunks, SSD-buffered with merge-on-complete, path-traversal sanitized), `CorePipelineView` (facade → validators → Celery dispatch), `JobStatusView` (stale-job detection via AsyncResult), `SessionAssetsView`, `FileDownloadView`, `ModuleRunView` (12 approved modules). Helpers: `_subdir_for_role()`, `_merge_and_move()`, `UPLOAD_BUFFER_ROOT` |
+| `api.py`      | ~670  | 10 API views: `FileAssetDelete`, `CreateSubmissionView`, `DeleteSubmissionView`, `ChunkUploadView` (25 MB concurrent chunks, SSD-buffered with merge-on-complete, path-traversal sanitized), `CorePipelineView` (facade → validators → Celery dispatch), `JobStatusView` (stale-job detection via AsyncResult), `SessionAssetsView`, `FileDownloadView`, `ModuleRunView` (12 approved modules), `TusdHookView` (Tus post-finish webhook: moves uploaded file, creates FileAsset). Helpers: `_subdir_for_role()`, `_merge_and_move()`, `UPLOAD_BUFFER_ROOT` |
 | `pages.py`    | 203   | 6 template-based views: `HomeView`, `TutorialsView`, `WorkspacesView`, `NewSubmissionView` (genome list context), `ProcessingView` (pipeline steps context), `CoreHubView` (plot data, download links, module jobs, BAM presence check)                                                                                                                                                                                                                                 |
 
 ### `pipeline/tasks/` — Celery Task Layer
@@ -139,7 +139,7 @@
 
 ---
 
-## `test/` — Test Suite (11 files)
+## `test/` — Test Suite (12 files)
 
 | File                        | Lines | Coverage Area                                                                                                 |
 | --------------------------- | ----- | ------------------------------------------------------------------------------------------------------------- |
@@ -154,6 +154,7 @@
 | `test_dev_dataset.py`       | 259   | Dev dataset validation (metadata, sample matching)                                                            |
 | `test_e2e.py`               | 373   | Full end-to-end: synthetic yeast FASTQ → Stage 1 → Stage 2 (used in GitHub Actions CI)                        |
 | `test_genome_indices.py`    | 155   | Genome index resolution, pre-built index verification                                                         |
+| `test_tusd_hooks.py`        | ~200  | TusdHookView: 18 tests covering post-finish file creation, file move, sidecar cleanup, file_role handling, session validation, error cases |
 
 ---
 
@@ -173,7 +174,8 @@
 | `guide/Docker/Docker Deployment Guide.md`         | Docker production deployment guide                                                |
 | `guide/Docker/Docker Development Guide.md`        | Docker development environment guide                                              |
 | `guide/Production/Production Commands.md`         | Production server command reference                                               |
-| `guide/Production/Production Deployment Guide.md` | Bare-metal production deployment guide                                            |
+| `guide/Production/Production Deployment Guide.md` | Bare-metal production deployment guide (tusd, Nginx, systemd, NFS)                |
+| `guide/Development/Development Guide.md`          | Local development setup, testing, project structure                                |
 
 ### `doc/script/` — Reference Genome Build Scripts
 
@@ -191,7 +193,7 @@
 
 | File           | Purpose                                                                                               |
 | -------------- | ----------------------------------------------------------------------------------------------------- |
-| `rnaseek.conf` | Nginx: HTTPS (Let's Encrypt), WebSocket `/ws/` upgrade, 10 GB upload limit, 30-day static cache, gzip |
+| `rnaseek.conf` | Nginx: HTTPS (Let's Encrypt), WebSocket `/ws/` upgrade, Tus `/files/` proxy to tusd (streaming, no request buffering), `client_max_body_size 0` (unlimited), 30-day static cache, gzip |
 
 ---
 
@@ -202,6 +204,14 @@
 | `rnaseek-web.service`    | systemd unit for Daphne ASGI server                   |
 | `rnaseek-worker.service` | systemd unit for Celery worker (prefork, CPU-matched) |
 | `rnaseek-beat.service`   | systemd unit for Celery Beat scheduler                |
+
+---
+
+## `scripts/`
+
+| File                            | Purpose                                                                                            |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `benchmark-upload-capacity.sh`  | Non-disruptive production benchmark: network bandwidth (iperf3/curl), NFS disk I/O (dd/fio)        |
 
 ---
 

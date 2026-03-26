@@ -8,15 +8,16 @@
 
 ### 1.1 Application Layer (Dockerized Microservices)
 
-* **Web Server (Django 5.2):** Served by Daphne (ASGI) for synchronous REST API calls and real-time asynchronous WebSocket connections (Django Channels) for live progress bars. Nginx sits in front as a reverse proxy handling SSL (Let's Encrypt / Certbot), WebSocket upgrades at `/ws/`, 10 GB upload limits, and 30-day static file caching.
+* **Web Server (Django 5.2):** Served by Daphne (ASGI) for synchronous REST API calls and real-time asynchronous WebSocket connections (Django Channels) for live progress bars. Nginx sits in front as a reverse proxy handling SSL (Let's Encrypt / Certbot), WebSocket upgrades at `/ws/`, Tus upload proxying at `/files/` (streaming, no request buffering), and 30-day static file caching.
 * **Message Broker (Redis 7+):** Memory-based queue for Celery tasks and Channels layer backend.
 * **Worker Fleet (Celery 5.6):** Prefork workers with CPU-matched concurrency. Isolated containers that strictly execute Python/R bioinformatics scripts. 32 GB RAM limit per worker container.
 * **Scheduler (Celery Beat):** Single-replica container running periodic tasks (session purge at 2:00 AM UTC).
+* **Upload Daemon (tusd v2):** Handles resumable file uploads via the Tus protocol. Writes directly to the shared NFS volume. On upload completion, sends a `post-finish` webhook to Django at `/api/tusd-hooks/` which registers the `FileAsset`.
 * **Microbial Engine (BASys2 Docker):** An isolated local Docker container running the BASys2 pipeline and database. This processes unannotated bacterial FASTA uploads, rapidly generating complete structural, operon, and metabolome annotations (JSON/GenBank) in ~10 seconds for downstream alignment and counting without relying on external API calls.
 
 ### 1.2 Storage Layer (POSIX Shared NFS)
 
-* A POSIX-compliant Network File System (NFS) mounted to `/app/media/` on every Docker container (web, worker, beat). The `docker-compose.yml` defines a `media-data` volume with commented NFS swap instructions.
+* A POSIX-compliant Network File System (NFS) mounted to `/app/media/` on every Docker container (web, worker, beat, tusd). The `docker-compose.yml` defines a `media-data` volume with documented NFS mount flags (async, noatime, rsize/wsize 1 MB, hard).
 * The web server writes uploads to `/app/media/sessions/{uuid}/`. Celery workers read from the exact same path. Zero data movement.
 * Reference genomes (11 pre-indexed) reside under `pipeline/reference_genomes/`.
 
@@ -210,11 +211,11 @@ The Core Hub UI uses a 3-tab layout (Overview | Modules | Single-Cell). Tab 2 co
 ### 8.3 Docker and Deployment
 
 * **Dockerfile:** Multi-stage production container (Miniconda base, conda env, pip deps, app code, collectstatic, EXPOSE 8000).
-* **`docker-compose.yml`:** 4 services (web/Daphne, worker/Celery with 32 GB RAM limit, beat, redis/7-alpine). Shared `media-data` volume. Health checks on all services.
+* **`docker-compose.yml`:** 5 services (web/Daphne, worker/Celery with 32 GB RAM limit, beat, redis/7-alpine, tusd/v2). Shared `media-data` volume with NFS mount flags documented. Health checks on all services.
 * **`docker-compose.dev.yml`:** Override with live code mount, reduced concurrency (2), debug log level.
 * **`deploy.sh`:** Production deployment script (.env check, pip install, migrate, collectstatic, Nginx symlink, systemd reload).
-* **`nginx/rnaseek.conf`:** HTTPS (Let's Encrypt), WebSocket upgrade, 10 GB uploads, 30-day static cache, gzip compression.
-* **systemd:** `rnaseek-web.service` (Daphne), `rnaseek-worker.service` (Celery), `rnaseek-beat.service`.
+* **`nginx/rnaseek.conf`:** HTTPS (Let's Encrypt), WebSocket upgrade, Tus `/files/` proxy to tusd (streaming, `proxy_request_buffering off`), `client_max_body_size 0` (unlimited), 30-day static cache, gzip compression.
+* **systemd:** `rnaseek-web.service` (Daphne), `rnaseek-worker.service` (Celery), `rnaseek-beat.service`, plus `rnaseek-tusd.service` for bare-metal tusd deployment.
 
 ### 8.4 Pre-Built Reference Indices
 

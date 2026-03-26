@@ -21,9 +21,10 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 │                       NGINX (Reverse Proxy)                          │
 │  • SSL termination (Let's Encrypt / Certbot)                         │
 │  • /ws/ → WebSocket upgrade                                          │
+│  • /files/ → tusd upstream (127.0.0.1:1080) for Tus uploads          │
 │  • /static/ → WhiteNoise (30-day cache)                              │
 │  • /* → Daphne upstream (127.0.0.1:8000)                             │
-│  • client_max_body_size 10G                                          │
+│  • client_max_body_size 0 (unlimited — tusd handles chunking)        │
 └─────────┬────────────────────────────────────────────────────────────┘
           │
 ┌─────────▼───────────────────────────────────────────────────────────┐
@@ -33,7 +34,7 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 │  │  ┌──────────────┐  ┌────────────────┐  ┌───────────────────┐   │ │
 │  │  │ Page Views   │  │  API Views     │  │  WebSocket        │   │ │
 │  │  │ (pages.py)   │  │  (api.py)      │  │  Consumer         │   │ │
-│  │  │ 7 templates  │  │  9 endpoints   │  │  (consumers.py)   │   │ │
+│  │  │ 7 templates  │  │  10 endpoints  │  │  (consumers.py)   │   │ │
 │  │  └──────────────┘  └───────┬────────┘  └────────┬──────────┘   │ │
 │  │                            │ dispatch            │ broadcast   │  │
 │  │  ┌──────────────┐          │                     │             │  │
@@ -118,7 +119,8 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 
 | Component              | Role                                                              | Communicates With                                                                        |
 | ---------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| **Nginx**              | SSL termination, reverse proxy, static serving, WebSocket upgrade | Daphne (upstream)                                                                        |
+| **Nginx**              | SSL termination, reverse proxy, static serving, WebSocket upgrade | Daphne (upstream), tusd (upstream for `/files/`)                                         |
+| **tusd**               | Tus protocol resumable uploads, webhook notification              | Nginx (reverse proxy), Django (post-finish webhook), Filesystem (upload writes)          |
 | **Daphne**             | ASGI server: HTTP requests + WebSocket connections                | Redis (channels layer), Database (ORM), Filesystem (uploads)                             |
 | **Django Views**       | Request handling, validation, template rendering                  | Database (ORM), Redis (task dispatch)                                                    |
 | **WebSocket Consumer** | Real-time progress push to browser                                | Redis (channel group pub/sub)                                                            |
@@ -409,7 +411,42 @@ This is the primary data flow. BAM and Matrix entry points skip to steps 5 and 6
     │        asset_id: uuid }  │                          │              │
 ```
 
-### 3.5 WebSocket Real-Time Progress
+### 3.5 Tus Resumable Upload (tusd)
+
+```
+ BROWSER                    NGINX                      tusd                DJANGO API           NFS
+ ───────                    ─────                      ────                ──────────           ───
+    │                          │                          │                    │                 │
+    │  1. POST /files/         │                          │                    │                 │
+    │     (Tus Creation)       │                          │                    │                 │
+    │ ─────────────────────► │                          │                    │                 │
+    │                          │── proxy (streaming) ──► │                    │                 │
+    │                          │   no request buffering   │── write file ───────────────────► │
+    │  ◄── 201 Location:       │                          │   /app/media/     │                 │
+    │      /files/{upload-id}  │                          │   uploads/        │                 │
+    │                          │                          │                    │                 │
+    │  2. PATCH /files/{id}    │                          │                    │                 │
+    │     (Tus Upload,         │                          │                    │                 │
+    │      resumable chunks)   │                          │                    │                 │
+    │ ─────────────────────► │── stream-through ──────► │                    │                 │
+    │  ◄── 204 (offset ack)    │                          │── append data ──────────────────► │
+    │                          │                          │                    │                 │
+    │  ... (repeat until done) │                          │                    │                 │
+    │                          │                          │                    │                 │
+    │  3. Final PATCH lands    │                          │                    │                 │
+    │                          │                          │── POST webhook ──► │                 │
+    │                          │                          │   /api/tusd-hooks/ │                 │
+    │                          │                          │   Hook-Name:       │                 │
+    │                          │                          │   post-finish      │                 │
+    │                          │                          │                    │── move file     │
+    │                          │                          │                    │   to submission  │
+    │                          │                          │                    │   subdir ──────► │
+    │                          │                          │                    │── create         │
+    │                          │                          │                    │   FileAsset      │
+    │                          │                          │  ◄── 200 OK ────── │                 │
+```
+
+### 3.6 WebSocket Real-Time Progress
 
 ```
  CELERY WORKER              REDIS CHANNELS             DAPHNE CONSUMER          BROWSER
@@ -438,26 +475,27 @@ This is the primary data flow. BAM and Matrix entry points skip to steps 5 and 6
 ┌─────────────────────────────────────────────────────────────────┐
 │  docker-compose.yml                                              │
 │                                                                  │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────┐  ┌──────────┐  │
-│  │    web       │  │   worker     │  │  beat   │  │  redis   │  │
-│  │  (Daphne)   │  │  (Celery)    │  │(Celery  │  │  7-alpine│  │
-│  │  port 8000  │  │  32 GB RAM   │  │  Beat)  │  │  port    │  │
-│  │             │  │  limit       │  │         │  │  6379    │  │
-│  └──────┬──────┘  └──────┬───────┘  └────┬────┘  └────┬─────┘  │
-│         │                │               │             │         │
-│         └────────────────┴───────────────┴─────────────┘         │
-│                          │                                       │
-│                   media-data volume                               │
-│                   (/app/media/)                                   │
+│  ┌───────────┐ ┌──────────┐ ┌────────┐ ┌────────┐ ┌──────────┐ │
+│  │   web      │ │  worker  │ │  beat  │ │ redis  │ │   tusd   │ │
+│  │ (Daphne)  │ │ (Celery) │ │(Celery │ │7-alpine│ │(tusd v2) │ │
+│  │ port 8000 │ │ 32 GB    │ │ Beat)  │ │ port   │ │ port     │ │
+│  │           │ │ limit    │ │        │ │ 6379   │ │ 1080     │ │
+│  └─────┬─────┘ └────┬─────┘ └───┬────┘ └───┬────┘ └────┬─────┘ │
+│        │            │           │          │           │        │
+│        └────────────┴───────────┴──────────┴───────────┘        │
+│                          │                                      │
+│                   media-data volume                              │
+│                   (/app/media/)                                  │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-| Service    | Image               | Command                                                          | Resources          |
-| ---------- | ------------------- | ---------------------------------------------------------------- | ------------------ |
-| **web**    | Custom (Dockerfile) | `daphne -b 0.0.0.0 -p 8000 config.asgi:application`              | —                  |
-| **worker** | Custom (Dockerfile) | `celery -A config worker --concurrency=${CELERY_CONCURRENCY:-4}` | 32 GB memory limit |
-| **beat**   | Custom (Dockerfile) | `celery -A config beat`                                          | 1 replica          |
-| **redis**  | `redis:7-alpine`    | Default                                                          | —                  |
+| Service    | Image                  | Command                                                          | Resources          |
+| ---------- | ---------------------- | ---------------------------------------------------------------- | ------------------ |
+| **web**    | Custom (Dockerfile)    | `daphne -b 0.0.0.0 -p 8000 config.asgi:application`              | —                  |
+| **worker** | Custom (Dockerfile)    | `celery -A config worker --concurrency=${CELERY_CONCURRENCY:-4}` | 32 GB memory limit |
+| **beat**   | Custom (Dockerfile)    | `celery -A config beat`                                          | 1 replica          |
+| **redis**  | `redis:7-alpine`       | Default                                                          | —                  |
+| **tusd**   | `tusproject/tusd:v2`   | Tus daemon with webhook to Django                                | —                  |
 
-All services share a `media-data` Docker volume mounted at `/app/media/`, providing zero-copy file access between the web server and workers.
+All services share a `media-data` Docker volume mounted at `/app/media/`, providing zero-copy file access between the web server, workers, and tusd.

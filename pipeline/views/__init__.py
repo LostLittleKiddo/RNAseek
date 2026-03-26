@@ -19,4 +19,5 @@ from pipeline.views.api import (            # noqa: F401
     JobStatusView,
     ModuleRunView,
     SessionAssetsView,
+    TusdHookView,
 )
