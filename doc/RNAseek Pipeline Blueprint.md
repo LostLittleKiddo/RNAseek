@@ -42,7 +42,7 @@
 
 ### 3.1 Chunked Uploader (`POST /api/upload/chunk`)
 
-Files are chunked into 5 MB binary slices client-side. The Django API receives slices, sanitizes filenames to prevent path traversal, and appends binary bytes (`ab` mode) into role-aware subdirectories inside the submission's NFS folder (`raw/`, `aligned/`, `counts/`, `metadata/`, `custom_genome/`). A `FileAsset` row is created on the final chunk.
+Files are split into 25 MB binary slices client-side and uploaded with up to 6 concurrent chunks in flight per file. On the server, the Django API sanitizes filenames, then buffers each chunk to a fast local SSD directory (`/tmp/rnaseek_uploads/`) as individually named files (`chunk_0`, `chunk_1`, ...) using atomic write-then-rename. When all chunks for a file arrive (detected via directory listing), the server claims merge responsibility with a POSIX-atomic `O_EXCL` marker, stitches the chunks in order, performs a single `shutil.move()` to the final NFS path in the role-aware subdirectory (`raw/`, `aligned/`, `counts/`, `metadata/`, `custom_genome/`), creates the `FileAsset` row, and cleans up the temporary buffer directory.
 
 ### 3.2 Master Router (`POST /api/pipeline/core`)
 

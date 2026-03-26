@@ -68,7 +68,7 @@ Upload Files  →  Configure Metadata  →  Select Genome  →  Launch Pipeline
      ↓                                                          ↓
   Chunked       ┌──────────────────────────────────────────────────┐
   transfer      │  Stage 1: QC, Trimming, Alignment, Quantification │
-  (5 MB slices) │  Stage 2: Normalization, DEG Testing, Plots       │
+  (25 MB slices,│  Stage 2: Normalization, DEG Testing, Plots       │
                 └──────────────────────────────────────────────────┘
                                         ↓
                               Core Hub (Results)
@@ -94,8 +94,9 @@ Genomics files are large. A single paired-end RNA-seq experiment can easily prod
 
 **How it works:**
 
-- Your browser automatically splits each file into **5 MB binary chunks** before transmission.
-- Each chunk is sent individually over HTTPS and reassembled on the server.
+- Your browser automatically splits each file into **25 MB binary chunks** before transmission.
+- Up to **6 chunks upload simultaneously**, maximizing your available bandwidth.
+- Chunks are buffered on the server's fast local storage and merged into the final file only once all pieces have arrived.
 - If a network interruption occurs mid-upload, only the affected chunk needs to be retransmitted — you do not lose the entire file.
 
 This chunked architecture means you can confidently upload files of any size, even over slower or less reliable connections. There is no maximum file count; upload as many samples as your experiment requires.

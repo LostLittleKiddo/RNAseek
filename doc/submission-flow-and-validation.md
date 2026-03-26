@@ -56,11 +56,11 @@
 ### What the user does
 Depending on the data type chosen in Step 1:
 
-| Data Type     | Expected files                      | Upload widget                                         |
-| ------------- | ----------------------------------- | ----------------------------------------------------- |
-| **FASTQ**     | `.fastq.gz` / `.fq.gz` files        | Drag-and-drop zone, chunked 5 MB uploads              |
-| **Alignment** | `.bam` / `.cram` files              | Drag-and-drop zone, chunked 5 MB uploads              |
-| **Matrix**    | Single `.csv` / `.tsv` count matrix | Drag-and-drop zone, parsed client-side with PapaParse |
+| Data Type     | Expected files                      | Upload widget                                                      |
+| ------------- | ----------------------------------- | ------------------------------------------------------------------ |
+| **FASTQ**     | `.fastq.gz` / `.fq.gz` files        | Drag-and-drop zone, 25 MB concurrent chunked uploads (6 in-flight) |
+| **Alignment** | `.bam` / `.cram` files              | Drag-and-drop zone, 25 MB concurrent chunked uploads (6 in-flight) |
+| **Matrix**    | Single `.csv` / `.tsv` count matrix | Drag-and-drop zone, parsed client-side with PapaParse              |
 
 ### Frontend validation (`validateCurrentStep` → case 2)
 
@@ -95,8 +95,12 @@ Depending on the data type chosen in Step 1:
 
 ### Background upload trigger
 When the user clicks **Next** from Step 2, `startBackgroundUploads()` begins
-chunked upload of all selected files to `POST /api/upload/chunk`. Each file
-is written to disk under `media/sessions/<session_id>/<submission_id>/<subdir>/`.
+concurrent chunked upload of all selected files to `POST /api/upload/chunk`.
+Each file is split into 25 MB chunks with up to 6 chunks uploaded in parallel
+via `uploadFileConcurrently()`. On the server, chunks are buffered to a fast
+local SSD directory (`/tmp/rnaseek_uploads/`). When all chunks for a file
+arrive, they are merged in order and moved to the final NFS path under
+`media/sessions/<session_id>/<submission_id>/<subdir>/`.
 
 ---
 

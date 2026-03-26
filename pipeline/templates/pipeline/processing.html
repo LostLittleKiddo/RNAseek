@@ -14,8 +14,9 @@
         </div>
         <div class="dash-stats-banner">
             <div class="dash-stats-inner">
-                <span class="dash-stat-label">Monitoring job <code
-                        style="color: rgba(255,255,255,.9);">{{ job_id|truncatechars:13 }}</code></span>
+                <span class="dash-stat-label">Monitoring
+                    <code
+                        style="color: rgba(255,255,255,.9);">{{ submission_name|default:job_id|truncatechars:36 }}</code></span>
             </div>
         </div>
     </div>

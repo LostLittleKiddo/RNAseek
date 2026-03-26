@@ -247,11 +247,13 @@ This is the primary data flow. BAM and Matrix entry points skip to steps 5 and 6
     │  ◄── { submission_id }   │                            │                         │
     │                          │                            │                         │
     │  2. POST /api/upload/    │                            │                         │
-    │     chunk (×N per file)  │                            │                         │
+    │     chunk (×N per file,  │                            │                         │
+    │     6 concurrent)        │                            │                         │
     │ ─────────────────────► │                            │                         │
-    │     5 MB binary chunk    │──── append bytes ──────────────────────────────► │
-    │  ◄── { progress }        │     (on final chunk:                              │
-    │                          │      create FileAsset)                             │
+    │     25 MB binary chunks  │──── buffer to local SSD ► │                         │
+    │  ◄── { progress }        │     (when all arrived:     │                         │
+    │                          │      merge → move to NFS → │                         │
+    │                          │      create FileAsset)     │                         │
     │                          │                            │                         │
     │  3. POST /api/           │                            │                         │
     │     pipeline/core        │                            │                         │
@@ -366,43 +368,45 @@ This is the primary data flow. BAM and Matrix entry points skip to steps 5 and 6
     │                          │                        │        file_asset, job)
 ```
 
-### 3.4 Chunked File Upload (5 MB Slices)
+### 3.4 Concurrent Chunked File Upload (25 MB Slices, SSD Buffered)
 
 ```
- BROWSER                    DJANGO API                 FILESYSTEM
- ───────                    ──────────                 ──────────
-    │                          │                            │
-    │  File selected (e.g.,   │                            │
-    │  sample_R1.fq.gz 2 GB)  │                            │
-    │                          │                            │
-    │  1. POST /api/upload/    │                            │
-    │     chunk                │                            │
-    │     FormData:            │                            │
-    │       file: <5 MB blob>  │                            │
-    │       submission_id      │                            │
-    │       filename           │                            │
-    │       chunk_index: 0     │                            │
-    │       total_chunks: 400  │                            │
-    │       file_role: RAW_FASTQ                            │
-    │ ─────────────────────► │                            │
-    │                          │── sanitize filename        │
-    │                          │── resolve subdir (raw/)    │
-    │                          │── open(path, 'ab')  ──────────────────► │
-    │                          │── write chunk bytes        │  ← append  │
-    │  ◄── { status: "ok" }    │                            │            │
-    │                          │                            │            │
-    │  ... (repeat 398 more)   │                            │            │
-    │                          │                            │            │
-    │  2. POST chunk_index=399 │                            │            │
-    │     (final chunk)        │                            │            │
-    │ ─────────────────────► │                            │            │
-    │                          │── append final bytes ──────────────────► │
-    │                          │── create FileAsset(        │            │
-    │                          │     role=RAW_FASTQ,        │            │
-    │                          │     local_path=...,        │            │
-    │                          │     is_user_uploaded=True)  │            │
-    │  ◄── { status: "ok",     │                            │            │
-    │        asset_id: uuid }  │                            │            │
+ BROWSER                    DJANGO API                 LOCAL SSD        NFS
+ ───────                    ──────────                 ─────────        ───
+    │                          │                          │              │
+    │  File selected (e.g.,   │                          │              │
+    │  sample_R1.fq.gz 2 GB)  │                          │              │
+    │                          │                          │              │
+    │  1. 6 concurrent POST    │                          │              │
+    │     /api/upload/chunk    │                          │              │
+    │     FormData:            │                          │              │
+    │       file: <25 MB blob> │                          │              │
+    │       submission_id      │                          │              │
+    │       filename           │                          │              │
+    │       chunk_index: 0..5  │                          │              │
+    │       total_chunks: 80   │                          │              │
+    │       file_role: RAW_FASTQ                          │              │
+    │ ─────────────────────► │                          │              │
+    │                          │── sanitize filename      │              │
+    │                          │── write chunk_{i}.tmp ──► │              │
+    │                          │── rename → chunk_{i}      │              │
+    │  ◄── { status: "ok" }    │ (atomic, no NFS I/O)     │              │
+    │                          │                          │              │
+    │  ... (6 concurrent       │                          │              │
+    │   workers fill pool)     │                          │              │
+    │                          │                          │              │
+    │  2. Final chunk lands    │                          │              │
+    │     (all 80 present)     │                          │              │
+    │ ─────────────────────► │                          │              │
+    │                          │── claim merge (O_EXCL)   │              │
+    │                          │── stitch chunk_0..79 ──► │              │
+    │                          │── shutil.move() ─────────────────────► │
+    │                          │── rmtree(buffer_dir)      │              │
+    │                          │── create FileAsset(       │              │
+    │                          │     role=RAW_FASTQ,       │              │
+    │                          │     local_path=NFS/...)   │              │
+    │  ◄── { status: "ok",     │                          │              │
+    │        asset_id: uuid }  │                          │              │
 ```
 
 ### 3.5 WebSocket Real-Time Progress

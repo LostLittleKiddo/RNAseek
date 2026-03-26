@@ -8,9 +8,10 @@
     /* ─── Configuration ──────────────────────────────────────────── */
     const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || "";
     const IS_PRODUCTION_META = document.querySelector('meta[name="rnaseek-is-production"]')?.content;
-    const CHUNK_SIZE = 5 * 1024 * 1024;   // 5 MB per chunk
+    const CHUNK_SIZE = 25 * 1024 * 1024;  // 25 MB per chunk
     const MAX_RETRIES = 3;
-    const UPLOAD_TIMEOUT = 120_000;       // 2 min per chunk
+    const MAX_CONCURRENT_CHUNKS = 6;
+    const UPLOAD_TIMEOUT = 300_000;       // 5 min per chunk
     const FILE_SIZE_WARN = 10 * 1024 * 1024 * 1024; // 10 GB
 
     /* ─── State ──────────────────────────────────────────────────── */
@@ -899,8 +900,35 @@
         }
     }
 
+    async function uploadFileConcurrently(file, totalChunks, fileRole, fileController) {
+        var nextChunk = 0;
+        var completedChunks = 0;
+        var failed = false;
+
+        async function worker() {
+            while (!failed) {
+                var idx = nextChunk++;
+                if (idx >= totalChunks) return;
+                if (fileController && fileController.signal.aborted) { failed = true; return; }
+                var ok = await uploadChunkWithRetry(file, idx, totalChunks, fileRole, fileController);
+                if (!ok) { failed = true; return; }
+                completedChunks++;
+                var tracker = uploadTracker[file.name];
+                if (tracker) {
+                    tracker.progress = Math.round((completedChunks / totalChunks) * 100);
+                    renderFileManagementPanel();
+                }
+            }
+        }
+
+        var workers = [];
+        var concurrency = Math.min(MAX_CONCURRENT_CHUNKS, totalChunks);
+        for (var w = 0; w < concurrency; w++) workers.push(worker());
+        await Promise.all(workers);
+        return !failed;
+    }
+
     async function uploadFastqFiles() {
-        // Called as part of startBackgroundUploads — uploads all pending FASTQ files
         if (selectedFiles.length === 0) return;
         await ensureSubmission();
 
@@ -915,37 +943,18 @@
             renderFileManagementPanel();
 
             var totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-            var success = true;
+            var success = await uploadFileConcurrently(file, totalChunks, "RAW_FASTQ", tracker.controller);
 
-            for (var c = 0; c < totalChunks; c++) {
-                // Check if aborted before each chunk
-                if (tracker.controller.signal.aborted) {
-                    success = false;
-                    break;
-                }
-                var ok = await uploadChunkWithRetry(file, c, totalChunks, "RAW_FASTQ", tracker.controller);
-                if (!ok) {
-                    success = false;
-                    if (!tracker.controller.signal.aborted) {
-                        showToast("error", "Upload Failed", "Failed to upload " + file.name);
-                    }
-                    break;
-                }
-                tracker.progress = Math.round(((c + 1) / totalChunks) * 100);
-                renderFileManagementPanel();
-            }
-
-            // Re-check tracker still exists (file may have been removed)
             if (!uploadTracker[file.name]) continue;
 
             if (success) {
                 tracker.status = "done";
                 tracker.controller = null;
                 uploadedFiles.push(file.name);
-                // Read asset_id from last chunk response
             } else if (!tracker.controller || !tracker.controller.signal.aborted) {
                 tracker.status = "failed";
                 tracker.controller = null;
+                showToast("error", "Upload Failed", "Failed to upload " + file.name);
             }
             renderFileManagementPanel();
         }
@@ -1103,24 +1112,7 @@
             renderFileManagementPanel();
 
             var totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-            var success = true;
-
-            for (var c = 0; c < totalChunks; c++) {
-                if (tracker.controller.signal.aborted) {
-                    success = false;
-                    break;
-                }
-                var ok = await uploadChunkWithRetry(file, c, totalChunks, "ALIGNMENT_BAM", tracker.controller);
-                if (!ok) {
-                    success = false;
-                    if (!tracker.controller.signal.aborted) {
-                        showToast("error", "Upload Failed", "Failed to upload " + file.name);
-                    }
-                    break;
-                }
-                tracker.progress = Math.round(((c + 1) / totalChunks) * 100);
-                renderFileManagementPanel();
-            }
+            var success = await uploadFileConcurrently(file, totalChunks, "ALIGNMENT_BAM", tracker.controller);
 
             if (!uploadTracker[file.name]) continue;
 
@@ -1131,6 +1123,7 @@
             } else if (!tracker.controller || !tracker.controller.signal.aborted) {
                 tracker.status = "failed";
                 tracker.controller = null;
+                showToast("error", "Upload Failed", "Failed to upload " + file.name);
             }
             renderFileManagementPanel();
         }

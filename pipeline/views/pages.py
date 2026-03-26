@@ -107,6 +107,8 @@ class ProcessingView(TemplateView):
         )
         ctx["job"] = job
         ctx["job_id"] = str(job.job_id)
+        submission = job.parent_submission
+        ctx["submission_name"] = submission.submission_name if submission else ""
         ctx["nav_step"] = self.nav_step
 
         active_keys = set((job.step_progress or {}).get("pipeline_steps", []))
@@ -136,6 +138,7 @@ class CoreHubView(TemplateView):
         # Submission ID for module run API calls
         submission = job.parent_submission
         ctx["submission_id"] = str(submission.submission_id) if submission else ""
+        ctx["submission_name"] = submission.submission_name if submission else ""
 
         # BAM file asset names for Tier 2 module forms (e.g. Alt Splicing)
         bam_assets = []

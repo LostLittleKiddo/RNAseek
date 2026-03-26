@@ -13,6 +13,8 @@ Covers:
 - CSV metadata upload flow
 - Custom genome FASTA + annotation upload flow
 - FileAssetDeleteView: individual file deletion
+- Out-of-order chunk uploads (concurrent upload simulation)
+- Temporary buffer cleanup after merge
 """
 import json
 import os
@@ -29,6 +31,7 @@ from pipeline.views import (
     DeleteSubmissionView,
     FileAssetDeleteView,
 )
+from pipeline.views.api import UPLOAD_BUFFER_ROOT
 
 
 class CreateSubmissionTest(TestCase):
@@ -235,6 +238,30 @@ class ChunkUploadSingleEndTest(TestCase):
         fpath = os.path.join(self.submission.upload_dir, "raw", "concat.fq.gz")
         with open(fpath, "rb") as f:
             self.assertEqual(f.read(), part1 + part2)
+
+    def test_out_of_order_chunks_merged_correctly(self):
+        """Chunks arriving in reverse order should still produce correct file."""
+        parts = [b"AAAA", b"BBBB", b"CCCC"]
+        # Send chunk 2, then 0, then 1
+        self._upload("ooo.fq.gz", "RAW_FASTQ", content=parts[2], chunk_index=2, total_chunks=3)
+        self._upload("ooo.fq.gz", "RAW_FASTQ", content=parts[0], chunk_index=0, total_chunks=3)
+        resp = self._upload("ooo.fq.gz", "RAW_FASTQ", content=parts[1], chunk_index=1, total_chunks=3)
+        data = json.loads(resp.content)
+        self.assertTrue(data["complete"])
+        self.assertIn("asset_id", data)
+        fpath = os.path.join(self.submission.upload_dir, "raw", "ooo.fq.gz")
+        with open(fpath, "rb") as f:
+            self.assertEqual(f.read(), b"AAAA" + b"BBBB" + b"CCCC")
+
+    def test_buffer_directory_cleaned_after_merge(self):
+        """Temporary buffer dir on local SSD should be removed after merge."""
+        safe_name = "cleanup.fq.gz"
+        buffer_dir = os.path.join(
+            UPLOAD_BUFFER_ROOT,
+            f"{self.submission.submission_id}_{safe_name}",
+        )
+        self._upload(safe_name, "RAW_FASTQ", content=b"data", chunk_index=0, total_chunks=1)
+        self.assertFalse(os.path.isdir(buffer_dir))
 
 
 class ChunkUploadPairedEndTest(TestCase):

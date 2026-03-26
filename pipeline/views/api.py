@@ -17,6 +17,38 @@ from pipeline.tasks import run_core_pipeline
 from pipeline.tasks.core import run_tier2_module
 from pipeline.validators import validate_pipeline_submission
 
+# ── Upload buffering constants ──
+UPLOAD_BUFFER_ROOT = os.environ.get("RNASEEK_UPLOAD_BUFFER", "/tmp/rnaseek_uploads")
+
+
+def _subdir_for_role(file_role):
+    """Map a FileAsset role to its submission subdirectory."""
+    if file_role in (
+        FileAsset.FileRole.CUSTOM_GENOME_FASTA,
+        FileAsset.FileRole.CUSTOM_GENOME_ANNOTATION,
+    ):
+        return "custom_genome"
+    if file_role == FileAsset.FileRole.METADATA_CSV:
+        return "metadata"
+    if file_role == FileAsset.FileRole.ALIGNMENT_BAM:
+        return "aligned"
+    if file_role == FileAsset.FileRole.USER_COUNT_MATRIX:
+        return "counts"
+    return "raw"
+
+
+def _merge_and_move(buffer_dir, total_chunks, dest_path):
+    """Stitch ordered chunks from *buffer_dir*, move the result to *dest_path* on NFS."""
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    merged_path = os.path.join(buffer_dir, "_merged")
+    with open(merged_path, "wb") as out:
+        for i in range(total_chunks):
+            chunk_path = os.path.join(buffer_dir, f"chunk_{i}")
+            with open(chunk_path, "rb") as cf:
+                shutil.copyfileobj(cf, out)
+    shutil.move(merged_path, dest_path)
+    shutil.rmtree(buffer_dir, ignore_errors=True)
+
 
 class FileAssetDeleteView(View):
     """Delete a user-uploaded FileAsset and its file on disk."""
@@ -97,7 +129,13 @@ class DeleteSubmissionView(View):
 
 
 class ChunkUploadView(View):
-    """Receive a 5 MB chunk of a file upload and append it to a temp file.
+    """Receive a chunk of a file upload, buffer it to local SSD, and merge
+    when all chunks have arrived.
+
+    Chunks may arrive out of order and concurrently.  Each chunk is written
+    to a temporary directory under ``UPLOAD_BUFFER_ROOT``.  When the final
+    chunk lands, the chunks are stitched in order and the completed file is
+    moved to the NFS-backed destination in a single ``shutil.move()``.
 
     Expected multipart fields:
         file           – binary chunk
@@ -151,33 +189,48 @@ class ChunkUploadView(View):
                     status=400,
                 )
 
-        # Route files to subdirectories within the submission folder
-        if file_role in (
-            FileAsset.FileRole.CUSTOM_GENOME_FASTA,
-            FileAsset.FileRole.CUSTOM_GENOME_ANNOTATION,
-        ):
-            subdir = "custom_genome"
-        elif file_role == FileAsset.FileRole.METADATA_CSV:
-            subdir = "metadata"
-        elif file_role == FileAsset.FileRole.ALIGNMENT_BAM:
-            subdir = "aligned"
-        elif file_role == FileAsset.FileRole.USER_COUNT_MATRIX:
-            subdir = "counts"
-        else:
-            subdir = "raw"
+        # ── Buffer chunk to local SSD ──
+        buffer_dir = os.path.join(
+            UPLOAD_BUFFER_ROOT, f"{submission_id}_{safe_name}"
+        )
+        os.makedirs(buffer_dir, exist_ok=True)
 
-        dest_dir = os.path.join(submission.upload_dir, subdir)
-        os.makedirs(dest_dir, exist_ok=True)
-        dest_path = os.path.join(dest_dir, safe_name)
-
-        mode = "ab" if chunk_index > 0 else "wb"
-        with open(dest_path, mode) as f:
+        # Write to a .tmp file first, then atomically rename so the final
+        # name only appears once the data is fully flushed to disk.
+        tmp_path = os.path.join(buffer_dir, f"chunk_{chunk_index}.tmp")
+        final_chunk_path = os.path.join(buffer_dir, f"chunk_{chunk_index}")
+        with open(tmp_path, "wb") as f:
             for chunk in uploaded.chunks():
                 f.write(chunk)
+        os.rename(tmp_path, final_chunk_path)
 
-        is_last = chunk_index + 1 >= total_chunks
+        # ── Check if all chunks have arrived ──
+        received = sum(
+            1
+            for name in os.listdir(buffer_dir)
+            if name.startswith("chunk_") and not name.endswith(".tmp")
+        )
+        is_complete = received >= total_chunks
+
         asset_id = None
-        if is_last:
+        if is_complete:
+            # Claim merge responsibility atomically (O_EXCL is POSIX-atomic)
+            merge_marker = os.path.join(buffer_dir, "_merging")
+            try:
+                fd = os.open(merge_marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+            except FileExistsError:
+                # Another concurrent request already started the merge
+                return JsonResponse(
+                    {"status": "ok", "chunk": chunk_index, "complete": False}
+                )
+
+            # Merge chunks and move to NFS
+            subdir = _subdir_for_role(file_role)
+            dest_dir = os.path.join(submission.upload_dir, subdir)
+            dest_path = os.path.join(dest_dir, safe_name)
+            _merge_and_move(buffer_dir, total_chunks, dest_path)
+
             asset = FileAsset.objects.create(
                 session=session_obj,
                 submission=submission,
@@ -190,7 +243,7 @@ class ChunkUploadView(View):
         resp = {
             "status": "ok",
             "chunk": chunk_index,
-            "complete": is_last,
+            "complete": is_complete and asset_id is not None,
         }
         if asset_id:
             resp["asset_id"] = asset_id
