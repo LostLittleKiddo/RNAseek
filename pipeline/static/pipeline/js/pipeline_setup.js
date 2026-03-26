@@ -10,6 +10,7 @@
     const IS_PRODUCTION_META = document.querySelector('meta[name="rnaseek-is-production"]')?.content;
     const TUS_ENDPOINT = "/files/";
     const TUS_CHUNK_SIZE = 50 * 1024 * 1024;  // 50 MB tus chunks
+    const CHUNK_UPLOAD_SIZE = 25 * 1024 * 1024; // 25 MB fallback chunks
     const FILE_SIZE_WARN = 10 * 1024 * 1024 * 1024; // 10 GB
 
     /* ─── State ──────────────────────────────────────────────────── */
@@ -1296,10 +1297,12 @@
     }
 
     /**
-     * Upload a single file via Tus (through Uppy).
-     * Returns a Promise that resolves to true on success, false on failure.
+     * Upload a single file.
+     * Production: Tus resumable upload via Uppy → tusd.
+     * Development: chunked POST to /api/upload/chunk.
      */
     function uploadFileViaTus(file, fileRole) {
+        if (!IS_PRODUCTION) return uploadFileViaChunks(file, fileRole);
         return new Promise(function (resolve) {
             var fname = file.name;
             var uppyFileId;
@@ -1328,7 +1331,17 @@
                 if (f.id === uppyFileId) { cleanup(); resolve(true); }
             }
             function onError(f) {
-                if (f.id === uppyFileId) { cleanup(); resolve(false); }
+                if (f.id === uppyFileId) {
+                    cleanup();
+                    tracker = uploadTracker[fname];
+                    if (tracker && tracker.status !== "removing") {
+                        tracker.status = "failed";
+                        tracker.error = "Upload failed";
+                        renderFileManagementPanel();
+                    }
+                    showToast("error", "Upload Failed", "Failed to upload " + fname);
+                    resolve(false);
+                }
             }
             function cleanup() {
                 uppyInstance.off("upload-success", onSuccess);
@@ -1339,6 +1352,67 @@
             uppyInstance.on("upload-error", onError);
             uppyInstance.upload();
         });
+    }
+
+    /**
+     * Development upload: chunked POST to /api/upload/chunk.
+     */
+    async function uploadFileViaChunks(file, fileRole) {
+        var fname = file.name;
+        var totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_UPLOAD_SIZE));
+        var tracker = uploadTracker[fname];
+
+        for (var i = 0; i < totalChunks; i++) {
+            if (tracker && tracker.status === "removing") return false;
+
+            var start = i * CHUNK_UPLOAD_SIZE;
+            var end = Math.min(start + CHUNK_UPLOAD_SIZE, file.size);
+            var blob = file.slice(start, end);
+
+            var formData = new FormData();
+            formData.append("file", blob, fname);
+            formData.append("filename", fname);
+            formData.append("chunk_index", String(i));
+            formData.append("total_chunks", String(totalChunks));
+            formData.append("submission_id", submissionId);
+            formData.append("file_role", fileRole);
+
+            try {
+                var res = await fetch("/api/upload/chunk", {
+                    method: "POST",
+                    headers: { "X-CSRFToken": CSRF },
+                    body: formData,
+                });
+                if (!res.ok) throw new Error("Chunk upload failed (HTTP " + res.status + ")");
+                var data = await res.json();
+
+                if (tracker) {
+                    tracker.progress = Math.round(((i + 1) / totalChunks) * 100);
+                    renderFileManagementPanel();
+                }
+
+                if (data.complete && data.asset_id) {
+                    if (tracker) tracker.assetId = data.asset_id;
+                    if (fileRole === "RAW_FASTQ") uploadedFiles.push(fname);
+                    else if (fileRole === "ALIGNMENT_BAM") uploadedBamFiles.push(fname);
+                }
+            } catch (err) {
+                if (tracker) {
+                    tracker.status = "failed";
+                    tracker.error = err.message;
+                    renderFileManagementPanel();
+                }
+                showToast("error", "Upload Failed", "Failed to upload " + fname);
+                return false;
+            }
+        }
+
+        if (tracker) {
+            tracker.status = "done";
+            tracker.progress = 100;
+            renderFileManagementPanel();
+        }
+        return true;
     }
 
     /* ═══════════════════════════════════════════════════════════════════
@@ -2631,7 +2705,12 @@
 
     function init() {
         resetFormState();
-        initUppy();
+        if (IS_PRODUCTION) {
+            try { initUppy(); } catch (e) {
+                console.error("Uppy init failed:", e);
+                showToast("error", "Upload Engine", "Upload engine failed to load. Please refresh the page.");
+            }
+        }
         initEntryPoints();
         initAssayType();
         initLibraryType();

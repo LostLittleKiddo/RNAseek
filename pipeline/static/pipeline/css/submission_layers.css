@@ -1616,7 +1616,13 @@ main {
         grid-template-columns: 1fr;
     }
 
-    .wizard-split-right {
+    /* Hide only decorative graphic panels; keep interactive panels visible */
+    .wizard-split-right .step-graphic {
+        display: none;
+    }
+
+    /* Collapse the right panel when it only contains a graphic */
+    .wizard-split-right:has(> .step-graphic:only-child) {
         display: none;
     }
 
@@ -1625,6 +1631,11 @@ main {
         max-height: none;
         padding-right: 0;
         zoom: 1;
+    }
+
+    .wizard-split-right {
+        overflow-y: auto;
+        padding-bottom: 0;
     }
 
     .radio-card-group {

@@ -17,14 +17,10 @@ sudo systemctl restart rnaseek-beat
 sudo systemctl restart rnaseek-tusd
 
 # Restart all services
-for svc in rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd; do
-    sudo systemctl restart "$svc"
-done
+sudo systemctl restart rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd
 
 # Stop all services
-for svc in rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd; do
-    sudo systemctl stop "$svc"
-done
+sudo systemctl stop rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd 2>/dev/null || true
 ```
 
 ---

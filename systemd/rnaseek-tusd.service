@@ -1,0 +1,30 @@
+# ============================================================
+# RNAseek — tusd Upload Daemon
+# ============================================================
+# Handles resumable file uploads via the tus protocol.
+# Listens on port 1080, behind Nginx reverse proxy at /files/.
+# ============================================================
+
+[Unit]
+Description=RNAseek tusd Upload Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/apps/rnaseek
+EnvironmentFile=/home/ubuntu/apps/rnaseek/.env
+
+ExecStart=/usr/local/bin/tusd \
+    -host 127.0.0.1 \
+    -port 1080 \
+    -upload-dir /home/ubuntu/apps/rnaseek/media/uploads \
+    -behind-proxy
+
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -60,10 +60,20 @@ echo "=== Setting up systemd services ==="
 sudo cp "$APP_DIR/systemd/"*.service /etc/systemd/system/ 2>/dev/null || true
 sudo systemctl daemon-reload
 
-for svc in rnaseek-web rnaseek-worker rnaseek-beat; do
-    sudo systemctl enable "$svc"
-    sudo systemctl restart "$svc"
-    echo "  $svc: $(sudo systemctl is-active $svc)"
+SERVICES=(rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd)
+
+# Stop all services in parallel (|| true so missing services don't abort)
+echo "  Stopping services..."
+sudo systemctl stop "${SERVICES[@]}" 2>/dev/null || true
+
+# Wait briefly for processes to fully exit
+sleep 2
+
+# Enable and start each service
+for svc in "${SERVICES[@]}"; do
+    sudo systemctl enable "$svc" 2>/dev/null || true
+    sudo systemctl start "$svc"
+    echo "  $svc: $(sudo systemctl is-active "$svc")"
 done
 
 echo ""

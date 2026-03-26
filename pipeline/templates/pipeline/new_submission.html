@@ -348,7 +348,7 @@
                                     <code>_2</code>) suffixes. The system will group them automatically!
                                 </p>
                                 <p class="rna-text-sm" style="color: #047857; margin-bottom: 0; line-height: 1.5;">
-                                    <strong>Large Files?</strong> No problem. Data is securely uploaded in 5MB chunks.
+                                    <strong>Large Files?</strong> No problem. Data is securely uploaded in 50 MB chunks.
                                     If your network drops, the upload will automatically resume where it left off.
                                 </p>
                             </div>
@@ -366,7 +366,7 @@
                                 files. Chunked uploads support files of any size.
                             </p>
                             <div class="step-graphic-features">
-                                <span class="sgf-chip">5 MB chunked upload</span>
+                                <span class="sgf-chip">50 MB chunked upload</span>
                                 <span class="sgf-chip">Drag &amp; drop</span>
                                 <span class="sgf-chip">Multi-file support</span>
                                 <span class="sgf-chip">Automatic retry</span>
@@ -963,6 +963,8 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-<script src="https://releases.transloadit.com/uppy/v3.27.5/uppy.min.js"></script>
+{% if is_production %}
+<script src="https://releases.transloadit.com/uppy/v3.27.4/uppy.min.js"></script>
+{% endif %}
 <script src="{% static 'pipeline/js/pipeline_setup.js' %}"></script>
 {% endblock %}

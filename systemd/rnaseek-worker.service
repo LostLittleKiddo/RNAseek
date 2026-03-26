@@ -20,6 +20,12 @@ Environment=CONDA_PREFIX=/opt/miniconda3/envs/rnaseek
 
 ExecStart=/opt/miniconda3/envs/rnaseek/bin/celery -A config worker --loglevel=info --concurrency=4 --max-tasks-per-child=50
 
+# Cold shutdown: SIGQUIT tells Celery to stop immediately without
+# waiting for in-flight tasks to finish. TimeoutStopSec is the
+# hard deadline before systemd sends SIGKILL.
+KillSignal=SIGQUIT
+TimeoutStopSec=30
+
 Restart=always
 RestartSec=10
 
