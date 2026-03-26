@@ -385,6 +385,52 @@ class DispatchWgcnaTest(TestCase):
                 str(self.submission.submission_id),
             )
 
+    @patch("pipeline.tasks._module_wgcna.execute_wgcna_and_pathways")
+    def test_dispatch_falls_back_to_metadata_payload(self, mock_engine):
+        """When no METADATA_CSV asset exists, metadata is built from payload."""
+        from pipeline.tasks.core import _dispatch_wgcna
+
+        mock_engine.return_value = {"plot_data": {}, "hub_genes": []}
+
+        # Remove the uploaded METADATA_CSV asset
+        self.meta_asset.delete()
+
+        # Add metadata_payload to the submission
+        self.submission.metadata_payload = {
+            "samples": [
+                {"_sample_name": "s1", "condition": "treated"},
+                {"_sample_name": "s2", "condition": "control"},
+            ],
+        }
+        self.submission.save(update_fields=["metadata_payload"])
+
+        _dispatch_wgcna(
+            self.job,
+            str(self.session.session_id),
+            str(self.submission.submission_id),
+        )
+
+        mock_engine.assert_called_once()
+        call_kwargs = mock_engine.call_args
+        metadata_path = call_kwargs.kwargs["metadata_path"]
+        self.assertTrue(metadata_path.endswith("metadata_from_payload.csv"))
+        self.assertTrue(os.path.isfile(metadata_path))
+
+    def test_dispatch_no_metadata_at_all_raises(self):
+        """Raises when there is no METADATA_CSV and no metadata_payload."""
+        from pipeline.tasks.core import _dispatch_wgcna
+
+        self.meta_asset.delete()
+        self.submission.metadata_payload = {}
+        self.submission.save(update_fields=["metadata_payload"])
+
+        with self.assertRaises(RuntimeError):
+            _dispatch_wgcna(
+                self.job,
+                str(self.session.session_id),
+                str(self.submission.submission_id),
+            )
+
 
 # ── Integration: run_tier2_module routes WGCNA ──────────────
 

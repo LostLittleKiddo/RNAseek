@@ -44,8 +44,10 @@ def execute_wgcna_and_pathways(
     matrix_path: str,
     metadata_path: str,
     *,
+    soft_power: int | None = None,
     n_hub_genes: int = 30,
     enrichr_libraries: list[str] | None = None,
+    traits_data: dict | None = None,
 ) -> dict:
     """
     End-to-end WGCNA -> GSEA pipeline.
@@ -93,6 +95,10 @@ def execute_wgcna_and_pathways(
 
     counts_df, trait_df = _load_and_validate(matrix_path, metadata_path)
 
+    # Merge manual/uploaded traits from the WGCNA modal form if provided.
+    if traits_data:
+        trait_df = _merge_traits_data(trait_df, traits_data)
+
     logger.info(
         "Loaded matrix %d genes x %d samples; metadata %d samples x %d traits",
         counts_df.shape[0], counts_df.shape[1],
@@ -107,7 +113,7 @@ def execute_wgcna_and_pathways(
     work_dir = os.path.join(os.path.dirname(matrix_path), "wgcna")
     os.makedirs(work_dir, exist_ok=True)
 
-    wgcna_obj, gene_module_df = _run_pywgcna(counts_df, work_dir)
+    wgcna_obj, gene_module_df = _run_pywgcna(counts_df, work_dir, soft_power=soft_power)
 
     logger.info(
         "PyWGCNA detected %d modules across %d genes",
@@ -185,6 +191,50 @@ def execute_wgcna_and_pathways(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _merge_traits_data(
+    trait_df: pd.DataFrame,
+    traits_data: dict,
+) -> pd.DataFrame:
+    """Merge user-supplied traits from the WGCNA modal into the trait frame.
+
+    Supports ``{mode: "manual", data: [{col: val, ...}, ...]}`` payloads
+    sent by the frontend builder.  Rows are matched on the trait_df index
+    (sample IDs); unmatched rows are silently dropped.
+    """
+    if not isinstance(traits_data, dict):
+        return trait_df
+
+    mode = traits_data.get("mode")
+    if mode == "manual":
+        rows = traits_data.get("data")
+        if not rows or not isinstance(rows, list):
+            return trait_df
+        extra = pd.DataFrame(rows)
+        # Identify the sample-name column (first column or "Sample_ID").
+        id_col = None
+        for candidate in ("Sample_ID", "sample", "_sample_name"):
+            if candidate in extra.columns:
+                id_col = candidate
+                break
+        if id_col is None:
+            id_col = extra.columns[0]
+        extra = extra.set_index(id_col)
+        # Keep only samples present in the existing trait_df.
+        shared = trait_df.index.intersection(extra.index)
+        if len(shared) == 0:
+            logger.warning("traits_data has no samples overlapping metadata – ignored")
+            return trait_df
+        # Merge new trait columns, overwriting on collision.
+        combined = trait_df.loc[shared].copy()
+        for col in extra.columns:
+            combined[col] = extra.loc[shared, col]
+        return combined
+
+    # Other modes (e.g. CSV upload reference) are resolved upstream by
+    # _dispatch_wgcna; nothing to do here.
+    return trait_df
+
+
 def _load_and_validate(
     matrix_path: str,
     metadata_path: str,
@@ -210,25 +260,35 @@ def _load_and_validate(
 def _run_pywgcna(
     counts_df: pd.DataFrame,
     work_dir: str,
+    *,
+    soft_power: int | None = None,
 ) -> tuple:
     """
     Build a weighted co-expression network and detect gene modules.
 
     PyWGCNA expects *samples x genes*, so we transpose the DESeq2-style
     matrix (genes x samples) and write a temporary CSV.
+
+    If *soft_power* is provided the user's value is forced by restricting
+    the power search space to that single value.  Otherwise PyWGCNA picks
+    the optimal threshold automatically.
     """
     transposed_path = os.path.join(work_dir, "expression_for_wgcna.csv")
     counts_df.T.to_csv(transposed_path)
 
     import PyWGCNA  # lazy import: requires pywgcna package
 
-    wgcna_obj = PyWGCNA.WGCNA(
+    kwargs = dict(
         name="rnaseek_wgcna",
         species="homo sapiens",
         geneExpPath=transposed_path,
         outputPath=work_dir,
         save=True,
     )
+    if soft_power is not None:
+        kwargs["powers"] = [int(soft_power)]
+
+    wgcna_obj = PyWGCNA.WGCNA(**kwargs)
 
     wgcna_obj.preprocess()
     wgcna_obj.findModules()
@@ -270,6 +330,11 @@ def _correlate_modules_traits(
     me_df: pd.DataFrame = wgcna_obj.datME
 
     shared = me_df.index.intersection(numeric_trait_df.index)
+    if len(shared) < 3:
+        raise ValueError(
+            f"Only {len(shared)} samples overlap between eigengenes and "
+            "traits — need at least 3 for Pearson correlation."
+        )
     me_df = me_df.loc[shared]
     trait_vals = numeric_trait_df.loc[shared]
 
@@ -348,14 +413,22 @@ def _extract_hub_genes(
 
     # Vectorised kME: correlate every module gene with the eigengene.
     available = [g for g in module_genes if g in expr_df.columns]
+    if not available:
+        raise ValueError(
+            f"None of the {len(module_genes)} genes in module "
+            f"'{target_module}' are present in the expression matrix."
+        )
+
     gene_matrix = expr_df[available].values                # (n_samples, n_genes)
-    combined = np.vstack([me_values, gene_matrix.T])       # (n_genes+1, n_samples)
+    # Reshape me_values to 2-D (1, n_samples) so np.vstack is unambiguous.
+    me_row = me_values.reshape(1, -1)
+    combined = np.vstack([me_row, gene_matrix.T])          # (n_genes+1, n_samples)
     cor_full = np.corrcoef(combined)                       # (n_genes+1, n_genes+1)
     kme_values = cor_full[0, 1:]                           # correlations with ME
 
-    # Sort descending by |kME|.
+    # Sort descending by |kME|; cap at actual gene count.
     order = np.argsort(-np.abs(kme_values))
-    hub_genes = [available[i] for i in order[:n_hub]]
+    hub_genes = [available[i] for i in order[:min(n_hub, len(available))]]
 
     return hub_genes
 
@@ -389,11 +462,12 @@ def _run_enrichr(
         return results
 
     # Parse "3/50" -> (matched genes, gene-set size) for the dot-plot.
-    results["Overlap_count"] = (
-        results["Overlap"].str.split("/").str[0].astype(int)
-    )
-    results["Overlap_size"] = (
-        results["Overlap"].str.split("/").str[1].astype(int)
-    )
+    if "Overlap" in results.columns:
+        parts = results["Overlap"].str.split("/", expand=True)
+        results["Overlap_count"] = parts[0].astype(int)
+        results["Overlap_size"] = parts[1].astype(int)
+    else:
+        results["Overlap_count"] = 0
+        results["Overlap_size"] = 0
 
     return results.sort_values("Adjusted P-value")
