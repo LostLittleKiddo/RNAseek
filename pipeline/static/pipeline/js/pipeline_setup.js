@@ -1225,6 +1225,46 @@
 
     let uppyInstance = null;
 
+    /**
+     * Poll the tus-asset lookup endpoint until the FileAsset appears.
+     * tusd v2 fires the post-finish webhook asynchronously after replying
+     * to the client, so we retry with back-off to handle the delay.
+     * Returns a promise that resolves to true (asset found) or false.
+     */
+    function pollForTusAsset(tusSubmissionId, filename, tracker) {
+        var delays = [500, 1000, 1500, 2000, 2500, 3000];
+        var url = "/api/upload/tus-asset?submission_id=" +
+            encodeURIComponent(tusSubmissionId) + "&filename=" +
+            encodeURIComponent(filename);
+
+        function attempt(idx) {
+            if (tracker.status === "removing") return Promise.resolve(false);
+            return fetch(url, { headers: { "X-CSRFToken": CSRF } })
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .then(function (data) {
+                    if (data && data.asset_id) {
+                        tracker.assetId = data.asset_id;
+                        return true;
+                    }
+                    if (idx < delays.length) {
+                        return new Promise(function (r) {
+                            setTimeout(r, delays[idx]);
+                        }).then(function () { return attempt(idx + 1); });
+                    }
+                    return false;
+                })
+                .catch(function () {
+                    if (idx < delays.length) {
+                        return new Promise(function (r) {
+                            setTimeout(r, delays[idx]);
+                        }).then(function () { return attempt(idx + 1); });
+                    }
+                    return false;
+                });
+        }
+        return attempt(0);
+    }
+
     function initUppy() {
         uppyInstance = new Uppy.Uppy({
             id: "rnaseek-tus",
@@ -1253,15 +1293,13 @@
             if (tracker && tracker.status !== "removing") {
                 tracker.status = "done";
                 tracker.uppyFileId = null;
-                // Fetch asset_id (webhook already created it before tusd replied)
-                fetch("/api/upload/tus-asset?submission_id=" + encodeURIComponent(file.meta.submission_id) +
-                    "&filename=" + encodeURIComponent(fname), {
-                    headers: { "X-CSRFToken": CSRF },
-                }).then(function (res) { return res.ok ? res.json() : null; })
-                    .then(function (data) {
-                        if (data && data.asset_id) tracker.assetId = data.asset_id;
-                    })
-                    .catch(function () { /* best-effort asset lookup */ });
+
+                // Resolve asset_id with retry — the tusd v2 webhook fires
+                // asynchronously after tusd responds to the client, so the
+                // FileAsset may not exist yet on the first attempt.
+                tracker.assetResolved = pollForTusAsset(
+                    file.meta.submission_id, fname, tracker
+                );
 
                 var role = file.meta.file_role;
                 if (role === "RAW_FASTQ") uploadedFiles.push(fname);
@@ -2497,6 +2535,21 @@
                 if (t && t.status === "failed") { hasFailed = true; break; }
             }
             if (hasFailed) throw new Error("Some file uploads failed. Please remove failed files and try again.");
+
+            // Wait for tus webhook asset registration (production only).
+            // The tusd v2 webhook fires asynchronously, so assetId may
+            // still be pending when uploads are marked "done" by Uppy.
+            if (IS_PRODUCTION) {
+                var assetPromises = [];
+                for (var ai = 0; ai < files.length; ai++) {
+                    var at = uploadTracker[files[ai].name];
+                    if (at && at.assetResolved) assetPromises.push(at.assetResolved);
+                }
+                if (assetPromises.length > 0) {
+                    setModalStep("files", "active", "Confirming file registration\u2026");
+                    await Promise.all(assetPromises);
+                }
+            }
 
             // Handle matrix upload (small, done inline)
             if (inputDataType === "matrix" && matrixFile) {
