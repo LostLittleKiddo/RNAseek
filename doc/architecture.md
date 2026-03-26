@@ -20,11 +20,21 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 ┌─────────▼─────────────────▼─────────────────▼────────────────────────┐
 │                       NGINX (Reverse Proxy)                          │
 │  • SSL termination (Let's Encrypt / Certbot)                         │
+│  • /files/ → tusd:1080 (Tus resumable uploads, raw binary)           │
 │  • /ws/ → WebSocket upgrade                                          │
 │  • /static/ → WhiteNoise (30-day cache)                              │
 │  • /* → Daphne upstream (127.0.0.1:8000)                             │
 │  • client_max_body_size 10G                                          │
 └─────────┬────────────────────────────────────────────────────────────┘
+          │ (non-/files/ requests)
+          │         ┌────────────────────────────────────────────────────┐
+          │         │  tusd v2  (Tus Upload Microservice)                │
+          │         │  Nginx routes /files/ → tusd:1080                  │
+          │         │  • tusproject/tusd:v2 Go binary; Docker port 1080  │
+          │         │  • Tus protocol; 50 MB client chunks               │
+          │         │  • Stores directly to media/tusd-data/             │
+          │         │  • post-finish webhook → Django (HMAC-SHA256)      │
+          │         └────────────────────────────────────────────────────┘
           │
 ┌─────────▼───────────────────────────────────────────────────────────┐
 │                    DAPHNE (ASGI Server)                             │
@@ -33,7 +43,7 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 │  │  ┌──────────────┐  ┌────────────────┐  ┌───────────────────┐   │ │
 │  │  │ Page Views   │  │  API Views     │  │  WebSocket        │   │ │
 │  │  │ (pages.py)   │  │  (api.py)      │  │  Consumer         │   │ │
-│  │  │ 7 templates  │  │  9 endpoints   │  │  (consumers.py)   │   │ │
+│  │  │ 7 templates  │  │  11 endpoints  │  │  (consumers.py)   │   │ │
 │  │  └──────────────┘  └───────┬────────┘  └────────┬──────────┘   │ │
 │  │                            │ dispatch            │ broadcast   │  │
 │  │  ┌──────────────┐          │                     │             │  │
@@ -92,6 +102,10 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 │  │       ├── deg_results.csv                                         │
 │  │       └── multiqc_report.html                                     │
 │  │                                                                   │
+│  ├── tusd-data/                    ← in-flight Tus upload chunks     │
+│                                                                      │
+│  ├── tusd-data/                    ← in-flight Tus upload chunks     │
+│                                                                      │
 │  pipeline/reference_genomes/       ← pre-indexed genomes (11)       │
 │  ├── Human_GRCh38/                                                   │
 │  │   ├── genome.fa                                                   │
@@ -118,7 +132,8 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 
 | Component              | Role                                                              | Communicates With                                                                        |
 | ---------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| **Nginx**              | SSL termination, reverse proxy, static serving, WebSocket upgrade | Daphne (upstream)                                                                        |
+| **Nginx**              | SSL termination, reverse proxy, static serving, WebSocket upgrade | Daphne (upstream), tusd:1080 (/files/ Tus uploads)                                      |
+| **tusd v2**            | Tus resumable upload microservice; receives raw binary from Nginx; stores chunks to `tusd-data/`; fires post-finish webhooks | Nginx (receives /files/ traffic), Django/Daphne (post-finish webhook) |
 | **Daphne**             | ASGI server: HTTP requests + WebSocket connections                | Redis (channels layer), Database (ORM), Filesystem (uploads)                             |
 | **Django Views**       | Request handling, validation, template rendering                  | Database (ORM), Redis (task dispatch)                                                    |
 | **WebSocket Consumer** | Real-time progress push to browser                                | Redis (channel group pub/sub)                                                            |

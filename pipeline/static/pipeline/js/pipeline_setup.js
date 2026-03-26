@@ -8,10 +8,8 @@
     /* ─── Configuration ──────────────────────────────────────────── */
     const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || "";
     const IS_PRODUCTION_META = document.querySelector('meta[name="rnaseek-is-production"]')?.content;
-    const CHUNK_SIZE = 25 * 1024 * 1024;  // 25 MB per chunk
-    const MAX_RETRIES = 3;
-    const MAX_CONCURRENT_CHUNKS = 6;
-    const UPLOAD_TIMEOUT = 300_000;       // 5 min per chunk
+    const TUS_ENDPOINT = "/files/";
+    const TUS_CHUNK_SIZE = 50 * 1024 * 1024;  // 50 MB tus chunks
     const FILE_SIZE_WARN = 10 * 1024 * 1024 * 1024; // 10 GB
 
     /* ─── State ──────────────────────────────────────────────────── */
@@ -750,10 +748,10 @@
             tracker.status = "removing";
             renderFileManagementPanel();
 
-            // Abort in-flight upload
-            if (tracker.controller) {
-                tracker.controller.abort();
-                tracker.controller = null;
+            // Cancel in-flight Uppy upload
+            if (tracker.uppyFileId && uppyInstance) {
+                try { uppyInstance.removeFile(tracker.uppyFileId); } catch (_e) { }
+                tracker.uppyFileId = null;
             }
 
             // Delete from backend if already uploaded
@@ -900,64 +898,23 @@
         }
     }
 
-    async function uploadFileConcurrently(file, totalChunks, fileRole, fileController) {
-        var nextChunk = 0;
-        var completedChunks = 0;
-        var failed = false;
-
-        async function worker() {
-            while (!failed) {
-                var idx = nextChunk++;
-                if (idx >= totalChunks) return;
-                if (fileController && fileController.signal.aborted) { failed = true; return; }
-                var ok = await uploadChunkWithRetry(file, idx, totalChunks, fileRole, fileController);
-                if (!ok) { failed = true; return; }
-                completedChunks++;
-                var tracker = uploadTracker[file.name];
-                if (tracker) {
-                    tracker.progress = Math.round((completedChunks / totalChunks) * 100);
-                    renderFileManagementPanel();
-                }
-            }
-        }
-
-        var workers = [];
-        var concurrency = Math.min(MAX_CONCURRENT_CHUNKS, totalChunks);
-        for (var w = 0; w < concurrency; w++) workers.push(worker());
-        await Promise.all(workers);
-        return !failed;
-    }
-
     async function uploadFastqFiles() {
         if (selectedFiles.length === 0) return;
         await ensureSubmission();
 
+        var promises = [];
         for (var i = 0; i < selectedFiles.length; i++) {
             var file = selectedFiles[i];
             var tracker = uploadTracker[file.name];
             if (!tracker || tracker.status !== "pending") continue;
 
             tracker.status = "uploading";
-            tracker.controller = new AbortController();
             tracker.progress = 0;
             renderFileManagementPanel();
 
-            var totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-            var success = await uploadFileConcurrently(file, totalChunks, "RAW_FASTQ", tracker.controller);
-
-            if (!uploadTracker[file.name]) continue;
-
-            if (success) {
-                tracker.status = "done";
-                tracker.controller = null;
-                uploadedFiles.push(file.name);
-            } else if (!tracker.controller || !tracker.controller.signal.aborted) {
-                tracker.status = "failed";
-                tracker.controller = null;
-                showToast("error", "Upload Failed", "Failed to upload " + file.name);
-            }
-            renderFileManagementPanel();
+            promises.push(uploadFileViaTus(file, "RAW_FASTQ"));
         }
+        await Promise.all(promises);
     }
 
     /* ─── Background Upload Orchestrator ─────────────────────────── */
@@ -1066,9 +1023,10 @@
             tracker.status = "removing";
             renderFileManagementPanel();
 
-            if (tracker.controller) {
-                tracker.controller.abort();
-                tracker.controller = null;
+            // Cancel in-flight Uppy upload
+            if (tracker.uppyFileId && uppyInstance) {
+                try { uppyInstance.removeFile(tracker.uppyFileId); } catch (_e) { }
+                tracker.uppyFileId = null;
             }
 
             if (tracker.assetId) {
@@ -1101,32 +1059,19 @@
         if (selectedBamFiles.length === 0) return;
         await ensureSubmission();
 
+        var promises = [];
         for (var i = 0; i < selectedBamFiles.length; i++) {
             var file = selectedBamFiles[i];
             var tracker = uploadTracker[file.name];
             if (!tracker || tracker.status !== "pending") continue;
 
             tracker.status = "uploading";
-            tracker.controller = new AbortController();
             tracker.progress = 0;
             renderFileManagementPanel();
 
-            var totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-            var success = await uploadFileConcurrently(file, totalChunks, "ALIGNMENT_BAM", tracker.controller);
-
-            if (!uploadTracker[file.name]) continue;
-
-            if (success) {
-                tracker.status = "done";
-                tracker.controller = null;
-                uploadedBamFiles.push(file.name);
-            } else if (!tracker.controller || !tracker.controller.signal.aborted) {
-                tracker.status = "failed";
-                tracker.controller = null;
-                showToast("error", "Upload Failed", "Failed to upload " + file.name);
-            }
-            renderFileManagementPanel();
+            promises.push(uploadFileViaTus(file, "ALIGNMENT_BAM"));
         }
+        await Promise.all(promises);
     }
 
     /* ═══════════════════════════════════════════════════════════════════
@@ -1270,17 +1215,72 @@
     async function uploadMatrixFile() {
         if (!matrixFile) return true;
         await ensureSubmission();
-        var totalChunks = Math.ceil(matrixFile.size / CHUNK_SIZE);
-        for (var c = 0; c < totalChunks; c++) {
-            if (!(await uploadChunkWithRetry(matrixFile, c, totalChunks, "USER_COUNT_MATRIX")))
-                return false;
-        }
-        return true;
+        return await uploadFileViaTus(matrixFile, "USER_COUNT_MATRIX");
     }
 
     /* ═══════════════════════════════════════════════════════════════════
-       CHUNK UPLOAD ENGINE
+       TUS UPLOAD ENGINE (Uppy.js + @uppy/tus)
        ═══════════════════════════════════════════════════════════════════ */
+
+    let uppyInstance = null;
+
+    function initUppy() {
+        uppyInstance = new Uppy.Uppy({
+            id: "rnaseek-tus",
+            autoProceed: false,
+            allowMultipleUploadBatches: true,
+        }).use(Uppy.Tus, {
+            endpoint: TUS_ENDPOINT,
+            chunkSize: TUS_CHUNK_SIZE,
+            retryDelays: [0, 1000, 3000, 5000],
+            removeFingerprintOnSuccess: true,
+            limit: 5,
+        });
+
+        uppyInstance.on("upload-progress", function (file, progress) {
+            var fname = file.meta.originalName;
+            var tracker = uploadTracker[fname];
+            if (tracker) {
+                tracker.progress = Math.round((progress.bytesUploaded / progress.bytesTotal) * 100);
+                renderFileManagementPanel();
+            }
+        });
+
+        uppyInstance.on("upload-success", function (file) {
+            var fname = file.meta.originalName;
+            var tracker = uploadTracker[fname];
+            if (tracker && tracker.status !== "removing") {
+                tracker.status = "done";
+                tracker.uppyFileId = null;
+                // Fetch asset_id (webhook already created it before tusd replied)
+                fetch("/api/upload/tus-asset?submission_id=" + encodeURIComponent(file.meta.submission_id) +
+                    "&filename=" + encodeURIComponent(fname), {
+                    headers: { "X-CSRFToken": CSRF },
+                }).then(function (res) { return res.ok ? res.json() : null; })
+                    .then(function (data) {
+                        if (data && data.asset_id) tracker.assetId = data.asset_id;
+                    })
+                    .catch(function () { /* best-effort asset lookup */ });
+
+                var role = file.meta.file_role;
+                if (role === "RAW_FASTQ") uploadedFiles.push(fname);
+                else if (role === "ALIGNMENT_BAM") uploadedBamFiles.push(fname);
+                renderFileManagementPanel();
+            }
+        });
+
+        uppyInstance.on("upload-error", function (file, error) {
+            var fname = file.meta.originalName;
+            var tracker = uploadTracker[fname];
+            if (tracker && tracker.status !== "removing") {
+                tracker.status = "failed";
+                tracker.error = error?.message || "Upload failed";
+                tracker.uppyFileId = null;
+                showToast("error", "Upload Failed", "Failed to upload " + fname);
+                renderFileManagementPanel();
+            }
+        });
+    }
 
     async function ensureSubmission() {
         if (submissionId) return submissionId;
@@ -1295,52 +1295,50 @@
         return submissionId;
     }
 
-    async function uploadChunkWithRetry(file, chunkIndex, totalChunks, fileRole, fileController) {
-        for (var attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    /**
+     * Upload a single file via Tus (through Uppy).
+     * Returns a Promise that resolves to true on success, false on failure.
+     */
+    function uploadFileViaTus(file, fileRole) {
+        return new Promise(function (resolve) {
+            var fname = file.name;
+            var uppyFileId;
             try {
-                var start = chunkIndex * CHUNK_SIZE;
-                var end = Math.min(start + CHUNK_SIZE, file.size);
-                var chunk = file.slice(start, end);
-                var fd = new FormData();
-                fd.append("file", chunk);
-                fd.append("filename", file.name);
-                fd.append("chunk_index", chunkIndex);
-                fd.append("total_chunks", totalChunks);
-                fd.append("submission_id", submissionId);
-                fd.append("file_role", fileRole);
-
-                // Use the per-file controller if provided, with a timeout fallback
-                var controller = fileController || new AbortController();
-                var timeoutId = setTimeout(function () { controller.abort(); }, UPLOAD_TIMEOUT);
-
-                var res = await fetch("/api/upload/chunk", {
-                    method: "POST",
-                    headers: { "X-CSRFToken": CSRF },
-                    body: fd,
-                    signal: controller.signal,
+                uppyFileId = uppyInstance.addFile({
+                    name: fname,
+                    type: file.type || "application/octet-stream",
+                    data: file,
+                    meta: {
+                        originalName: fname,
+                        filename: fname,
+                        submission_id: submissionId,
+                        file_role: fileRole,
+                    },
                 });
-
-                clearTimeout(timeoutId);
-
-                if (!res.ok) throw new Error("HTTP " + res.status);
-
-                var data = await res.json();
-
-                // Capture asset_id from final chunk response
-                if (data.complete && data.asset_id) {
-                    var tracker = uploadTracker[file.name];
-                    if (tracker) tracker.assetId = data.asset_id;
-                }
-
-                return true;
-            } catch (_err) {
-                // If the file-level controller was aborted, don't retry
-                if (fileController && fileController.signal.aborted) return false;
-                if (attempt === MAX_RETRIES - 1) return false;
-                await new Promise(function (r) { setTimeout(r, 1000 * (attempt + 1)); });
+            } catch (err) {
+                // Duplicate file already in Uppy
+                resolve(false);
+                return;
             }
-        }
-        return false;
+
+            var tracker = uploadTracker[fname];
+            if (tracker) tracker.uppyFileId = uppyFileId;
+
+            function onSuccess(f) {
+                if (f.id === uppyFileId) { cleanup(); resolve(true); }
+            }
+            function onError(f) {
+                if (f.id === uppyFileId) { cleanup(); resolve(false); }
+            }
+            function cleanup() {
+                uppyInstance.off("upload-success", onSuccess);
+                uppyInstance.off("upload-error", onError);
+            }
+
+            uppyInstance.on("upload-success", onSuccess);
+            uppyInstance.on("upload-error", onError);
+            uppyInstance.upload();
+        });
     }
 
     /* ═══════════════════════════════════════════════════════════════════
@@ -1403,18 +1401,12 @@
         if (genomeSelect.value !== "custom") return true;
         await ensureSubmission();
         if (customGenomeFiles.fasta) {
-            var tc = Math.ceil(customGenomeFiles.fasta.size / CHUNK_SIZE);
-            for (var c = 0; c < tc; c++) {
-                if (!(await uploadChunkWithRetry(customGenomeFiles.fasta, c, tc, "CUSTOM_GENOME_FASTA")))
-                    return false;
-            }
+            if (!(await uploadFileViaTus(customGenomeFiles.fasta, "CUSTOM_GENOME_FASTA")))
+                return false;
         }
         if (customGenomeFiles.annotation) {
-            var tc2 = Math.ceil(customGenomeFiles.annotation.size / CHUNK_SIZE);
-            for (var c2 = 0; c2 < tc2; c2++) {
-                if (!(await uploadChunkWithRetry(customGenomeFiles.annotation, c2, tc2, "CUSTOM_GENOME_ANNOTATION")))
-                    return false;
-            }
+            if (!(await uploadFileViaTus(customGenomeFiles.annotation, "CUSTOM_GENOME_ANNOTATION")))
+                return false;
         }
         return true;
     }
@@ -1679,12 +1671,7 @@
     async function uploadCsvFile() {
         if (!csvFile) return true;
         await ensureSubmission();
-        var tc = Math.ceil(csvFile.size / CHUNK_SIZE);
-        for (var c = 0; c < tc; c++) {
-            if (!(await uploadChunkWithRetry(csvFile, c, tc, "METADATA_CSV")))
-                return false;
-        }
-        return true;
+        return await uploadFileViaTus(csvFile, "METADATA_CSV");
     }
 
     /* ═══════════════════════════════════════════════════════════════════
@@ -2644,6 +2631,7 @@
 
     function init() {
         resetFormState();
+        initUppy();
         initEntryPoints();
         initAssayType();
         initLibraryType();

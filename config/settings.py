@@ -172,6 +172,10 @@ STORAGES = {
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", str(BASE_DIR / "media")))
 MEDIA_URL = '/media/'
 
+# ── Tus Upload (tusd webhook) ──
+TUS_DATA_DIR = os.environ.get("TUS_DATA_DIR", str(MEDIA_ROOT / "tusd-data"))
+TUS_HOOK_SECRET = os.environ.get("TUS_HOOK_SECRET", "changeme-in-production")
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 

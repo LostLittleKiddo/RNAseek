@@ -77,6 +77,34 @@ services:
     deploy:
       replicas: 1
 
+  # ── tusd — Tus Resumable Upload Server ──
+  # Handles raw binary uploads at wire speed, bypassing Django.
+  # Fires a post-finish HTTP webhook to Django for file registration.
+  tusd:
+    image: tusproject/tusd:v2
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        mkdir -p /app/media/tusd-data &&
+        exec tusd
+        -behind-proxy
+        -base-path /files/
+        -upload-dir /app/media/tusd-data
+        -hooks-http http://web:8000/api/webhooks/tus/
+        -hooks-http-secret "$${TUS_HOOK_SECRET}"
+        -hooks-enabled-events post-finish
+    environment:
+      - TUS_HOOK_SECRET=${TUS_HOOK_SECRET:-changeme-in-production}
+    expose:
+      - "1080"
+    volumes:
+      - media-data:/app/media
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ── Redis 7+ Message Broker ──
   # In-memory queue for Celery job dispatch + Django Channels
   # WebSocket layer.

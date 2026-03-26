@@ -20,3 +20,8 @@ from pipeline.views.api import (            # noqa: F401
     ModuleRunView,
     SessionAssetsView,
 )
+
+from pipeline.views.tus_webhook import (    # noqa: F401
+    TusWebhookView,
+    TusAssetLookupView,
+)

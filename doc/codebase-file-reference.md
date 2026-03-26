@@ -14,8 +14,8 @@
 | `environment.yml`        | —     | Conda environment spec (mirrors requirements.txt for conda-based deployments)                                |
 | `db.sqlite3`             | —     | SQLite database (development only)                                                                           |
 | `Dockerfile`             | —     | Multi-stage: Miniconda base → conda env → pip deps → app code → collectstatic; EXPOSE 8000                   |
-| `docker-compose.yml`     | —     | 4-service production stack: web (Daphne), worker (Celery, 32 GB RAM), beat, redis (7-alpine); shared volumes |
-| `docker-compose.dev.yml` | —     | Dev override: live code mount, reduced concurrency (2), debug logging                                        |
+| `docker-compose.yml`     | —     | 5-service production stack: web (Daphne), worker (Celery, 32 GB RAM), beat, redis (7-alpine), tusd (tusproject/tusd:v2); shared volumes |
+| `docker-compose.dev.yml` | —     | Dev override: live code mount, reduced concurrency (2), debug logging, tusd with `TUS_HOOK_SECRET=dev-tus-secret`                       |
 | `deploy.sh`              | —     | Server deploy script: .env validation, pip install, migrate, collectstatic, Nginx symlink, systemd reload    |
 | `README.md`              | —     | Project overview and setup instructions                                                                      |
 | `LICENSE`                | —     | License file                                                                                                 |
@@ -27,7 +27,7 @@
 | File          | Lines | Purpose                                                                                                                                  |
 | ------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `__init__.py` | 3     | Ensures `config` is a Python package                                                                                                     |
-| `settings.py` | 257   | Django 5.2 settings: CHANNEL_LAYERS (Redis), Celery broker, WhiteNoise static storage, MEDIA_ROOT, session/security middleware, ASGI app |
+| `settings.py` | 257   | Django 5.2 settings: CHANNEL_LAYERS (Redis), Celery broker, WhiteNoise static storage, MEDIA_ROOT, session/security middleware, ASGI app; `TUS_DATA_DIR` and `TUS_HOOK_SECRET` env-configurable settings |
 | `celery.py`   | 18    | Celery 5.6 app factory: autodiscover tasks, Beat schedule (`purge-expired-sessions` crontab at 2:00 AM UTC)                              |
 | `asgi.py`     | 27    | ASGI entrypoint: `ProtocolTypeRouter` with `AuthMiddlewareStack` + `URLRouter` for WebSocket, Django HTTP handler                        |
 | `wsgi.py`     | 16    | WSGI entrypoint (fallback; production uses ASGI via Daphne)                                                                              |
@@ -58,7 +58,8 @@
 | File          | Lines | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `__init__.py` | 22    | Re-exports all view classes for clean imports                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `api.py`      | ~570  | 9 API views: `FileAssetDelete`, `CreateSubmissionView`, `DeleteSubmissionView`, `ChunkUploadView` (25 MB concurrent chunks, SSD-buffered with merge-on-complete, path-traversal sanitized), `CorePipelineView` (facade → validators → Celery dispatch), `JobStatusView` (stale-job detection via AsyncResult), `SessionAssetsView`, `FileDownloadView`, `ModuleRunView` (12 approved modules). Helpers: `_subdir_for_role()`, `_merge_and_move()`, `UPLOAD_BUFFER_ROOT` |
+| `api.py`      | ~570  | 9 API views: `FileAssetDelete`, `CreateSubmissionView`, `DeleteSubmissionView`, `ChunkUploadView` (legacy 25 MB chunked upload, preserved for backward compatibility), `CorePipelineView` (facade → validators → Celery dispatch), `JobStatusView` (stale-job detection via AsyncResult), `SessionAssetsView`, `FileDownloadView`, `ModuleRunView` (12 approved modules). Helpers: `_subdir_for_role()`, `_merge_and_move()`, `UPLOAD_BUFFER_ROOT` |
+| `tus_webhook.py` | ~110 | Two views for the Tus upload pipeline: `TusWebhookView` (`POST /api/webhooks/tus/`, `@csrf_exempt`) — HMAC-SHA256 signature verification, parses tusd v1/v2 payload shapes, resolves `submission_id` + `file_role` from metadata, moves file from `tusd-data/` to NFS via `shutil.move()`, cleans up `.info` sidecar, creates `FileAsset`; `TusAssetLookupView` (`GET /api/upload/tus-asset`) — session-scoped lookup by safe filename |
 | `pages.py`    | 203   | 6 template-based views: `HomeView`, `TutorialsView`, `WorkspacesView`, `NewSubmissionView` (genome list context), `ProcessingView` (pipeline steps context), `CoreHubView` (plot data, download links, module jobs, BAM presence check)                                                                                                                                                                                                                                 |
 
 ### `pipeline/tasks/` — Celery Task Layer
@@ -124,7 +125,7 @@
 
 | File                | Lines | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pipeline_setup.js` | ~2760 | 5-step wizard navigation, entry point/assay/library selectors, FASTQ/BAM/Matrix drop zones, concurrent chunked upload (25 MB chunks, 6 concurrent workers per file, 3 retries, 5-min timeout), paired-end validation, CSV metadata with PapaParse, manual metadata builder, column mapping, contrast builder, per-step validation, 9 of 10 backend validation rules mirrored client-side (FASTA header `>` check is backend-only), toast notifications |
+| `pipeline_setup.js` | ~2760 | 5-step wizard navigation, entry point/assay/library selectors, FASTQ/BAM/Matrix drop zones, **Tus resumable upload via Uppy.js v3.27.5 + @uppy/tus** (50 MB chunks, 5 concurrent files, auto-retry), replaces legacy vanilla chunk engine; paired-end validation, CSV metadata with PapaParse, manual metadata builder, column mapping, contrast builder, per-step validation, 9 of 10 backend validation rules mirrored client-side (FASTA header `>` check is backend-only), toast notifications |
 | `core_hub.js`       | 1773  | Tab switching, Plotly resize, Module Hub state machine (empty/history/form/result), 12 module form builders with D&D and tabbed input, history list with status badges, result view with Plotly rendering + download, module submission + polling, deconvolution gateway + spoke unlock, 5 Plotly render functions (PCA, UMAP, Volcano, MA, Heatmap), interactive figure export as HTML                                                                |
 
 ---
@@ -189,9 +190,9 @@
 
 ## `nginx/`
 
-| File           | Purpose                                                                                               |
-| -------------- | ----------------------------------------------------------------------------------------------------- |
-| `rnaseek.conf` | Nginx: HTTPS (Let's Encrypt), WebSocket `/ws/` upgrade, 10 GB upload limit, 30-day static cache, gzip |
+| File           | Purpose                                                                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rnaseek.conf` | Nginx: HTTPS (Let's Encrypt), `/files/ → tusd:1080` (Tus resumable uploads, `client_max_body_size 0`, `proxy_request_buffering off`), WebSocket `/ws/` upgrade, 10 GB upload limit for other routes, 30-day static cache, gzip |
 
 ---
 

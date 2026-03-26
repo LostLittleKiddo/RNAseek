@@ -31,3 +31,9 @@ services:
       - media-data:/app/media
     environment:
       - RNASEEK_ENV=development
+
+  tusd:
+    environment:
+      - TUS_HOOK_SECRET=dev-tus-secret
+    volumes:
+      - media-data:/app/media

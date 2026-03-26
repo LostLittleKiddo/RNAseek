@@ -14,6 +14,8 @@ from pipeline.views import (
     NewSubmissionView,
     ProcessingView,
     SessionAssetsView,
+    TusAssetLookupView,
+    TusWebhookView,
     TutorialsView,
     WorkspacesView,
 )
@@ -31,6 +33,8 @@ urlpatterns = [
     path("api/submission/create", CreateSubmissionView.as_view(), name="create_submission"),
     path("api/submission/delete", DeleteSubmissionView.as_view(), name="delete_submission"),
     path("api/upload/chunk", ChunkUploadView.as_view(), name="upload_chunk"),
+    path("api/upload/tus-asset", TusAssetLookupView.as_view(), name="tus_asset_lookup"),
+    path("api/webhooks/tus/", TusWebhookView.as_view(), name="tus_webhook"),
     path("api/pipeline/core", CorePipelineView.as_view(), name="pipeline_core"),
     path("api/jobs/<uuid:job_id>/", JobStatusView.as_view(), name="job_status"),
     path("api/files/<uuid:asset_id>/", FileAssetDeleteView.as_view(), name="file_asset_delete"),
