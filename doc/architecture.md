@@ -198,7 +198,7 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 - `adjusted_pvalue`, `min_log2fc`, `max_log2fc` (FloatField) — Statistical thresholds
 - Property `upload_dir` — Computed: `media/sessions/{session_id}/{submission_id}/`
 
-**`FileAsset`** — Tracks every physical file on the shared filesystem. Supports 16 roles spanning raw uploads through pipeline outputs.
+**`FileAsset`** — Tracks every physical file on the shared filesystem. Supports 15 roles spanning raw uploads through pipeline outputs.
 
 - `id` (UUID, PK)
 - `session` (FK → Session, CASCADE)

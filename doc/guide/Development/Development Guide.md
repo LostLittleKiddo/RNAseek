@@ -187,13 +187,21 @@ rnaseek/
 | `/`                     | HomeView           | Landing page             |
 | `/tutorials/`           | TutorialsView      | File format guides       |
 | `/workspaces/`          | WorkspacesView     | Active submissions list  |
-| `/new/`                 | NewSubmissionView   | 5-step wizard           |
+| `/analysis_submission/new/` | NewSubmissionView | 5-step wizard          |
 | `/processing/<uuid>/`   | ProcessingView     | Real-time progress       |
 | `/hub/<uuid>/`          | CoreHubView        | Results and modules      |
+| `/api/submission/create` | CreateSubmissionView | Create submission      |
+| `/api/submission/delete` | DeleteSubmissionView | Delete submission      |
 | `/api/upload/chunk`     | ChunkUploadView    | Legacy chunked upload    |
+| `/api/upload/tus-asset`  | TusAssetLookupView | Tus asset ID lookup     |
+| `/api/webhooks/tus/`     | TusWebhookView     | tusd webhook (HMAC)     |
 | `/api/tusd-hooks/`      | TusdHookView       | tusd webhook handler     |
 | `/api/pipeline/core`    | CorePipelineView   | Pipeline dispatch        |
 | `/api/jobs/<uuid>/`     | JobStatusView      | Job status polling       |
+| `/api/files/<uuid>/`    | FileAssetDeleteView | Delete uploaded file    |
+| `/api/session/assets`   | SessionAssetsView  | List session assets      |
+| `/api/download/<uuid>`  | FileDownloadView   | File download            |
+| `/api/submissions/<uuid>/modules/<name>/run` | ModuleRunView | Tier 2 dispatch |
 
 ---
 

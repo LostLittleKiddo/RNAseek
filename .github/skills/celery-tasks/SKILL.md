@@ -119,7 +119,20 @@ Note: Do NOT use ThreadPoolExecutor for R code (rpy2 is not thread-safe).
 
 ## Pattern: Tier 2 module dispatch
 
-The `run_tier2_module` task in `core.py` receives `module_name` and calls the appropriate runner. To add a new module:
+The `run_tier2_module` task in `core.py` receives `module_name` and calls the appropriate runner.
+
+### Currently implemented modules (4 of 12):
+
+| Module name | Dispatch function | File |
+|---|---|---|
+| `WGCNA` | `_dispatch_wgcna()` | `_module_wgcna.py` |
+| `SPLICING` | `_dispatch_splicing()` | `_module_alt_splicing.py` |
+| `RNA_EDITING` | `_dispatch_rna_editing()` | `_module_rna_editing.py` |
+| `TIME_SERIES` | `_dispatch_timeseries()` | `_module_timeseries.py` |
+
+The remaining 8 modules (PATHWAY, NETWORKS, LIT_MINING, SURVIVAL, TCGA, BIOMARKER, MOFA, DIABLO) return placeholder payloads.
+
+### To add a new module:
 
 1. Create `_run_my_module(submission, job, params)` in `pipeline/tasks/_module_my_module.py`
 2. Add dispatch branch in `run_tier2_module()`:

@@ -33,7 +33,7 @@
 
 1. **`Session`:** Root tenant. `session_id` (UUID PK), `created_at`, `expires_at` (14-day TTL), `is_expired` property.
 2. **`AnalysisSubmission`:** Child of `Session`. UUID PK. Represents a primary Core Pipeline run. Contains `input_data_type` (fastq / alignment / matrix), `assay_type` (standard_rna / small_rna / chip_seq / methylation), `library_type` (single / paired), `strandedness` (unstranded / fr-firststrand / fr-secondstrand), `reference_genome`, `metadata_mode` (upload / manual), `metadata_payload` (JSON), threshold fields (`adjusted_pvalue`, `min_log2fc`, `max_log2fc`), `custom_genome_name`, and `submission_name`. The `upload_dir` property generates the NFS path. These are the only items rendered in the global Active Workspace.
-3. **`FileAsset`:** UUID PK. FK to Session and FK to Submission (nullable). 16 `file_role` choices: `RAW_FASTQ`, `ALIGNMENT_BAM`, `USER_COUNT_MATRIX`, `COUNT_MATRIX`, `NORMALIZED_COUNTS`, `DEG_TABLE`, `MULTIQC_REPORT`, `H5AD_PSEUDO`, `HE_IMAGE_USER`, `HE_IMAGE_GENERIC`, `PEAK_FILE`, `METHYLATION_REPORT`, `CUSTOM_GENOME_FASTA`, `CUSTOM_GENOME_ANNOTATION`, `METADATA_CSV`, plus `is_user_uploaded` flag and `local_path`.
+3. **`FileAsset`:** UUID PK. FK to Session and FK to Submission (nullable). 15 `file_role` choices: `RAW_FASTQ`, `ALIGNMENT_BAM`, `USER_COUNT_MATRIX`, `COUNT_MATRIX`, `NORMALIZED_COUNTS`, `DEG_TABLE`, `MULTIQC_REPORT`, `H5AD_PSEUDO`, `HE_IMAGE_USER`, `HE_IMAGE_GENERIC`, `PEAK_FILE`, `METHYLATION_REPORT`, `CUSTOM_GENOME_FASTA`, `CUSTOM_GENOME_ANNOTATION`, `METADATA_CSV`, plus `is_user_uploaded` flag and `local_path`.
 4. **`AnalysisJob`:** UUID PK (equals Celery task ID). FK to Session, FK to Submission (`parent_submission`, nullable). `is_core_pipeline` boolean (default `True`; Tier 2 module jobs set to `False`). `module_name` (string), `status` (PENDING / RUNNING / SUCCESS / FAILED), `result_payload` (JSON), `step_progress` (JSON), timestamps. Module outputs are stored directly in `result_payload` -- no separate `ModuleResult` model.
 5. **Reference Genomes:** No DB model. Resolved via filesystem lookup (`_GENOME_FOLDER_MAP` dict in `_genome.py`). Pre-built indices for HISAT2, BWA, Bismark, and Bowtie/miRBase reside under `pipeline/reference_genomes/`.
 
@@ -151,9 +151,9 @@ The Core Hub UI uses a 3-tab layout (Overview | Modules | Single-Cell). Tab 2 co
 
 | #    | Module          | Engine                       | Reused Hub Data                | Hub UI Input                                                                                      | Backend Status |
 | :--- | :-------------- | :--------------------------- | :----------------------------- | :------------------------------------------------------------------------------------------------ | :------------- |
-| A    | Alt Splicing    | `IsoformSwitchAnalyzeR`      | Aligned BAMs, GTF              | Condition mapping (manual table or CSV upload, with downloadable BAM-prefilled template)          | Stub           |
-| B    | RNA Editing     | `REDItools2`                 | Aligned BAMs, Reference Genome | Whole transcriptome checkbox or BED file upload                                                   | Stub           |
-| C    | Time Series     | `ImpulseDE2`                 | Normalized Expression          | Timepoints (comma-separated) + time unit dropdown                                                 | Stub           |
+| A    | Alt Splicing    | `IsoformSwitchAnalyzeR`      | Aligned BAMs, GTF              | Condition mapping (manual table or CSV upload, with downloadable BAM-prefilled template)          | Implemented    |
+| B    | RNA Editing     | `REDItools2`                 | Aligned BAMs, Reference Genome | Whole transcriptome checkbox or BED file upload                                                   | Implemented    |
+| C    | Time Series     | `ImpulseDE2`                 | Normalized Expression          | Timepoints (comma-separated) + time unit dropdown                                                 | Implemented    |
 | D    | WGCNA           | `PyWGCNA`                    | Normalized Expression          | Soft-power threshold (1-30) + clinical traits (CSV upload, example, or manual builder)            | Implemented    |
 | E    | Pathways        | `gseapy` + `clusterProfiler` | Final DEG Table                | Gene-set database dropdown (PathBank, Hallmark, C2 KEGG/Reactome, C5 GO BP/MF/CC) + FDR threshold | Stub           |
 | F    | Causal Networks | `arboreto` (GRNBoost2)       | Normalized Expression          | Transcription factors (textarea) + STRING confidence threshold                                    | Stub           |
@@ -165,6 +165,12 @@ The Core Hub UI uses a 3-tab layout (Overview | Modules | Single-Cell). Tab 2 co
 | L    | DIABLO          | `mixOmics`                   | Normalized Expression          | Number of components (2-20) + secondary omics matrix (CSV/example/builder)                        | Stub           |
 
 **WGCNA implementation details:** 6-step pipeline in `_module_wgcna.py` (load data, find modules, module-trait correlation, hub gene extraction, Enrichr enrichment, plot generation). Stats helpers in `_plots_wgcna.py`. 24 unit tests.
+
+**Alt Splicing implementation details:** 4-step pipeline in `_module_alt_splicing.py` (load data, importRdata, isoformSwitchAnalysisPart1, serialize). Uses IsoformSwitchAnalyzeR via rpy2 bridge. Outputs include volcano plot (dIF vs q-value) and switch consequence bar chart.
+
+**RNA Editing implementation details:** 4-step pipeline in `_module_rna_editing.py` (prepare, REDItools2, filter, plots). Filters for A-to-I (AG) and C-to-U (TC) edits with MIN_COVERAGE=10. Outputs include substitution bar chart and HTML table preview.
+
+**Time Series implementation details:** 4-step pipeline in `_module_timeseries.py` (load, annotation, ImpulseDE2 via rpy2, serialize). Supports simple longitudinal and case-control designs. Stats helpers in `_plots_timeseries.py` build trajectory line chart with grouped means and SEM error bars.
 
 ### Module E: Pathway & Gene Set Enrichment
 
@@ -205,7 +211,7 @@ The Core Hub UI uses a 3-tab layout (Overview | Modules | Single-Cell). Tab 2 co
 ### 8.2 CI/CD and Testing
 
 * **GitHub Actions:** `.github/workflows/e2e.yml` runs Miniconda setup, bioinformatics tool verification, yeast HISAT2 index build, Django migrations, and `test_e2e.py` on a synthetic sacCer3 dataset on every push.
-* **Test suite:** 9 test files covering models, views, uploads, all 4 pipeline tracks, Stage 2 stats, WGCNA, genome index resolution, and end-to-end integration.
+* **Test suite:** 12 test files covering models, views, uploads, all 4 pipeline tracks, Stage 2 stats (including edge cases), WGCNA, Tus hooks, genome index resolution, validators, and end-to-end integration.
 * **`.gitignore`:** Blocks `.fastq.gz`, `.bam`, `.cram`, `.sam`, `.h5ad`, `.ht2`, and `.RData` to prevent repo bloat.
 
 ### 8.3 Docker and Deployment

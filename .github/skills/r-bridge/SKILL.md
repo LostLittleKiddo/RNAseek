@@ -66,10 +66,14 @@ Installed in `environment.yml`:
 - `bioconductor-deseq2` — differential expression
 - `bioconductor-sva` — ComBat batch correction
 - `bioconductor-dexseq` — differential exon usage
-- `bioconductor-isoformswitchanalyzer` — alternative splicing
+- `bioconductor-isoformswitchanalyzer` — alternative splicing (used by `_module_alt_splicing.py`)
 - `bioconductor-tcgabiolinks` — TCGA data access
 - `bioconductor-mixomics` — multi-omics integration (DIABLO)
 - `r-wgcna` — weighted gene co-expression networks
+
+Used in the codebase (installed as dependencies or manually):
+- `methylKit` — differential methylation analysis (used by `pipeline/stats/_methylkit.py`)
+- `ImpulseDE2` — time-series differential expression (used by `_module_timeseries.py`)
 
 ## Common pitfalls
 

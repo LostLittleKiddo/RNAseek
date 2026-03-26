@@ -57,7 +57,7 @@ RNAseek supports four core assay types. Choose the one that matches your experim
 | **ChIP-seq**                  | Histone/TF binding sites      | BWA MEM                  | MACS2 peak calling, featureCounts  |
 | **DNA Methylation**           | Bisulfite sequencing          | Bismark                  | methylKit differential methylation |
 
-For **microbial / bacterial transcriptomics**, upload an unannotated bacterial FASTA and RNAseek will automatically dispatch it to a local BASys2 engine. BASys2 generates complete structural, operon, and metabolome annotations in roughly 10 seconds — no manual annotation required.
+For **microbial / bacterial transcriptomics**, support is planned for a future release with a local BASys2 annotation engine.
 
 ### 1.5 Quick-Start Walkthrough
 
@@ -188,7 +188,7 @@ During setup, choose the reference genome that matches your organism. RNAseek sh
 
 > **Note:** Custom genome uploads are available for the Standard RNA-Seq and ChIP-seq tracks. The Small RNA / miRNA track requires species-specific miRBase indices and does not support custom genomes.
 
-**Bacterial Genomes:** For unannotated microbial FASTA files, RNAseek automatically invokes its local BASys2 engine to produce full structural and metabolic annotations — no GTF upload is needed.
+**Bacterial Genomes:** Support for unannotated microbial FASTA files with automatic annotation is planned for a future release.
 
 ### 2.7 Launching the Pipeline
 
@@ -282,27 +282,28 @@ Key modules include:
 **WGCNA (Weighted Gene Co-expression Network Analysis)**
 Identify clusters (modules) of co-expressed genes and correlate them with clinical traits. Upload a traits CSV or build one interactively. Outputs include module-trait correlation heatmaps, hub gene lists, and Enrichr pathway enrichment results.
 
-**Pathway & Gene Set Enrichment**
-Map your differentially expressed genes onto biological pathways and curated gene sets. RNAseek integrates multiple databases:
+**Alternative Splicing (IsoformSwitchAnalyzeR)**
+Detects differential isoform usage across conditions from aligned BAM files. Outputs include volcano plots of differential isoform fraction (dIF) and switch consequence bar charts.
 
-- **PathBank** — Dynamic, interactive pathway diagrams showing exactly where your DEGs fall in metabolic, disease, and signaling pathways.
-- **MSigDB Collections** — Hallmark gene sets, C2 (KEGG, Reactome), and C5 (GO Biological Process, Molecular Function, Cellular Component).
-- **Microbial Pathways (BASys2)** — For bacterial datasets, maps differentially expressed genes to BASys2-derived metabolome and operon annotations.
+**RNA Editing (REDItools2)**
+Identifies A-to-I and C-to-U RNA editing events from aligned BAM files. Supports whole-transcriptome or targeted (BED region) analysis. Outputs include substitution frequency bar charts and filterable editing site tables.
 
-Results include interactive pathway network graphs, dot plots, and downloadable enrichment tables.
+**Time Series (ImpulseDE2)**
+Models gene expression dynamics over time using impulse-response kinetics. Supports simple longitudinal and case-control time-course designs. Outputs include trajectory line charts with grouped means and error bars.
+
+**Pathway & Gene Set Enrichment (Planned)**
+Map your differentially expressed genes onto biological pathways and curated gene sets. Planned integration with gseapy and pathway databases.
 
 **Additional Modules:**
-| Module               | What It Does                                                                       |
-| :------------------- | :--------------------------------------------------------------------------------- |
-| Alternative Splicing | Detects skipped exons and predicts protein domain changes (IsoformSwitchAnalyzeR). |
-| RNA Editing / SNPs   | Identifies A-to-I editing events and high-confidence variants (REDItools2).        |
-| Time Series          | Models gene expression dynamics over time (ImpulseDE2).                            |
-| Causal Networks      | Infers gene regulatory networks from expression data (GRNBoost2).                  |
-| Literature NLP       | Mines published literature for known gene interactions (INDRA Bio).                |
-| Survival Analysis    | Correlates gene expression with clinical survival outcomes (lifelines).            |
-| TCGA Comparison      | Compares your data against public TCGA cancer cohorts.                             |
-| Biomarker Discovery  | Cross-references DEGs with the MarkerDB clinical biomarker database.               |
-| MOFA / DIABLO        | Multi-omics factor analysis for integrating multiple data layers.                  |
+| Module               | What It Does                                                                                      | Status      |
+| :------------------- | :------------------------------------------------------------------------------------------------ | :---------- |
+| Causal Networks      | Infers gene regulatory networks from expression data (GRNBoost2).                                 | Planned     |
+| Literature NLP       | Mines published literature for known gene interactions (INDRA Bio).                               | Planned     |
+| Survival Analysis    | Correlates gene expression with clinical survival outcomes (lifelines).                           | Planned     |
+| TCGA Comparison      | Compares your data against public TCGA cancer cohorts.                                            | Planned     |
+| Biomarker Discovery  | Cross-references DEGs with the MarkerDB clinical biomarker database.                              | Planned     |
+| Pathways             | Gene set enrichment analysis with gseapy (Hallmark, KEGG, Reactome, GO).                         | Planned     |
+| MOFA / DIABLO        | Multi-omics factor analysis for integrating multiple data layers.                                 | Planned     |
 
 ### 3.6 Downloading Your Data
 
@@ -336,9 +337,9 @@ The **Single-Cell** tab in the Core Hub provides access to predictive deconvolut
 | Do I need an account?           | No. Sessions are anonymous and automatic.                                                                                                                                          |
 | How long does my data persist?  | 14 days from session creation.                                                                                                                                                     |
 | What file formats are accepted? | `.fq.gz` / `.fastq.gz` (reads), `.bam` / `.cram` (alignments), `.csv` / `.tsv` (count matrices).                                                                                   |
-| Is there a file size limit?     | The server supports uploads up to 10 GB per file. Files are chunked at 5 MB for reliability.                                                                                       |
+| Is there a file size limit?     | There is no per-file size limit. Files are chunked at 25 MB for reliability.                                                                                       |
 | Can I use a custom genome?      | Yes. Upload a FASTA + GTF/GFF and an index will be built automatically (Standard RNA-Seq and ChIP-seq tracks).                                                                     |
-| What organisms are supported?   | 11 pre-indexed genomes (Human, Mouse, Rat, Zebrafish, Drosophila, C. elegans, Yeast, Arabidopsis, Chicken, Pig) plus custom uploads and on-demand bacterial annotation via BASys2. |
+| What organisms are supported?   | 11 pre-indexed genomes (Human, Mouse, Rat, Zebrafish, Drosophila, C. elegans, Yeast, Arabidopsis, Chicken, Pig) plus custom genome uploads. |
 | What statistics are used?       | DESeq2 for differential expression (Wald test by default; LRT for time-series). ComBat-seq for batch correction.                                                                   |
 | Are the plots interactive?      | Yes. All visualizations are rendered with Plotly — zoom, pan, hover, and export as images.                                                                                         |
 | Can I come back later?          | Yes. Return in the same browser within 14 days to access your results.                                                                                                             |
