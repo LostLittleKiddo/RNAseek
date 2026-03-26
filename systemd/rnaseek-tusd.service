@@ -1,8 +1,12 @@
 # ============================================================
-# RNAseek — tusd Upload Daemon
+# RNAseek — tusd Upload Daemon (v2)
 # ============================================================
 # Handles resumable file uploads via the tus protocol.
 # Listens on port 1080, behind Nginx reverse proxy at /files/.
+#
+# On post-finish, POSTs to Django /api/tusd-hooks/ with:
+#   - Cookie + X-Session-ID headers forwarded (session resolution)
+#   - HMAC-SHA256 signature for webhook integrity
 # ============================================================
 
 [Unit]
@@ -20,7 +24,10 @@ ExecStart=/usr/local/bin/tusd \
     -host 127.0.0.1 \
     -port 1080 \
     -upload-dir /home/ubuntu/apps/rnaseek/media/uploads \
-    -behind-proxy
+    -behind-proxy \
+    -hooks-http http://127.0.0.1:8000/api/tusd-hooks/ \
+    -hooks-http-forward-headers Cookie,X-Session-ID \
+    -hooks-enabled-events post-finish
 
 Restart=always
 RestartSec=5

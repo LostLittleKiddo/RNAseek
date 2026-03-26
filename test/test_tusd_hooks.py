@@ -280,3 +280,23 @@ class TusdHookViewTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         data = json.loads(resp.content)
         self.assertIn("asset_id", data)
+
+    def test_cross_filesystem_move_fallback(self):
+        """When shutil.move fails (cross-filesystem), copy2 + remove is used."""
+        from unittest.mock import patch
+
+        payload = self._build_payload()
+
+        def broken_move(src, dst, *args, **kwargs):
+            raise OSError("Cross-device link")
+
+        with patch("pipeline.views.api.shutil.move", side_effect=broken_move):
+            resp = self._post(payload)
+
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        asset = FileAsset.objects.get(id=data["asset_id"])
+        # File should exist at the destination
+        self.assertTrue(os.path.isfile(asset.local_path))
+        # Original file should be removed
+        self.assertFalse(os.path.isfile(self.tus_file_path))

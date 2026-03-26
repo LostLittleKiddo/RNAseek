@@ -1297,11 +1297,12 @@
     }
 
     /**
-     * Upload a single file via chunked POST.
-     * TODO: re-enable Tus/Uppy once tusd is installed on production.
+     * Upload a single file.
+     * Production: Tus resumable upload via Uppy → tusd.
+     * Development: chunked POST to /api/upload/chunk.
      */
     function uploadFileViaTus(file, fileRole) {
-        return uploadFileViaChunks(file, fileRole);
+        if (!IS_PRODUCTION) return uploadFileViaChunks(file, fileRole);
         return new Promise(function (resolve) {
             var fname = file.name;
             var uppyFileId;
@@ -2704,13 +2705,12 @@
 
     function init() {
         resetFormState();
-        // TODO: re-enable Uppy/tus once tusd is installed on production
-        // if (IS_PRODUCTION) {
-        //     try { initUppy(); } catch (e) {
-        //         console.error("Uppy init failed:", e);
-        //         showToast("error", "Upload Engine", "Upload engine failed to load. Please refresh the page.");
-        //     }
-        // }
+        if (IS_PRODUCTION) {
+            try { initUppy(); } catch (e) {
+                console.error("Uppy init failed:", e);
+                showToast("error", "Upload Engine", "Upload engine failed to load. Please refresh the page.");
+            }
+        }
         initEntryPoints();
         initAssayType();
         initLibraryType();

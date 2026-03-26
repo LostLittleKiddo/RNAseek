@@ -704,7 +704,13 @@ class TusdHookView(View):
         dest_dir = os.path.join(submission.upload_dir, subdir)
         dest_path = os.path.join(dest_dir, safe_name)
         os.makedirs(dest_dir, exist_ok=True)
-        shutil.move(file_path, dest_path)
+
+        try:
+            shutil.move(file_path, dest_path)
+        except OSError:
+            # Cross-filesystem fallback (e.g. NFS): copy + remove
+            shutil.copy2(file_path, dest_path)
+            os.remove(file_path)
 
         # Clean up the .info sidecar file that tusd creates.
         info_path = file_path + ".info"
