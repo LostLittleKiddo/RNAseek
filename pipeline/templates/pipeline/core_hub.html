@@ -185,6 +185,91 @@
             border-style: solid;
             border-color: var(--rna-grey-200);
         }
+
+        /* ── Plot Loading Skeleton ── */
+        .rna-plot-loading {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: .75rem;
+            background: rgba(255, 255, 255, .92);
+            border-radius: var(--rna-radius-lg);
+            z-index: 5;
+            transition: opacity .3s ease;
+        }
+
+        .rna-plot-loading.fade-out {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .rna-plot-spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid var(--rna-grey-200);
+            border-top-color: var(--rna-teal);
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+        }
+
+        .rna-plot-loading-text {
+            font-size: .78rem;
+            font-weight: 600;
+            color: var(--rna-grey-500);
+            letter-spacing: .02em;
+        }
+
+        /* Skeleton shimmer bars behind the spinner */
+        .rna-plot-skeleton {
+            position: absolute;
+            inset: 0;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: .6rem;
+            pointer-events: none;
+        }
+
+        .rna-plot-skeleton-bar {
+            height: 12px;
+            border-radius: 6px;
+            background: linear-gradient(90deg, var(--rna-grey-100) 25%, var(--rna-grey-50) 50%, var(--rna-grey-100) 75%);
+            background-size: 200% 100%;
+            animation: rna-skeleton-shimmer 1.5s ease-in-out infinite;
+        }
+
+        .rna-plot-skeleton-bar:nth-child(1) {
+            width: 85%;
+        }
+
+        .rna-plot-skeleton-bar:nth-child(2) {
+            width: 60%;
+        }
+
+        .rna-plot-skeleton-bar:nth-child(3) {
+            width: 72%;
+        }
+
+        .rna-plot-skeleton-bar:nth-child(4) {
+            width: 50%;
+        }
+
+        .rna-plot-skeleton-bar:nth-child(5) {
+            width: 65%;
+        }
+
+        @keyframes rna-skeleton-shimmer {
+            0% {
+                background-position: 200% 0;
+            }
+
+            100% {
+                background-position: -200% 0;
+            }
+        }
     </style>
 
     <div class="rna-tab-panel active" id="tab-overview">
@@ -311,6 +396,17 @@
                             </div>
                             <div class="viz-plot-stage rna-plot-container" id="pca-plot">
                                 <span class="rna-text-sm rna-text-muted">PCA visualization loads here</span>
+                                <div class="rna-plot-loading">
+                                    <div class="rna-plot-skeleton">
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                    </div>
+                                    <div class="rna-plot-spinner"></div>
+                                    <span class="rna-plot-loading-text">Rendering PCA…</span>
+                                </div>
                             </div>
                         </div>
 
@@ -331,6 +427,17 @@
                             </div>
                             <div class="viz-plot-stage rna-plot-container" id="umap-plot">
                                 <span class="rna-text-sm rna-text-muted">UMAP visualization loads here</span>
+                                <div class="rna-plot-loading">
+                                    <div class="rna-plot-skeleton">
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                    </div>
+                                    <div class="rna-plot-spinner"></div>
+                                    <span class="rna-plot-loading-text">Rendering UMAP…</span>
+                                </div>
                             </div>
                         </div>
 
@@ -352,6 +459,17 @@
                             </div>
                             <div class="viz-plot-stage rna-plot-container" id="volcano-plot">
                                 <span class="rna-text-sm rna-text-muted">Volcano plot loads here</span>
+                                <div class="rna-plot-loading">
+                                    <div class="rna-plot-skeleton">
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                    </div>
+                                    <div class="rna-plot-spinner"></div>
+                                    <span class="rna-plot-loading-text">Rendering Volcano…</span>
+                                </div>
                             </div>
                         </div>
 
@@ -374,6 +492,17 @@
                             </div>
                             <div class="viz-plot-stage rna-plot-container" id="ma-plot">
                                 <span class="rna-text-sm rna-text-muted">MA plot loads here</span>
+                                <div class="rna-plot-loading">
+                                    <div class="rna-plot-skeleton">
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                    </div>
+                                    <div class="rna-plot-spinner"></div>
+                                    <span class="rna-plot-loading-text">Rendering MA Plot…</span>
+                                </div>
                             </div>
                         </div>
 
@@ -396,6 +525,17 @@
                             </div>
                             <div class="viz-plot-stage rna-plot-container" id="heatmap-plot" style="min-height: 500px;">
                                 <span class="rna-text-sm rna-text-muted">Heatmap loads here</span>
+                                <div class="rna-plot-loading">
+                                    <div class="rna-plot-skeleton">
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                        <div class="rna-plot-skeleton-bar"></div>
+                                    </div>
+                                    <div class="rna-plot-spinner"></div>
+                                    <span class="rna-plot-loading-text">Rendering Heatmap…</span>
+                                </div>
                             </div>
                         </div>
 

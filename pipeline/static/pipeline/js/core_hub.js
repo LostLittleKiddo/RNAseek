@@ -1494,10 +1494,39 @@
         }, 5000);
     }
 
-    // ── Download links ──
+    // ── Download links (fetch as blob to avoid about:blank tab) ──
     document.querySelectorAll(".download-btn[data-asset]").forEach(function (btn) {
         btn.addEventListener("click", function () {
-            window.open("/api/session/assets?role=" + btn.dataset.asset + "&job_id=" + JOB_ID, "_blank");
+            var asset = btn.dataset.asset;
+            btn.disabled = true;
+            btn.classList.add("rna-processing");
+            fetch("/api/session/assets?role=" + asset + "&job_id=" + JOB_ID, {
+                headers: { "X-CSRFToken": CSRF }
+            })
+                .then(function (resp) {
+                    if (!resp.ok) throw new Error("Download failed: " + resp.status);
+                    var cd = resp.headers.get("Content-Disposition") || "";
+                    var match = cd.match(/filename[^;=\n]*=['"]?([^'"\n;]+)/i);
+                    var filename = match ? match[1] : asset.toLowerCase() + "_download";
+                    return resp.blob().then(function (blob) { return { blob: blob, filename: filename }; });
+                })
+                .then(function (result) {
+                    var url = URL.createObjectURL(result.blob);
+                    var a = document.createElement("a");
+                    a.href = url;
+                    a.download = result.filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                })
+                .catch(function (err) {
+                    console.error("Asset download error:", err);
+                })
+                .finally(function () {
+                    btn.disabled = false;
+                    btn.classList.remove("rna-processing");
+                });
         });
     });
 
@@ -1572,10 +1601,20 @@
 
     var COLORS = ["#059a98", "#e74c3c", "#f39c12", "#8e44ad", "#2ecc71", "#3498db", "#e67e22", "#1abc9c", "#c0392b", "#9b59b6"];
 
+    /** Dismiss the loading overlay inside a plot container with a fade-out. */
+    function dismissSpinner(el) {
+        var loader = el.querySelector(".rna-plot-loading");
+        if (!loader) return;
+        loader.classList.add("fade-out");
+        setTimeout(function () { loader.remove(); }, 320);
+    }
+
     function renderPCA(pca) {
         var el = document.getElementById("pca-plot");
         if (!el) return;
-        el.innerHTML = "";
+        // Preserve spinner, clear only the placeholder text
+        var placeholder = el.querySelector(":scope > span");
+        if (placeholder) placeholder.remove();
         var groups = uniqueGroups(pca.groups);
         var traces = groups.map(function (g, gi) {
             var idx = [];
@@ -1597,12 +1636,14 @@
         });
         Plotly.newPlot(el, traces, layout, plotConfig);
         el.classList.add("has-plot");
+        dismissSpinner(el);
     }
 
     function renderUMAP(umap) {
         var el = document.getElementById("umap-plot");
         if (!el) return;
-        el.innerHTML = "";
+        var placeholder = el.querySelector(":scope > span");
+        if (placeholder) placeholder.remove();
         var groups = uniqueGroups(umap.groups);
         var traces = groups.map(function (g, gi) {
             var idx = [];
@@ -1624,12 +1665,14 @@
         });
         Plotly.newPlot(el, traces, layout, plotConfig);
         el.classList.add("has-plot");
+        dismissSpinner(el);
     }
 
     function renderVolcano(v) {
         var el = document.getElementById("volcano-plot");
         if (!el) return;
-        el.innerHTML = "";
+        var placeholder = el.querySelector(":scope > span");
+        if (placeholder) placeholder.remove();
         var cats = { up: { x: [], y: [], t: [] }, down: { x: [], y: [], t: [] }, ns: { x: [], y: [], t: [] } };
         for (var i = 0; i < v.log2fc.length; i++) {
             var c = v.categories[i];
@@ -1656,12 +1699,14 @@
         });
         Plotly.newPlot(el, traces, layout, plotConfig);
         el.classList.add("has-plot");
+        dismissSpinner(el);
     }
 
     function renderMA(ma) {
         var el = document.getElementById("ma-plot");
         if (!el) return;
-        el.innerHTML = "";
+        var placeholder = el.querySelector(":scope > span");
+        if (placeholder) placeholder.remove();
         var sig = { x: [], y: [], t: [] };
         var ns = { x: [], y: [], t: [] };
         for (var i = 0; i < ma.log_base_mean.length; i++) {
@@ -1682,12 +1727,14 @@
         });
         Plotly.newPlot(el, traces, layout, plotConfig);
         el.classList.add("has-plot");
+        dismissSpinner(el);
     }
 
     function renderHeatmap(hm) {
         var el = document.getElementById("heatmap-plot");
         if (!el) return;
-        el.innerHTML = "";
+        var placeholder = el.querySelector(":scope > span");
+        if (placeholder) placeholder.remove();
 
         // Dynamically scale height so rows aren't squished
         var dynamicHeight = Math.max(500, hm.genes.length * 15 + 150);
@@ -1751,9 +1798,10 @@
 
         Plotly.newPlot(el, [trace], hmLayout, plotConfig);
         el.classList.add("has-plot");
+        dismissSpinner(el);
     }
 
-    // ── Fetch job data and render plots ──
+    // ── Fetch job data and lazy-render plots via IntersectionObserver ──
     if (typeof Plotly !== "undefined") {
         fetch("/api/jobs/" + JOB_ID + "/", {
             headers: { "X-CSRFToken": CSRF }
@@ -1762,11 +1810,36 @@
             .then(function (data) {
                 if (data.status !== "SUCCESS" || !data.payload || !data.payload.plot_data) return;
                 var pd = data.payload.plot_data;
-                if (pd.pca) renderPCA(pd.pca);
-                if (pd.umap) renderUMAP(pd.umap);
-                if (pd.volcano) renderVolcano(pd.volcano);
-                if (pd.ma) renderMA(pd.ma);
-                if (pd.heatmap) renderHeatmap(pd.heatmap);
+
+                // Map plot element IDs to their render functions + data
+                var plotQueue = [];
+                if (pd.pca) plotQueue.push({ id: "pca-plot", render: renderPCA, data: pd.pca });
+                if (pd.umap) plotQueue.push({ id: "umap-plot", render: renderUMAP, data: pd.umap });
+                if (pd.volcano) plotQueue.push({ id: "volcano-plot", render: renderVolcano, data: pd.volcano });
+                if (pd.ma) plotQueue.push({ id: "ma-plot", render: renderMA, data: pd.ma });
+                if (pd.heatmap) plotQueue.push({ id: "heatmap-plot", render: renderHeatmap, data: pd.heatmap });
+
+                if (!plotQueue.length) return;
+
+                // Use IntersectionObserver to lazy-render plots only when visible
+                var rendered = {};
+                var observer = new IntersectionObserver(function (entries) {
+                    entries.forEach(function (entry) {
+                        if (!entry.isIntersecting) return;
+                        var elId = entry.target.id;
+                        if (rendered[elId]) return;
+                        rendered[elId] = true;
+                        observer.unobserve(entry.target);
+
+                        var item = plotQueue.find(function (q) { return q.id === elId; });
+                        if (item) item.render(item.data);
+                    });
+                }, { rootMargin: "200px" });
+
+                plotQueue.forEach(function (item) {
+                    var el = document.getElementById(item.id);
+                    if (el) observer.observe(el);
+                });
             })
             .catch(function (err) { console.warn("Plot data fetch failed:", err); });
     }

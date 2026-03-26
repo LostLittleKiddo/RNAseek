@@ -58,10 +58,9 @@ cd /home/ubuntu/apps/rnaseek
 bash deploy.sh
 
 # Manual steps if needed:
-conda activate rnaseek
-pip install -r requirements.txt
-python manage.py migrate --noinput
-python manage.py collectstatic --noinput
+/opt/miniconda3/envs/rnaseek/bin/pip install -r requirements.txt
+/opt/miniconda3/envs/rnaseek/bin/python manage.py migrate --noinput
+/opt/miniconda3/envs/rnaseek/bin/python manage.py collectstatic --noinput
 sudo systemctl restart rnaseek-web rnaseek-worker rnaseek-beat
 ```
 
