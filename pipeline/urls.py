@@ -15,6 +15,7 @@ from pipeline.views import (
     ProcessingView,
     SessionAssetsView,
     TusAssetLookupView,
+    TusdHookView,
     TusWebhookView,
     TutorialsView,
     WorkspacesView,
@@ -41,4 +42,5 @@ urlpatterns = [
     path("api/session/assets", SessionAssetsView.as_view(), name="session_assets"),
     path("api/download/<uuid:asset_id>", FileDownloadView.as_view(), name="file_download"),
     path("api/submissions/<uuid:submission_id>/modules/<str:module_name>/run", ModuleRunView.as_view(), name="module_run"),
+    path("api/tusd-hooks/", TusdHookView.as_view(), name="tusd_hooks"),
 ]

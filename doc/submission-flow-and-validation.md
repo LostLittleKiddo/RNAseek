@@ -102,6 +102,15 @@ local SSD directory (`/tmp/rnaseek_uploads/`). When all chunks for a file
 arrive, they are merged in order and moved to the final NFS path under
 `media/sessions/<session_id>/<submission_id>/<subdir>/`.
 
+### Tus resumable upload path (alternative)
+Files can also be uploaded via the Tus protocol at `POST /files/`. Nginx
+proxies these requests to a tusd v2 daemon with `proxy_request_buffering off`
+for streaming throughput. tusd writes directly to the shared media volume.
+When an upload completes, tusd sends a `post-finish` webhook to
+`POST /api/tusd-hooks/`, which moves the file to the submission subdirectory
+and creates the `FileAsset` record. Tus uploads support automatic resume
+after network interruption.
+
 ---
 
 ## Step 3 — Reference Genome

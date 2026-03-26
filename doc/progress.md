@@ -19,21 +19,19 @@
 
 ### 1.1 Application Layer
 
-| Feature                  | Status | Notes                                                                                                                                                                                                                           |
-| ------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Django 5.2 (Daphne ASGI) | Done   | Serves HTTP and WebSocket via Django Channels                                                                                                                                                                                   |
-| Redis 7+ Message Broker  | Done   | Celery broker and Channels layer backend in `settings.py`                                                                                                                                                                       |
-| Celery 5.6 Worker Fleet  | Done   | Prefork workers, CPU-matched concurrency, task auto-discovery                                                                                                                                                                   |
-| Nginx Reverse Proxy      | Done   | `nginx/rnaseek.conf`: HTTPS (Let's Encrypt), `/files/ → tusd:1080` (Tus resumable uploads, `proxy_request_buffering off`), WebSocket `/ws/` upgrade, 10 GB upload limit, 30-day static cache, gzip                              |
-| tusd v2 Microservice     | Done   | `tusproject/tusd:v2` Docker service; Tus protocol implementation; stores chunks to `media/tusd-data/`; fires `post-finish` webhook to `/api/webhooks/tus/` (HMAC-SHA256); `TUS_DATA_DIR` and `TUS_HOOK_SECRET` env-configurable |
+| Feature                  | Status | Notes                                                                                                                |
+| ------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------- |
+| Django 5.2 (Daphne ASGI) | Done   | Serves HTTP and WebSocket via Django Channels                                                                        |
+| Redis 7+ Message Broker  | Done   | Celery broker and Channels layer backend in `settings.py`                                                            |
+| Celery 5.6 Worker Fleet  | Done   | Prefork workers, CPU-matched concurrency, task auto-discovery                                                        |
+| Nginx Reverse Proxy      | Done   | `nginx/rnaseek.conf`: HTTPS (Let's Encrypt), WebSocket `/ws/` upgrade, Tus `/files/` proxy to tusd (streaming, `proxy_request_buffering off`), `client_max_body_size 0` (unlimited), 30-day static cache, gzip |
 
 ### 1.2 Storage Layer (POSIX Shared NFS)
 
-| Feature                     | Status | Notes                                                                                                                   |
-| --------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
-| Shared `/app/media/` mount  | Done   | `docker-compose.yml` defines `media-data` volume on web, worker, beat, tusd; NFS-ready with commented swap instructions |
-| `tusd-data/` staging dir    | Done   | `media/tusd-data/` created by tusd container on startup; shared volume with Django for post-finish file move            |
-| Reference genome file store | Done   | 11 pre-indexed genomes under `pipeline/reference_genomes/`                                                              |
+| Feature                     | Status | Notes                                                                                                             |
+| --------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| Shared `/app/media/` mount  | Done   | `docker-compose.yml` defines `media-data` volume on web, worker, beat, tusd; NFS-ready with documented mount flags (async, noatime, rsize/wsize 1 MB, hard) |
+| Reference genome file store | Done   | 11 pre-indexed genomes under `pipeline/reference_genomes/`                                                        |
 
 ### 1.3 Security Layer (Anonymous Sessions)
 
@@ -59,15 +57,13 @@
 
 ## Phase 3: API Facade and Data Ingestion
 
-### 3.1 File Upload Pipeline
+### 3.1 Chunked Uploader
 
-| Feature                           | Status | Notes                                                                                                                                                                                                                                                                     |
-| --------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/upload/chunk` (legacy) | Done   | Preserved for backward compatibility. 25 MB chunks (concurrent, up to 6 in-flight per file), SSD-buffered with merge-on-complete, path-traversal sanitization, POSIX-atomic merge claim (`O_EXCL`), `shutil.move()` to NFS on completion, `FileAsset` created after merge |
-| Tus resumable upload (primary)    | Done   | Uppy.js v3.27.5 UMD + `@uppy/tus` plugin on frontend; `tusproject/tusd:v2` Docker microservice backend; 50 MB chunks, up to 5 concurrent files, automatic retry; Nginx `/files/ → tusd:1080`; file data never touches Django/Python during transfer                       |
-| `POST /api/webhooks/tus/`         | Done   | `TusWebhookView`: HMAC-SHA256 signature verification (`Hook-Signature` header), parses tusd v1/v2 payload formats, resolves submission + role from upload metadata, `shutil.move()` from `tusd-data/` to NFS, cleans `.info` sidecar, creates `FileAsset`                 |
-| `GET /api/upload/tus-asset`       | Done   | `TusAssetLookupView`: session-scoped `FileAsset` lookup by filename; resolves race between parallel uploads and page navigation                                                                                                                                           |
-| Frontend Tus integration          | Done   | `pipeline_setup.js`: `initUppy()` → `Uppy.Uppy` + `Uppy.Tus` (globals from UMD bundle); `uploadFileViaTus()` Promise wrapper; `uploadTracker` uses `uppyFileId`; `removeFile()` / `removeBamFile()` cancel via `uppyInstance.removeFile()`                                |
+| Feature                  | Status | Notes                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/upload/chunk` | Done   | 25 MB chunks (concurrent, up to 6 in-flight per file), SSD-buffered with merge-on-complete (no direct NFS writes during upload), path-traversal sanitization, atomic chunk writes via tmp+rename, POSIX-atomic merge claim (`O_EXCL`), `shutil.move()` to NFS on completion, role-aware subdirectory routing (raw/, aligned/, counts/, metadata/, custom_genome/), `FileAsset` created after merge, temp buffer cleanup |
+| Frontend chunked upload  | Done   | `pipeline_setup.js`: drop zones for FASTQ, BAM, Matrix, custom genome files; concurrent chunk upload (25 MB chunks, 6 workers via `uploadFileConcurrently()`), progress tracking, retry logic (3 attempts, 5-min timeout per chunk), abort support                                                                                                                                                                      |
+| Tus resumable uploads    | Done   | tusd v2 daemon handles Tus protocol uploads at `/files/`. Nginx proxies with streaming (no request buffering). Post-finish webhook notifies Django at `/api/tusd-hooks/` to register FileAsset. Supports resume after network interruption.                                                                                                                                                                              |
 
 ### 3.2 Master Router
 
@@ -103,8 +99,7 @@
 | `GET /api/session/assets`                         | Done    | Lists session file assets; filterable by `role` and `job_id`                                                                                                                      |
 | `GET /api/download/<uuid>`                        | Done    | Serves files with path-traversal protection and MIME detection                                                                                                                    |
 | `DELETE /api/files/<uuid>/`                       | Done    | Deletes user-uploaded asset from DB and disk                                                                                                                                      |
-| `POST /api/webhooks/tus/`                         | Done    | Receives tusd `post-finish` webhook; HMAC-SHA256 verification; moves file to NFS; creates `FileAsset`                                                                             |
-| `GET /api/upload/tus-asset`                       | Done    | Session-scoped lookup for `FileAsset` created by the Tus webhook; used by frontend after upload completes                                                                         |
+| `POST /api/tusd-hooks/`                           | Done    | tusd post-finish webhook: validates session, moves uploaded file to submission subdirectory, creates FileAsset. 18 unit tests.                                                    |
 | `POST /api/submissions/<uuid>/modules/<name>/run` | Partial | API routing and validation complete for all 12 modules. Alt Splicing, WGCNA, RNA Editing, and Time Series dispatch to real backend engines; 8 others return placeholder payloads. |
 
 ---
@@ -268,8 +263,9 @@ The Modules tab in `core_hub.html` uses a master-detail split pane. The left mas
 | Feature                | Status | Notes                                                                                                                                                            |
 | ---------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GitHub Actions E2E     | Done   | `.github/workflows/e2e.yml`: Miniconda setup, bioinformatics tool verification, yeast HISAT2 index build, migrations, `test_e2e.py` on synthetic sacCer3 dataset |
-| Test suite             | Done   | 11 test files (see Test Suite section below)                                                                                                                     |
+| Test suite             | Done   | 12 test files (see Test Suite section below)                                                                                                                     |
 | Prometheus and Grafana | No     | Blueprint requires Celery queue depth and worker RAM monitoring -- no monitoring infrastructure exists                                                           |
+| Upload benchmarking    | Done   | `scripts/benchmark-upload-capacity.sh`: network bandwidth (iperf3/curl), NFS disk I/O (dd/fio), non-disruptive                                                  |
 | `.gitignore`           | Done   | Blocks `.fastq.gz`, `.bam`, `.cram`, `.sam`, `.h5ad`, `.ht2`, `.RData`                                                                                           |
 
 ### 8.3 Docker and Deployment
@@ -277,11 +273,11 @@ The Modules tab in `core_hub.html` uses a master-detail split pane. The left mas
 | Feature                  | Status | Notes                                                                                                                         |
 | ------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------- |
 | Dockerfile               | Done   | Multi-stage: Miniconda base, conda env, pip deps, app code, collectstatic, EXPOSE 8000                                        |
-| `docker-compose.yml`     | Done   | 4 services: web (Daphne), worker (Celery, 32 GB RAM limit), beat, redis (7-alpine); shared `media-data` volume; health checks |
+| `docker-compose.yml`     | Done   | 5 services: web (Daphne), worker (Celery, 32 GB RAM limit), beat, redis (7-alpine), tusd (v2 resumable uploads); shared `media-data` volume; NFS mount flags documented; health checks |
 | `docker-compose.dev.yml` | Done   | Override with live code mount, reduced concurrency (2), debug log level                                                       |
 | `deploy.sh`              | Done   | .env check, pip install, migrate, collectstatic, Nginx symlink, systemd reload                                                |
 | systemd services         | Done   | `rnaseek-web.service`, `rnaseek-worker.service`, `rnaseek-beat.service`                                                       |
-| Nginx config             | Done   | HTTPS (Let's Encrypt), WebSocket upgrade, 10 GB uploads, 30-day static cache, gzip                                            |
+| Nginx config             | Done   | HTTPS (Let's Encrypt), WebSocket upgrade, Tus `/files/` proxy to tusd (streaming), `client_max_body_size 0` (unlimited), 30-day static cache, gzip |
 
 ---
 
@@ -365,6 +361,7 @@ All 11 genomes have HISAT2 indices (`.ht2`), FASTA, and GTF annotation files. Pr
 | `test_genome_indices.py`    | --    | Genome index resolution and pre-built index verification                                                                                                                                                                                                                                                           |
 | `test_validators.py`        | 52    | All 10 backend core validators: base fields, uploaded files, custom genome, small RNA, paired-end matching, metadata, ChIP-seq, batch column, matrix content, bacterial FASTA; min sample counts, contrast validation, name sanitization, FASTA header check, matrix-metadata match, duplicate genes, missing data |
 | `test_stage2_edge_cases.py` | --    | Stage 2 edge cases: numeric covariates, rank-deficient designs, contrast level validation                                                                                                                                                                                                                          |
+| `test_tusd_hooks.py`        | 18    | TusdHookView: post-finish file creation, file move to submission dir, sidecar cleanup, file_role handling (RAW_FASTQ, METADATA_CSV, ALIGNMENT_BAM), session validation, error cases (invalid JSON, missing fields, file not on disk), unknown role fallback |
 
 ---
 

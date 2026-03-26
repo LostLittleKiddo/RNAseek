@@ -1,287 +1,205 @@
-# RNAseek — Production Commands
+# RNAseek -- Production Commands
 
-> **Server:** rnaseek.ca (bare metal Ubuntu, no Docker)  
-> **App dir:** `/home/ubuntu/apps/rnaseek`  
-> **Conda env:** `/opt/miniconda3/envs/rnaseek`  
-> **Database:** PostgreSQL 14 — db `rnaseek`, user `rnaseek`
+> Quick reference for common production server operations.
 
 ---
 
-## Services
-
-RNAseek runs as three systemd services behind Nginx:
-
-| Service | What it does |
-|---|---|
-| `rnaseek-web` | Daphne ASGI server (HTTP + WebSocket) on `127.0.0.1:8000` |
-| `rnaseek-worker` | Celery worker — runs bioinformatics pipelines |
-| `rnaseek-beat` | Celery beat — scheduled tasks (session cleanup at 2 AM UTC) |
-| `nginx` | Reverse proxy with SSL (Let's Encrypt) |
-
----
-
-## Everyday Commands
-
-### Check status of all services
+## Service Management
 
 ```bash
-sudo systemctl status rnaseek-web rnaseek-worker rnaseek-beat nginx
-```
+# Status of all RNAseek services
+sudo systemctl status rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd
 
-### Start / Stop / Restart individual services
-
-```bash
-sudo systemctl start   rnaseek-web
-sudo systemctl stop    rnaseek-web
+# Restart a specific service
 sudo systemctl restart rnaseek-web
-```
+sudo systemctl restart rnaseek-worker
+sudo systemctl restart rnaseek-beat
+sudo systemctl restart rnaseek-tusd
 
-Replace `rnaseek-web` with `rnaseek-worker`, `rnaseek-beat`, or `nginx`.
+# Restart all services
+for svc in rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd; do
+    sudo systemctl restart "$svc"
+done
 
-### Restart everything
-
-```bash
-sudo systemctl restart rnaseek-web rnaseek-worker rnaseek-beat nginx
-```
-
-### Stop everything
-
-```bash
-sudo systemctl stop rnaseek-web rnaseek-worker rnaseek-beat
+# Stop all services
+for svc in rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd; do
+    sudo systemctl stop "$svc"
+done
 ```
 
 ---
 
 ## Logs
 
-### View live logs (follow mode)
-
 ```bash
+# Live web server logs
 sudo journalctl -u rnaseek-web -f
+
+# Live worker logs (pipeline execution)
 sudo journalctl -u rnaseek-worker -f
+
+# Live Beat scheduler logs
 sudo journalctl -u rnaseek-beat -f
-```
 
-### View recent logs (last 100 lines)
+# Live tusd upload daemon logs
+sudo journalctl -u rnaseek-tusd -f
 
-```bash
-sudo journalctl -u rnaseek-web -n 100 --no-pager
-sudo journalctl -u rnaseek-worker -n 100 --no-pager
-```
+# Last 100 lines from a service
+sudo journalctl -u rnaseek-worker -n 100
 
-### View logs since a specific time
-
-```bash
-sudo journalctl -u rnaseek-worker --since "2026-03-21 00:00:00" --no-pager
-```
-
-### Nginx logs
-
-```bash
-sudo tail -f /var/log/nginx/access.log
-sudo tail -f /var/log/nginx/error.log
+# Logs from today only
+sudo journalctl -u rnaseek-web --since today
 ```
 
 ---
 
-## Deployment (Code Updates)
-
-After pulling new code from git:
+## Deployment
 
 ```bash
 cd /home/ubuntu/apps/rnaseek
 
-# Activate conda environment
-export PATH=/opt/miniconda3/envs/rnaseek/bin:$PATH
+# Full deploy (pip install, migrate, collectstatic, systemd reload)
+bash deploy.sh
 
-# Install any new Python packages
+# Manual steps if needed:
+conda activate rnaseek
 pip install -r requirements.txt
-
-# Run database migrations
 python manage.py migrate --noinput
-
-# Collect static files
 python manage.py collectstatic --noinput
-
-# Restart services to pick up code changes
 sudo systemctl restart rnaseek-web rnaseek-worker rnaseek-beat
-```
-
-Or use the deploy script (does all of the above):
-
-```bash
-cd /home/ubuntu/apps/rnaseek && bash deploy.sh
 ```
 
 ---
 
 ## Database
 
-### Django management shell
-
 ```bash
+# Django deployment check
 cd /home/ubuntu/apps/rnaseek
-export PATH=/opt/miniconda3/envs/rnaseek/bin:$PATH
-set -a && . .env && set +a
+python manage.py check --deploy
+
+# Run migrations
+python manage.py migrate
+
+# Open Django shell
 python manage.py shell
+
+# Database backup
+pg_dump -U rnaseek -h 127.0.0.1 rnaseek > backup_$(date +%Y%m%d).sql
+
+# Restore from backup
+psql -U rnaseek -h 127.0.0.1 rnaseek < backup_YYYYMMDD.sql
 ```
 
-### Run migrations
+---
+
+## Session Management
 
 ```bash
-python manage.py migrate --noinput
+# Dry run: see what would be purged
+python manage.py purge_expired --dry-run
+
+# Execute purge (deletes expired sessions, files, and DB rows)
+python manage.py purge_expired
 ```
 
-### Connect to PostgreSQL directly
+Automated purge runs daily at 2:00 AM UTC via Celery Beat.
+
+---
+
+## Nginx
 
 ```bash
-sudo -u postgres psql -d rnaseek
+# Test config syntax
+sudo nginx -t
+
+# Reload (no downtime)
+sudo systemctl reload nginx
+
+# View Nginx error log
+sudo tail -100 /var/log/nginx/error.log
+
+# SSL certificate renewal test
+sudo certbot renew --dry-run
 ```
 
-### Full database reset (destructive — drops all data)
+---
+
+## Redis
 
 ```bash
-# 1. Stop services
-sudo systemctl stop rnaseek-web rnaseek-worker rnaseek-beat
+# Check Redis is alive
+redis-cli ping
 
-# 2. Drop and recreate database
-sudo -u postgres psql -c "DROP DATABASE IF EXISTS rnaseek;"
-sudo -u postgres psql -c "CREATE DATABASE rnaseek OWNER rnaseek;"
+# Monitor real-time commands
+redis-cli monitor
 
-# 3. Re-run migrations
-cd /home/ubuntu/apps/rnaseek
-export PATH=/opt/miniconda3/envs/rnaseek/bin:$PATH
-set -a && . .env && set +a
-python manage.py migrate --noinput
-
-# 4. Collect static files
-python manage.py collectstatic --noinput
-
-# 5. Clean celery beat schedule
-rm -f celerybeat-schedule.dat celerybeat-schedule.bak celerybeat-schedule.dir
-
-# 6. Restart services
-sudo systemctl restart rnaseek-web rnaseek-worker rnaseek-beat
+# Check memory usage
+redis-cli info memory | grep used_memory_human
 ```
 
 ---
 
 ## Celery
 
-### Purge all pending tasks from the queue
-
 ```bash
-cd /home/ubuntu/apps/rnaseek
-export PATH=/opt/miniconda3/envs/rnaseek/bin:$PATH
-set -a && . .env && set +a
-celery -A config purge -f
-```
-
-### Inspect active tasks
-
-```bash
+# Inspect active workers
 celery -A config inspect active
-```
 
-### Inspect registered tasks
-
-```bash
+# Inspect registered tasks
 celery -A config inspect registered
+
+# Inspect scheduled tasks (Beat)
+celery -A config inspect scheduled
+
+# Purge all pending tasks (destructive)
+celery -A config purge
 ```
 
 ---
 
-## Nginx
-
-### Test config before reloading
+## Upload Benchmarking
 
 ```bash
+# Run the built-in server capacity benchmark
+bash scripts/benchmark-upload-capacity.sh
+```
+
+Tests network bandwidth (iperf3/curl), sequential disk I/O (dd), and parallel write throughput (fio).
+
+---
+
+## Troubleshooting
+
+### Worker not picking up tasks
+
+```bash
+# Check worker is connected to Redis
+celery -A config inspect ping
+
+# Check queue length
+redis-cli llen celery
+```
+
+### tusd not accepting uploads
+
+```bash
+# Check tusd is listening
+curl -s http://127.0.0.1:1080/files/ -I | head -5
+
+# Check Nginx is proxying to tusd
+curl -sk https://rnaseek.ca/files/ -I | head -5
+
+# Check tusd logs
+sudo journalctl -u rnaseek-tusd -n 50
+```
+
+### WebSocket not connecting
+
+```bash
+# Verify Daphne is running
+curl -s http://127.0.0.1:8000/ -I | head -3
+
+# Check Nginx WebSocket config
 sudo nginx -t
 ```
-
-### Reload (no downtime)
-
-```bash
-sudo systemctl reload nginx
-```
-
-### Restart
-
-```bash
-sudo systemctl restart nginx
-```
-
----
-
-## SSL Certificate (Let's Encrypt)
-
-### Check certificate expiry
-
-```bash
-sudo certbot certificates
-```
-
-### Manually renew
-
-```bash
-sudo certbot renew
-sudo systemctl reload nginx
-```
-
-Auto-renewal is handled by the certbot systemd timer.
-
----
-
-## Systemd Service Files
-
-The service unit files live in the repo and are copied to systemd:
-
-```
-/home/ubuntu/apps/rnaseek/systemd/rnaseek-web.service
-/home/ubuntu/apps/rnaseek/systemd/rnaseek-worker.service
-/home/ubuntu/apps/rnaseek/systemd/rnaseek-beat.service
-```
-
-After editing a service file:
-
-```bash
-sudo cp /home/ubuntu/apps/rnaseek/systemd/*.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl restart rnaseek-web rnaseek-worker rnaseek-beat
-```
-
----
-
-## Quick Health Check
-
-```bash
-# All services running?
-sudo systemctl is-active rnaseek-web rnaseek-worker rnaseek-beat nginx
-
-# Site responding?
-curl -s -o /dev/null -w "%{http_code}\n" https://rnaseek.ca/
-
-# Redis alive?
-redis-cli ping
-
-# PostgreSQL alive?
-sudo systemctl is-active postgresql
-```
-
----
-
-## Environment
-
-The `.env` file at `/home/ubuntu/apps/rnaseek/.env` contains secrets (DB password, Django secret key, etc.). Never commit it to git.
-
-Key environment variables:
-
-| Variable | Purpose |
-|---|---|
-| `RNASEEK_ENV` | Must be `production` |
-| `DJANGO_SECRET_KEY` | Django secret key |
-| `DB_NAME` / `DB_USER` / `DB_PASSWORD` | PostgreSQL credentials |
-| `DJANGO_ALLOWED_HOSTS` | `rnaseek.ca,www.rnaseek.ca` |
-| `CSRF_TRUSTED_ORIGINS` | `https://rnaseek.ca,https://www.rnaseek.ca` |
-| `REDIS_URL` | Default `redis://127.0.0.1:6379/0` |
-| `MEDIA_ROOT` | Where uploaded files and pipeline outputs go |

@@ -19,6 +19,7 @@ from pipeline.views.api import (            # noqa: F401
     JobStatusView,
     ModuleRunView,
     SessionAssetsView,
+    TusdHookView,
 )
 
 from pipeline.views.tus_webhook import (    # noqa: F401

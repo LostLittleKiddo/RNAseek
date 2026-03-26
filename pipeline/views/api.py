@@ -1,6 +1,7 @@
 """API views — REST endpoints for uploads, pipeline triggers, and data retrieval."""
 
 import json
+import logging
 import mimetypes
 import os
 import re as re_mod
@@ -586,3 +587,145 @@ class ModuleRunView(View):
             "module": name_upper,
             "status": module_job.status,
         })
+
+
+logger = logging.getLogger(__name__)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class TusdHookView(View):
+    """Handle tusd HTTP hook callbacks.
+
+    tusd sends a POST for each lifecycle event (pre-create, post-create,
+    post-finish, etc.).  We only act on ``post-finish``: when the entire
+    file has been written to disk, we register a :class:`FileAsset` so
+    the rest of RNAseek can see it.
+
+    The client must set these Tus ``Upload-Metadata`` keys:
+        ``submission_id`` – UUID of the AnalysisSubmission
+        ``file_role``     – a FileAsset.FileRole value (default: RAW_FASTQ)
+        ``filename``      – original file name
+
+    Session ownership is resolved via the ``Cookie`` header forwarded by
+    tusd (``-hooks-http-forward-headers=Cookie``).
+    """
+
+    http_method_names = ["post"]
+
+    def post(self, request):
+        hook_name = request.headers.get("Hook-Name", "")
+
+        # Acknowledge non-post-finish hooks immediately.
+        if hook_name != "post-finish":
+            return JsonResponse({}, content_type="application/json")
+
+        # ── Parse payload ──
+        try:
+            payload = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse(
+                {"error": "Invalid JSON payload."},
+                status=400,
+                content_type="application/json",
+            )
+
+        try:
+            upload = payload["Event"]["Upload"]
+            tus_id = upload["ID"]
+            meta = upload.get("MetaData") or {}
+            storage = upload.get("Storage") or {}
+        except (KeyError, TypeError) as exc:
+            logger.warning("tusd hook: malformed payload – %s", exc)
+            return JsonResponse(
+                {"error": f"Missing required field: {exc}"},
+                status=400,
+                content_type="application/json",
+            )
+
+        # ── Extract metadata ──
+        filename = meta.get("filename", "")
+        submission_id = meta.get("submission_id", "")
+        file_role = meta.get("file_role", FileAsset.FileRole.RAW_FASTQ)
+
+        if not filename or not submission_id:
+            return JsonResponse(
+                {"error": "Upload-Metadata must include 'filename' and 'submission_id'."},
+                status=400,
+                content_type="application/json",
+            )
+
+        # ── Resolve session (attached by AnonymousSessionMiddleware) ──
+        session_obj = getattr(request, "session_obj", None)
+        if session_obj is None:
+            logger.warning("tusd hook: no session resolved for upload %s", tus_id)
+            return JsonResponse(
+                {"error": "Session could not be resolved."},
+                status=400,
+                content_type="application/json",
+            )
+
+        # ── Validate submission belongs to this session ──
+        try:
+            submission = AnalysisSubmission.objects.get(
+                submission_id=submission_id, session=session_obj
+            )
+        except (AnalysisSubmission.DoesNotExist, ValueError):
+            return JsonResponse(
+                {"error": "Invalid submission_id or session mismatch."},
+                status=400,
+                content_type="application/json",
+            )
+
+        # ── Validate file_role ──
+        valid_roles = {choice[0] for choice in FileAsset.FileRole.choices}
+        if file_role not in valid_roles:
+            file_role = FileAsset.FileRole.RAW_FASTQ
+
+        # ── Determine file path ──
+        # tusd filestore writes to: <upload-dir>/<tus-id>
+        # Storage.Path gives the absolute path if available.
+        file_path = storage.get("Path", "")
+        if not file_path:
+            upload_dir = os.environ.get("MEDIA_ROOT", "/app/media")
+            file_path = os.path.join(upload_dir, "uploads", tus_id)
+
+        # Verify the file actually exists on disk.
+        if not os.path.isfile(file_path):
+            logger.error("tusd hook: file not found at %s for upload %s", file_path, tus_id)
+            return JsonResponse(
+                {"error": "Uploaded file not found on disk."},
+                status=500,
+                content_type="application/json",
+            )
+
+        # ── Move file to the submission directory ──
+        safe_name = os.path.basename(filename)
+        subdir = _subdir_for_role(file_role)
+        dest_dir = os.path.join(submission.upload_dir, subdir)
+        dest_path = os.path.join(dest_dir, safe_name)
+        os.makedirs(dest_dir, exist_ok=True)
+        shutil.move(file_path, dest_path)
+
+        # Clean up the .info sidecar file that tusd creates.
+        info_path = file_path + ".info"
+        if os.path.isfile(info_path):
+            os.remove(info_path)
+
+        # ── Register FileAsset ──
+        asset = FileAsset.objects.create(
+            session=session_obj,
+            submission=submission,
+            file_role=file_role,
+            local_path=dest_path,
+            is_user_uploaded=True,
+        )
+
+        logger.info(
+            "tusd hook: registered FileAsset %s (%s) for submission %s",
+            asset.id, safe_name, submission_id,
+        )
+
+        return JsonResponse(
+            {"asset_id": str(asset.id)},
+            content_type="application/json",
+        )

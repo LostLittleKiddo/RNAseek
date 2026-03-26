@@ -7,31 +7,31 @@
 
 ## Root
 
-| File                     | Lines | Purpose                                                                                                                                 |
-| ------------------------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `manage.py`              | —     | Django management entry point                                                                                                           |
-| `requirements.txt`       | —     | Python/pip dependency list (includes commented-out future deps: scvi-tools, mofapy2, tangram-sc, squidpy)                               |
-| `environment.yml`        | —     | Conda environment spec (mirrors requirements.txt for conda-based deployments)                                                           |
-| `db.sqlite3`             | —     | SQLite database (development only)                                                                                                      |
-| `Dockerfile`             | —     | Multi-stage: Miniconda base → conda env → pip deps → app code → collectstatic; EXPOSE 8000                                              |
-| `docker-compose.yml`     | —     | 5-service production stack: web (Daphne), worker (Celery, 32 GB RAM), beat, redis (7-alpine), tusd (tusproject/tusd:v2); shared volumes |
-| `docker-compose.dev.yml` | —     | Dev override: live code mount, reduced concurrency (2), debug logging, tusd with `TUS_HOOK_SECRET=dev-tus-secret`                       |
-| `deploy.sh`              | —     | Server deploy script: .env validation, pip install, migrate, collectstatic, Nginx symlink, systemd reload                               |
-| `README.md`              | —     | Project overview and setup instructions                                                                                                 |
-| `LICENSE`                | —     | License file                                                                                                                            |
+| File                     | Lines | Purpose                                                                                                      |
+| ------------------------ | ----- | ------------------------------------------------------------------------------------------------------------ |
+| `manage.py`              | —     | Django management entry point                                                                                |
+| `requirements.txt`       | —     | Python/pip dependency list (includes commented-out future deps: scvi-tools, mofapy2, tangram-sc, squidpy)    |
+| `environment.yml`        | —     | Conda environment spec (mirrors requirements.txt for conda-based deployments)                                |
+| `db.sqlite3`             | —     | SQLite database (development only)                                                                           |
+| `Dockerfile`             | —     | Multi-stage: Miniconda base → conda env → pip deps → app code → collectstatic; EXPOSE 8000                   |
+| `docker-compose.yml`     | —     | 5-service production stack: web (Daphne), worker (Celery, 32 GB RAM), beat, redis (7-alpine), tusd (v2 resumable uploads); shared volumes, NFS mount flags documented |
+| `docker-compose.dev.yml` | —     | Dev override: live code mount, reduced concurrency (2), debug logging                                        |
+| `deploy.sh`              | —     | Server deploy script: .env validation, pip install, migrate, collectstatic, Nginx symlink, systemd reload    |
+| `README.md`              | —     | Project overview and setup instructions                                                                      |
+| `LICENSE`                | —     | License file                                                                                                 |
 
 ---
 
 ## `config/` — Django Project Configuration
 
-| File          | Lines | Purpose                                                                                                                                                                                                  |
-| ------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `__init__.py` | 3     | Ensures `config` is a Python package                                                                                                                                                                     |
-| `settings.py` | 257   | Django 5.2 settings: CHANNEL_LAYERS (Redis), Celery broker, WhiteNoise static storage, MEDIA_ROOT, session/security middleware, ASGI app; `TUS_DATA_DIR` and `TUS_HOOK_SECRET` env-configurable settings |
-| `celery.py`   | 18    | Celery 5.6 app factory: autodiscover tasks, Beat schedule (`purge-expired-sessions` crontab at 2:00 AM UTC)                                                                                              |
-| `asgi.py`     | 27    | ASGI entrypoint: `ProtocolTypeRouter` with `AuthMiddlewareStack` + `URLRouter` for WebSocket, Django HTTP handler                                                                                        |
-| `wsgi.py`     | 16    | WSGI entrypoint (fallback; production uses ASGI via Daphne)                                                                                                                                              |
-| `urls.py`     | 23    | Root URL configuration: includes `pipeline.urls`, serves `MEDIA_ROOT` in debug mode                                                                                                                      |
+| File          | Lines | Purpose                                                                                                                                  |
+| ------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `__init__.py` | 3     | Ensures `config` is a Python package                                                                                                     |
+| `settings.py` | 257   | Django 5.2 settings: CHANNEL_LAYERS (Redis), Celery broker, WhiteNoise static storage, MEDIA_ROOT, session/security middleware, ASGI app |
+| `celery.py`   | 18    | Celery 5.6 app factory: autodiscover tasks, Beat schedule (`purge-expired-sessions` crontab at 2:00 AM UTC)                              |
+| `asgi.py`     | 27    | ASGI entrypoint: `ProtocolTypeRouter` with `AuthMiddlewareStack` + `URLRouter` for WebSocket, Django HTTP handler                        |
+| `wsgi.py`     | 16    | WSGI entrypoint (fallback; production uses ASGI via Daphne)                                                                              |
+| `urls.py`     | 23    | Root URL configuration: includes `pipeline.urls`, serves `MEDIA_ROOT` in debug mode                                                      |
 
 ---
 
@@ -55,12 +55,11 @@
 
 ### `pipeline/views/` — HTTP View Layer
 
-| File             | Lines | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ---------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `__init__.py`    | 22    | Re-exports all view classes for clean imports                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `api.py`         | ~570  | 9 API views: `FileAssetDelete`, `CreateSubmissionView`, `DeleteSubmissionView`, `ChunkUploadView` (legacy 25 MB chunked upload, preserved for backward compatibility), `CorePipelineView` (facade → validators → Celery dispatch), `JobStatusView` (stale-job detection via AsyncResult), `SessionAssetsView`, `FileDownloadView`, `ModuleRunView` (12 approved modules). Helpers: `_subdir_for_role()`, `_merge_and_move()`, `UPLOAD_BUFFER_ROOT` |
-| `tus_webhook.py` | ~110  | Two views for the Tus upload pipeline: `TusWebhookView` (`POST /api/webhooks/tus/`, `@csrf_exempt`) — HMAC-SHA256 signature verification, parses tusd v1/v2 payload shapes, resolves `submission_id` + `file_role` from metadata, moves file from `tusd-data/` to NFS via `shutil.move()`, cleans up `.info` sidecar, creates `FileAsset`; `TusAssetLookupView` (`GET /api/upload/tus-asset`) — session-scoped lookup by safe filename             |
-| `pages.py`       | 203   | 6 template-based views: `HomeView`, `TutorialsView`, `WorkspacesView`, `NewSubmissionView` (genome list context), `ProcessingView` (pipeline steps context), `CoreHubView` (plot data, download links, module jobs, BAM presence check)                                                                                                                                                                                                            |
+| File          | Lines | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `__init__.py` | 22    | Re-exports all view classes for clean imports                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `api.py`      | ~670  | 10 API views: `FileAssetDelete`, `CreateSubmissionView`, `DeleteSubmissionView`, `ChunkUploadView` (25 MB concurrent chunks, SSD-buffered with merge-on-complete, path-traversal sanitized), `CorePipelineView` (facade → validators → Celery dispatch), `JobStatusView` (stale-job detection via AsyncResult), `SessionAssetsView`, `FileDownloadView`, `ModuleRunView` (12 approved modules), `TusdHookView` (Tus post-finish webhook: moves uploaded file, creates FileAsset). Helpers: `_subdir_for_role()`, `_merge_and_move()`, `UPLOAD_BUFFER_ROOT` |
+| `pages.py`    | 203   | 6 template-based views: `HomeView`, `TutorialsView`, `WorkspacesView`, `NewSubmissionView` (genome list context), `ProcessingView` (pipeline steps context), `CoreHubView` (plot data, download links, module jobs, BAM presence check)                                                                                                                                                                                                                                 |
 
 ### `pipeline/tasks/` — Celery Task Layer
 
@@ -123,10 +122,10 @@
 
 ## `pipeline/static/pipeline/js/` — JavaScript
 
-| File                | Lines | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pipeline_setup.js` | ~2760 | 5-step wizard navigation, entry point/assay/library selectors, FASTQ/BAM/Matrix drop zones, **Tus resumable upload via Uppy.js v3.27.5 + @uppy/tus** (50 MB chunks, 5 concurrent files, auto-retry), replaces legacy vanilla chunk engine; paired-end validation, CSV metadata with PapaParse, manual metadata builder, column mapping, contrast builder, per-step validation, 9 of 10 backend validation rules mirrored client-side (FASTA header `>` check is backend-only), toast notifications |
-| `core_hub.js`       | 1773  | Tab switching, Plotly resize, Module Hub state machine (empty/history/form/result), 12 module form builders with D&D and tabbed input, history list with status badges, result view with Plotly rendering + download, module submission + polling, deconvolution gateway + spoke unlock, 5 Plotly render functions (PCA, UMAP, Volcano, MA, Heatmap), interactive figure export as HTML                                                                                                            |
+| File                | Lines | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pipeline_setup.js` | ~2760 | 5-step wizard navigation, entry point/assay/library selectors, FASTQ/BAM/Matrix drop zones, concurrent chunked upload (25 MB chunks, 6 concurrent workers per file, 3 retries, 5-min timeout), paired-end validation, CSV metadata with PapaParse, manual metadata builder, column mapping, contrast builder, per-step validation, 9 of 10 backend validation rules mirrored client-side (FASTA header `>` check is backend-only), toast notifications |
+| `core_hub.js`       | 1773  | Tab switching, Plotly resize, Module Hub state machine (empty/history/form/result), 12 module form builders with D&D and tabbed input, history list with status badges, result view with Plotly rendering + download, module submission + polling, deconvolution gateway + spoke unlock, 5 Plotly render functions (PCA, UMAP, Volcano, MA, Heatmap), interactive figure export as HTML                                                                |
 
 ---
 
@@ -140,7 +139,7 @@
 
 ---
 
-## `test/` — Test Suite (11 files)
+## `test/` — Test Suite (12 files)
 
 | File                        | Lines | Coverage Area                                                                                                 |
 | --------------------------- | ----- | ------------------------------------------------------------------------------------------------------------- |
@@ -155,6 +154,7 @@
 | `test_dev_dataset.py`       | 259   | Dev dataset validation (metadata, sample matching)                                                            |
 | `test_e2e.py`               | 373   | Full end-to-end: synthetic yeast FASTQ → Stage 1 → Stage 2 (used in GitHub Actions CI)                        |
 | `test_genome_indices.py`    | 155   | Genome index resolution, pre-built index verification                                                         |
+| `test_tusd_hooks.py`        | ~200  | TusdHookView: 18 tests covering post-finish file creation, file move, sidecar cleanup, file_role handling, session validation, error cases |
 
 ---
 
@@ -174,7 +174,8 @@
 | `guide/Docker/Docker Deployment Guide.md`         | Docker production deployment guide                                                |
 | `guide/Docker/Docker Development Guide.md`        | Docker development environment guide                                              |
 | `guide/Production/Production Commands.md`         | Production server command reference                                               |
-| `guide/Production/Production Deployment Guide.md` | Bare-metal production deployment guide                                            |
+| `guide/Production/Production Deployment Guide.md` | Bare-metal production deployment guide (tusd, Nginx, systemd, NFS)                |
+| `guide/Development/Development Guide.md`          | Local development setup, testing, project structure                                |
 
 ### `doc/script/` — Reference Genome Build Scripts
 
@@ -190,9 +191,9 @@
 
 ## `nginx/`
 
-| File           | Purpose                                                                                                                                                                                                                        |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `rnaseek.conf` | Nginx: HTTPS (Let's Encrypt), `/files/ → tusd:1080` (Tus resumable uploads, `client_max_body_size 0`, `proxy_request_buffering off`), WebSocket `/ws/` upgrade, 10 GB upload limit for other routes, 30-day static cache, gzip |
+| File           | Purpose                                                                                               |
+| -------------- | ----------------------------------------------------------------------------------------------------- |
+| `rnaseek.conf` | Nginx: HTTPS (Let's Encrypt), WebSocket `/ws/` upgrade, Tus `/files/` proxy to tusd (streaming, no request buffering), `client_max_body_size 0` (unlimited), 30-day static cache, gzip |
 
 ---
 
@@ -203,6 +204,14 @@
 | `rnaseek-web.service`    | systemd unit for Daphne ASGI server                   |
 | `rnaseek-worker.service` | systemd unit for Celery worker (prefork, CPU-matched) |
 | `rnaseek-beat.service`   | systemd unit for Celery Beat scheduler                |
+
+---
+
+## `scripts/`
+
+| File                            | Purpose                                                                                            |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `benchmark-upload-capacity.sh`  | Non-disruptive production benchmark: network bandwidth (iperf3/curl), NFS disk I/O (dd/fio)        |
 
 ---
 
