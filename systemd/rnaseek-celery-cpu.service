@@ -1,0 +1,54 @@
+# ============================================================
+# RNAseek — Celery CPU-Bound Worker
+# ============================================================
+# Executes genome alignment pipelines (HISAT2, BWA, Bowtie2)
+# which are multi-threaded and CPU-intensive.
+#
+# Queue:       cpu_bound
+# Concurrency: 5 prefork processes
+# Threads:     8 per tool (set via RNASEEK_TOOL_THREADS)
+# Total usage: 5 × 8 = 40 of 48 cores (8 left for RAM worker + OS)
+#
+# Replaces the old single rnaseek-worker.service.
+# ============================================================
+
+[Unit]
+Description=RNAseek Celery Worker (CPU-Bound)
+After=network.target postgresql.service redis.service
+Requires=redis.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/apps/rnaseek
+EnvironmentFile=/home/ubuntu/apps/rnaseek/.env
+Environment=PATH=/opt/miniconda3/envs/rnaseek/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=CONDA_PREFIX=/opt/miniconda3/envs/rnaseek
+
+# Thread allocation: each of the 5 concurrent processes runs HISAT2
+# with 8 threads. _constants.py reads these to set _TOOL_THREADS
+# and _PARALLEL_SAMPLES accordingly.
+Environment=RNASEEK_TOOL_THREADS=8
+Environment=RNASEEK_PARALLEL_SAMPLES=1
+
+ExecStart=/opt/miniconda3/envs/rnaseek/bin/celery -A config worker \
+    --loglevel=info \
+    --concurrency=5 \
+    --queues=cpu_bound \
+    --hostname=cpu@%%h \
+    --max-tasks-per-child=50 \
+    --prefetch-multiplier=1
+
+# Warm shutdown: let in-flight alignment finish (up to 30 min)
+# before SIGKILL. HISAT2 on a large genome can take a while.
+KillSignal=SIGTERM
+TimeoutStopSec=1800
+
+LimitNOFILE=65536
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

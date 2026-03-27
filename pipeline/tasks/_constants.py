@@ -5,9 +5,17 @@ import os
 # ── Parallelism settings ──
 _CPU_COUNT = os.cpu_count() or 4
 # Threads per individual tool invocation (HISAT2, samtools, etc.)
-_TOOL_THREADS = max(4, _CPU_COUNT // 2)
+# Configurable via env var for asymmetric worker pools:
+#   - celery-cpu.service sets RNASEEK_TOOL_THREADS=8  (8 threads × 5 workers = 40 cores)
+#   - celery-ram.service leaves the default (R tasks don't use _TOOL_THREADS)
+#   - Development: falls back to max(4, CPU_COUNT // 2)
+_TOOL_THREADS = int(os.environ.get(
+    "RNASEEK_TOOL_THREADS", str(max(4, _CPU_COUNT // 2))
+))
 # Max parallel samples to process simultaneously
-_PARALLEL_SAMPLES = max(2, _CPU_COUNT // _TOOL_THREADS)
+_PARALLEL_SAMPLES = int(os.environ.get(
+    "RNASEEK_PARALLEL_SAMPLES", str(max(2, _CPU_COUNT // _TOOL_THREADS))
+))
 
 # ── Paths to pre-indexed reference genomes ──
 _GENOME_BASE = os.path.join(

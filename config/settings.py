@@ -207,6 +207,24 @@ if not IS_PRODUCTION:
 # Celery worker concurrency (matches CPU count)
 CELERY_WORKER_CONCURRENCY = os.cpu_count() or 4
 
+# ── Celery Asymmetric Queue Routing (Production) ──────────────────
+# Routes CPU-intensive pipeline tasks (HISAT2, BWA, Bowtie2) and
+# RAM-intensive analytics (DESeq2, WGCNA, rMATS) to separate worker
+# pools with different concurrency and memory limits.
+# See: systemd/rnaseek-celery-cpu.service  (concurrency=5, 8 threads/tool)
+#      systemd/rnaseek-celery-ram.service  (concurrency=4, MemoryMax=96G)
+#
+# In development (IS_PRODUCTION=False), no routing is applied — all
+# tasks go to the default "celery" queue and the single dev worker
+# picks them up normally.
+if IS_PRODUCTION:
+    CELERY_TASK_DEFAULT_QUEUE = "cpu_bound"
+    CELERY_TASK_ROUTES = {
+        "pipeline.tasks.core.run_core_pipeline": {"queue": "cpu_bound"},
+        "pipeline.tasks.core.run_tier2_module": {"queue": "ram_bound"},
+        "pipeline.tasks.core.purge_expired_sessions": {"queue": "cpu_bound"},
+    }
+
 # ── Production Security Hardening ──
 if IS_PRODUCTION:
     # Nginx terminates SSL and forwards via X-Forwarded-Proto

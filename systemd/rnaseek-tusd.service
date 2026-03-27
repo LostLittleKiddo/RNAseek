@@ -7,6 +7,10 @@
 # On post-finish, POSTs to Django /api/tusd-hooks/ with:
 #   - Cookie + X-Session-ID headers forwarded (session resolution)
 #   - Event type sent as "Type": "post-finish" in the JSON body (tusd v2)
+#
+# The Concatenation extension is enabled by default in tusd v2
+# with the file store, allowing tus-js-client parallelUploads
+# to split a 50 GB file into N parts uploaded simultaneously.
 # ============================================================
 
 [Unit]
@@ -27,7 +31,12 @@ ExecStart=/usr/local/bin/tusd \
     -behind-proxy \
     -hooks-http http://127.0.0.1:8000/api/tusd-hooks/ \
     -hooks-http-forward-headers Cookie,X-Session-ID \
-    -hooks-enabled-events post-finish
+    -hooks-enabled-events post-finish \
+    -disable-download \
+    -max-size 0
+
+# Allow many concurrent upload connections (parallel chunks × users)
+LimitNOFILE=65536
 
 Restart=always
 RestartSec=5

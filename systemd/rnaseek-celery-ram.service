@@ -1,0 +1,70 @@
+# ============================================================
+# RNAseek — Celery RAM-Bound Worker
+# ============================================================
+# Executes Tier 2 analytical modules (DESeq2, PyWGCNA, rMATS)
+# which load entire datasets into RAM and are mostly single-threaded.
+#
+# Queue:       ram_bound
+# Concurrency: 4 prefork processes
+# RAM budget:  128 GB total - ~28 GB (CPU workers + OS) = ~100 GB
+#              → ~25 GB per process (with MemoryMax=96G hard cap)
+#
+# systemd memory cgroup prevents this service from OOM-killing the
+# host. If a single R process exceeds its share, only this service
+# is affected — Nginx, Redis, and the CPU worker stay alive.
+#
+# Replaces the old single rnaseek-worker.service.
+# ============================================================
+
+[Unit]
+Description=RNAseek Celery Worker (RAM-Bound)
+After=network.target postgresql.service redis.service
+Requires=redis.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/apps/rnaseek
+EnvironmentFile=/home/ubuntu/apps/rnaseek/.env
+Environment=PATH=/opt/miniconda3/envs/rnaseek/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=CONDA_PREFIX=/opt/miniconda3/envs/rnaseek
+
+ExecStart=/opt/miniconda3/envs/rnaseek/bin/celery -A config worker \
+    --loglevel=info \
+    --concurrency=4 \
+    --queues=ram_bound \
+    --hostname=ram@%%h \
+    --max-tasks-per-child=10 \
+    --prefetch-multiplier=1
+
+# ── Memory Guards ─────────────────────────────────────────────
+# MemoryHigh (88 GB): Soft limit. When exceeded, the kernel
+#   aggressively reclaims pagecache and applies back-pressure.
+#   R processes slow down but survive.
+# MemoryMax (96 GB): Hard limit. Crossing this triggers the
+#   kernel OOM killer ONLY within this cgroup — the host OS,
+#   Nginx, Redis, and the CPU worker are untouched.
+# Leaves 32 GB for CPU workers (5 × ~4 GB) + OS + Redis + Daphne.
+MemoryHigh=88G
+MemoryMax=96G
+
+# If the OOM killer fires, restart the service cleanly.
+OOMPolicy=stop
+
+# Warm shutdown: let in-flight R analysis finish (up to 60 min).
+# WGCNA on large expression matrices can take a long time.
+KillSignal=SIGTERM
+TimeoutStopSec=3600
+
+# Recycle workers aggressively: R (via rpy2) can leak memory
+# across repeated fork()/exec() cycles.
+# max-tasks-per-child=10 keeps the RSS growth bounded.
+
+LimitNOFILE=65536
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

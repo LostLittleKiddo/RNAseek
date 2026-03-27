@@ -9,7 +9,13 @@
     const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || "";
     const IS_PRODUCTION_META = document.querySelector('meta[name="rnaseek-is-production"]')?.content;
     const TUS_ENDPOINT = "/files/";
-    const TUS_CHUNK_SIZE = 50 * 1024 * 1024;  // 50 MB tus chunks
+    // Chunk size sweet-spot for 50 GB+ FASTQ files over WAN:
+    //  - 100 MB: only 500 PATCH requests per 50 GB file (low HTTP overhead)
+    //  - Large enough to keep the TCP pipe full between requests
+    //  - Small enough that a dropped chunk costs ~2-3s to retry on 300 Mbps
+    //  - For comparison: 50 MB → 1000 requests/50 GB (2× overhead)
+    //                    20 MB → 2500 requests/50 GB (5× overhead)
+    const TUS_CHUNK_SIZE = 100 * 1024 * 1024;  // 100 MB tus chunks
     const CHUNK_UPLOAD_SIZE = 25 * 1024 * 1024; // 25 MB fallback chunks
     const FILE_SIZE_WARN = 10 * 1024 * 1024 * 1024; // 10 GB
 
@@ -1273,9 +1279,26 @@
         }).use(Uppy.Tus, {
             endpoint: TUS_ENDPOINT,
             chunkSize: TUS_CHUNK_SIZE,
-            retryDelays: [0, 1000, 3000, 5000],
+            retryDelays: [0, 1000, 3000, 5000, 10000],
             removeFingerprintOnSuccess: true,
-            limit: 5,
+            // ── Parallel Chunk Uploads (Concatenation Extension) ──
+            // Splits each file into 6 parts uploaded simultaneously over
+            // separate HTTP streams. tusd concatenates them server-side on
+            // completion.  With HTTP/2 multiplexing (via Nginx), all 6
+            // streams share one TCP connection — no browser connection
+            // limit issues.
+            //
+            // Throughput example (300 Mbps user connection):
+            //   Without: 1 stream  × 300 Mbps = 37.5 MB/s → 50 GB in ~22 min
+            //   With:    6 streams × 300 Mbps = saturated  → 50 GB in ~22 min
+            //   (single TCP stream often only reaches 60-80% utilization
+            //    due to RTT-induced pauses; 6 streams fill the gaps)
+            parallelUploads: 6,
+            // Concurrent file uploads. With 6 parallel chunks per file,
+            // limit to 2 simultaneous files (12 HTTP streams total).
+            // Keeps total connection count reasonable while still
+            // allowing overlap as one file finishes and the next starts.
+            limit: 2,
         });
 
         uppyInstance.on("upload-progress", function (file, progress) {

@@ -54,14 +54,28 @@ sudo journalctl -u rnaseek-web --since today
 ```bash
 cd /home/ubuntu/apps/rnaseek
 
-# Full deploy (pip install, migrate, collectstatic, systemd reload)
-bash deploy.sh
+# 1. Apply OS tuning (one-time)
+sudo bash scripts/tune-production-os.sh
 
-# Manual steps if needed:
-/opt/miniconda3/envs/rnaseek/bin/pip install -r requirements.txt
-/opt/miniconda3/envs/rnaseek/bin/python manage.py migrate --noinput
+# 2. Install new systemd units
+sudo cp systemd/rnaseek-celery-cpu.service /etc/systemd/system/
+sudo cp systemd/rnaseek-celery-ram.service /etc/systemd/system/
+sudo cp systemd/rnaseek-tusd.service /etc/systemd/system/
+sudo systemctl daemon-reload
+
+# 3. Stop old worker, start new split workers
+sudo systemctl stop rnaseek-worker
+sudo systemctl disable rnaseek-worker
+sudo systemctl enable --now rnaseek-celery-cpu rnaseek-celery-ram
+
+# 4. Restart tusd with new flags
+sudo systemctl restart rnaseek-tusd
+
+# 5. Reload Nginx (zero-downtime)
+sudo nginx -t && sudo systemctl reload nginx
+
+# 6. Collect static files (JS changes)
 /opt/miniconda3/envs/rnaseek/bin/python manage.py collectstatic --noinput
-sudo systemctl restart rnaseek-web rnaseek-worker rnaseek-beat
 ```
 
 ---
