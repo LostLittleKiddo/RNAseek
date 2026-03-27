@@ -21,10 +21,11 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 │                       NGINX (Reverse Proxy)                          │
 │  • SSL termination (Let's Encrypt / Certbot)                         │
 │  • /ws/ → WebSocket upgrade                                          │
-│  • /files/ → tusd upstream (127.0.0.1:1080) for Tus uploads          │
+│  • /files/ → tusd upstream (keepalive 64 pool) for Tus uploads        │
 │  • /static/ → WhiteNoise (30-day cache)                              │
 │  • /* → Daphne upstream (127.0.0.1:8000)                             │
 │  • client_max_body_size 0 (unlimited — tusd handles chunking)        │
+│  • sendfile on; tcp_nopush on; tcp_nodelay on (kernel-level I/O)     │
 └─────────┬────────────────────────────────────────────────────────────┘
           │
 ┌─────────▼───────────────────────────────────────────────────────────┐
@@ -53,25 +54,29 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │ consume tasks
 ┌───────────────────────────────▼──────────────────────────────────────┐
-│                    CELERY WORKER FLEET                                │
-│  ┌────────────────────────────────────────────────────────────────┐  │
-│  │  Prefork pool (concurrency = CPU count)                        │  │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐ │  │
-│  │  │ run_core_    │  │ run_tier2_   │  │ purge_expired_       │ │  │
-│  │  │ pipeline()   │  │ module()     │  │ sessions()           │ │  │
-│  │  └──────┬───────┘  └──────┬───────┘  └──────────────────────┘ │  │
-│  │         │                 │                                    │  │
-│  │  ┌──────▼─────────────────▼────────────────────────────────┐  │  │
-│  │  │  Track Routers & Stats Engine                            │  │  │
-│  │  │  • _track_standard.py  (HISAT2)                          │  │  │
-│  │  │  • _track_mirna.py     (Bowtie + miRBase)                │  │  │
-│  │  │  • _track_chipseq.py   (BWA + MACS2)                     │  │  │
-│  │  │  • _track_methyl.py    (Bismark + methylKit)             │  │  │
-│  │  │  • _routes.py          (BAM/Matrix entry points)         │  │  │
-│  │  │  • stats/core.py       (DESeq2, ComBat, PCA, UMAP...)   │  │  │
-│  │  │  • _module_wgcna.py    (PyWGCNA + Enrichr)               │  │  │
-│  │  └─────────────────────────────────────────────────────────┘  │  │
-│  └────────────────────────────────────────────────────────────────┘  │
+│              CELERY WORKER FLEET (Asymmetric Queue Routing)           │
+│                                                                      │
+│  ┌───────────────────────────────┐  ┌──────────────────────────────┐ │
+│  │  CPU-BOUND WORKER             │  │  RAM-BOUND WORKER            │ │
+│  │  Queue: cpu_bound             │  │  Queue: ram_bound            │ │
+│  │  Concurrency: 5 (prefork)     │  │  Concurrency: 4 (prefork)   │ │
+│  │  8 threads per tool (HISAT2)  │  │  ~25 GB RAM per process     │ │
+│  │  5×8 = 40 cores allocated     │  │  systemd MemoryMax=96G      │ │
+│  │                               │  │                              │ │
+│  │  ┌──────────────────────────┐ │  │  ┌─────────────────────────┐│ │
+│  │  │ run_core_pipeline()     │ │  │  │ run_tier2_module()      ││ │
+│  │  │ purge_expired_sessions()│ │  │  │  (WGCNA, DESeq2, rMATS, ││ │
+│  │  └──────────┬───────────────┘ │  │  │   Alt Splicing, etc.)  ││ │
+│  │             │                 │  │  └─────────────┬───────────┘│ │
+│  │  ┌──────────▼───────────────┐ │  │                │            │ │
+│  │  │ Track Routers            │ │  │  ┌─────────────▼──────────┐│ │
+│  │  │ • HISAT2, BWA, Bowtie2   │ │  │  │ Stats Engine           ││ │
+│  │  │ • Bismark, featureCounts │ │  │  │ • DESeq2 (rpy2)        ││ │
+│  │  │ • FastQC, Trimmomatic    │ │  │  │ • PyWGCNA, methylKit   ││ │
+│  │  │ • MultiQC                │ │  │  │ • ImpulseDE2, rMATS    ││ │
+│  │  └──────────────────────────┘ │  │  │ • REDItools2           ││ │
+│  │                               │  │  └────────────────────────┘│ │
+│  └───────────────────────────────┘  └──────────────────────────────┘ │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │ read/write
 ┌───────────────────────────────▼──────────────────────────────────────┐
@@ -119,13 +124,13 @@ RNAseek is a multi-tenant asynchronous bioinformatics platform built on Django 5
 
 | Component              | Role                                                              | Communicates With                                                                        |
 | ---------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| **Nginx**              | SSL termination, reverse proxy, static serving, WebSocket upgrade | Daphne (upstream), tusd (upstream for `/files/`)                                         |
+| **Nginx**              | SSL termination, reverse proxy, static serving, WebSocket upgrade, TCP tuning (sendfile, tcp_nopush, tcp_nodelay) | Daphne (upstream), tusd (keepalive 64 upstream pool for `/files/`)                       |
 | **tusd**               | Tus protocol resumable uploads, webhook notification              | Nginx (reverse proxy), Django (post-finish webhook at `/api/tusd-hooks/`), Filesystem (upload writes). tusd v2 sends event type as `"Type": "post-finish"` in the JSON body (not as an HTTP header). |
 | **Daphne**             | ASGI server: HTTP requests + WebSocket connections                | Redis (channels layer), Database (ORM), Filesystem (uploads)                             |
 | **Django Views**       | Request handling, validation, template rendering                  | Database (ORM), Redis (task dispatch)                                                    |
 | **WebSocket Consumer** | Real-time progress push to browser                                | Redis (channel group pub/sub)                                                            |
 | **Session Middleware** | Tenant isolation via UUID cookie                                  | Database (Session model)                                                                 |
-| **Celery Workers**     | Heavy bioinformatics computation (HISAT2, DESeq2, etc.)           | Redis (task queue, progress broadcast), Database (job status), Filesystem (input/output) |
+| **Celery Workers**     | Asymmetric pools: CPU worker (alignment, 5×8 threads) and RAM worker (R analytics, 4 procs, MemoryMax=96G) | Redis (task queue, progress broadcast), Database (job status), Filesystem (input/output) |
 | **Celery Beat**        | Scheduled maintenance (session purge)                             | Redis (task dispatch)                                                                    |
 | **Redis**              | Message broker, WebSocket layer, result backend                   | All server-side components                                                               |
 
@@ -498,5 +503,12 @@ This is the primary data flow. BAM and Matrix entry points skip to steps 5 and 6
 | **beat**   | Custom (Dockerfile)    | `celery -A config beat`                                          | 1 replica          |
 | **redis**  | `redis:7-alpine`       | Default                                                          | —                  |
 | **tusd**   | `tusproject/tusd:v2`   | Tus daemon with webhook to Django                                | —                  |
+
+> **Note (bare-metal production):** In the native systemd deployment (no Docker),
+> the single Celery worker is replaced by two asymmetric workers:
+> `rnaseek-celery-cpu.service` (`cpu_bound` queue, concurrency=5, 8 threads/tool)
+> and `rnaseek-celery-ram.service` (`ram_bound` queue, concurrency=4, MemoryMax=96G).
+> `CELERY_TASK_ROUTES` in `settings.py` dispatches tasks to the correct queue.
+> See the Production Deployment Guide for details.
 
 All services share a `media-data` Docker volume mounted at `/app/media/`, providing zero-copy file access between the web server, workers, and tusd.

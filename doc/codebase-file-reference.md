@@ -27,7 +27,7 @@
 | File          | Lines | Purpose                                                                                                                                  |
 | ------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `__init__.py` | 3     | Ensures `config` is a Python package                                                                                                     |
-| `settings.py` | 257   | Django 5.2 settings: CHANNEL_LAYERS (Redis), Celery broker, WhiteNoise static storage, MEDIA_ROOT, session/security middleware, ASGI app |
+| `settings.py` | ~280  | Django 5.2 settings: CHANNEL_LAYERS (Redis), Celery broker, asymmetric queue routing (`cpu_bound`/`ram_bound` in production), WhiteNoise static storage, MEDIA_ROOT, session/security middleware, ASGI app |
 | `celery.py`   | 18    | Celery 5.6 app factory: autodiscover tasks, Beat schedule (`purge-expired-sessions` crontab at 2:00 AM UTC)                              |
 | `asgi.py`     | 27    | ASGI entrypoint: `ProtocolTypeRouter` with `AuthMiddlewareStack` + `URLRouter` for WebSocket, Django HTTP handler                        |
 | `wsgi.py`     | 16    | WSGI entrypoint (fallback; production uses ASGI via Daphne)                                                                              |
@@ -68,7 +68,7 @@
 | ------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `__init__.py`             | —     | Package marker; re-exports `run_core_pipeline` and `run_tier2_module`                                                                                                                                                                                                    |
 | `core.py`                 | —     | Two Celery tasks: `run_core_pipeline()` (entry-point dispatcher → track router → Stage 2) and `run_tier2_module()` (module dispatcher for WGCNA, RNA_EDITING, TIME_SERIES + 9 stubs)                                                                                     |
-| `_constants.py`           | —     | CPU/parallelism settings, `_GENOME_FOLDER_MAP` (11 genomes), `_MIRBASE_SPECIES_MAP`, `_MACS2_GENOME_SIZE`                                                                                                                                                                |
+| `_constants.py`           | —     | CPU/parallelism settings (configurable via `RNASEEK_TOOL_THREADS` and `RNASEEK_PARALLEL_SAMPLES` env vars for asymmetric worker pools), `_GENOME_FOLDER_MAP` (11 genomes), `_MIRBASE_SPECIES_MAP`, `_MACS2_GENOME_SIZE`                                                                                                                                                                |
 | `_helpers.py`             | —     | Shared utilities: `_run()` (subprocess wrapper), `_q()` (shlex quote), `_pair_fastqs()`, `_update_step()`, `_emit_progress()` (Channels layer broadcast), `_run_fastqc_step()`, `_run_trim_step()`, `_run_multiqc_step()`, `_sort_and_index_bam()`, strandedness mappers |
 | `_genome.py`              | —     | Genome resolution: `_decompress_if_needed()`, `_genome_paths()`, `_resolve_genome()`, `_resolve_mirbase()`, `_resolve_bwa_index()`, `_resolve_bismark_genome()`                                                                                                          |
 | `_featurecounts.py`       | —     | `_run_featurecounts()`, `_detect_gff_gene_attr()` (GFF/GFF3 auto-detection), `_featurecounts_to_csv()`                                                                                                                                                                   |
@@ -125,7 +125,7 @@
 
 | File                | Lines | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pipeline_setup.js` | ~2760 | 5-step wizard navigation, entry point/assay/library selectors, FASTQ/BAM/Matrix drop zones, concurrent chunked upload (25 MB chunks, 6 concurrent workers per file, 3 retries, 5-min timeout), paired-end validation, CSV metadata with PapaParse, manual metadata builder, column mapping, contrast builder, per-step validation, 9 of 10 backend validation rules mirrored client-side (FASTA header `>` check is backend-only), toast notifications |
+| `pipeline_setup.js` | ~2760 | 5-step wizard navigation, entry point/assay/library selectors, FASTQ/BAM/Matrix drop zones, concurrent chunked upload (25 MB chunks, 6 concurrent workers per file, 3 retries, 5-min timeout), Tus upload via Uppy.js (100 MB chunks, 6 parallel streams per file via Concatenation extension, 2 concurrent files), paired-end validation, CSV metadata with PapaParse, manual metadata builder, column mapping, contrast builder, per-step validation, 9 of 10 backend validation rules mirrored client-side (FASTA header `>` check is backend-only), toast notifications |
 | `core_hub.js`       | 1773  | Tab switching, Plotly resize, Module Hub state machine (empty/history/form/result), 12 module form builders with D&D and tabbed input, history list with status badges, result view with Plotly rendering + download, module submission + polling, deconvolution gateway + spoke unlock, 5 Plotly render functions (PCA, UMAP, Volcano, MA, Heatmap), interactive figure export as HTML                                                                |
 
 ---
@@ -200,12 +200,14 @@
 
 ## `systemd/`
 
-| File                     | Purpose                                               |
-| ------------------------ | ----------------------------------------------------- |
-| `rnaseek-web.service`    | systemd unit for Daphne ASGI server                   |
-| `rnaseek-worker.service` | systemd unit for Celery worker (prefork, CPU-matched) |
-| `rnaseek-beat.service`   | systemd unit for Celery Beat scheduler                |
-| `rnaseek-tusd.service`   | systemd unit for tusd v2 upload daemon on port 1080 with HTTP webhook to Django |
+| File                         | Purpose                                               |
+| ---------------------------- | ----------------------------------------------------- |
+| `rnaseek-web.service`        | systemd unit for Daphne ASGI server                   |
+| `rnaseek-celery-cpu.service` | systemd unit for CPU-bound Celery worker (`cpu_bound` queue, concurrency=5, 8 threads/tool, 40 cores) |
+| `rnaseek-celery-ram.service` | systemd unit for RAM-bound Celery worker (`ram_bound` queue, concurrency=4, MemoryHigh=88G, MemoryMax=96G) |
+| `rnaseek-worker.service`     | **Legacy** — replaced by the two workers above. Kept for reference. |
+| `rnaseek-beat.service`       | systemd unit for Celery Beat scheduler                |
+| `rnaseek-tusd.service`       | systemd unit for tusd v2 upload daemon on port 1080 with HTTP webhook to Django, `-disable-download`, `LimitNOFILE=65536` |
 
 ---
 
@@ -213,6 +215,7 @@
 
 | File                            | Purpose                                                                                            |
 | ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `tune-production-os.sh`         | Production-only OS & network tuning: TCP BBR, 128 MB socket buffers, OOM prevention (`vm.overcommit_memory=1`, `vm.swappiness=10`). Refuses to run on <16-core machines. |
 | `benchmark-upload-capacity.sh`  | Non-disruptive production benchmark: network bandwidth (iperf3/curl), NFS disk I/O (dd/fio)        |
 | `e2e_tus_test.sh`               | End-to-end test for the Tus resumable upload pipeline (session, submission, tus upload, webhook, FileAsset verification) |
 

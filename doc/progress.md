@@ -23,8 +23,8 @@
 | ------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------- |
 | Django 5.2 (Daphne ASGI) | Done   | Serves HTTP and WebSocket via Django Channels                                                                        |
 | Redis 7+ Message Broker  | Done   | Celery broker and Channels layer backend in `settings.py`                                                            |
-| Celery 5.6 Worker Fleet  | Done   | Prefork workers, CPU-matched concurrency, task auto-discovery                                                        |
-| Nginx Reverse Proxy      | Done   | `nginx/rnaseek.conf`: HTTPS (Let's Encrypt), WebSocket `/ws/` upgrade, Tus `/files/` proxy to tusd (streaming, `proxy_request_buffering off`), `client_max_body_size 0` (unlimited), 30-day static cache, gzip |
+| Celery 5.6 Worker Fleet  | Done   | Asymmetric queue routing: CPU-bound worker (`cpu_bound` queue, concurrency=5, 8 threads/tool, 40 cores) and RAM-bound worker (`ram_bound` queue, concurrency=4, MemoryMax=96G). `CELERY_TASK_ROUTES` in `settings.py` dispatches `run_core_pipeline` to CPU pool and `run_tier2_module` to RAM pool. |
+| Nginx Reverse Proxy      | Done   | `nginx/rnaseek.conf`: HTTPS (Let's Encrypt), WebSocket `/ws/` upgrade, Tus `/files/` proxy to tusd (keepalive 64 upstream pool, streaming, `proxy_request_buffering off`, `Upload-Concat` header for parallel chunks), `client_max_body_size 0` (unlimited), `sendfile on; tcp_nopush on; tcp_nodelay on`, 30-day static cache |
 
 ### 1.2 Storage Layer (POSIX Shared NFS)
 
@@ -63,7 +63,7 @@
 | ------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /api/upload/chunk` | Done   | 25 MB chunks (concurrent, up to 6 in-flight per file), SSD-buffered with merge-on-complete (no direct NFS writes during upload), path-traversal sanitization, atomic chunk writes via tmp+rename, POSIX-atomic merge claim (`O_EXCL`), `shutil.move()` to NFS on completion, role-aware subdirectory routing (raw/, aligned/, counts/, metadata/, custom_genome/), `FileAsset` created after merge, temp buffer cleanup |
 | Frontend chunked upload  | Done   | `pipeline_setup.js`: drop zones for FASTQ, BAM, Matrix, custom genome files; concurrent chunk upload (25 MB chunks, 6 workers via `uploadFileConcurrently()`), progress tracking, retry logic (3 attempts, 5-min timeout per chunk), abort support                                                                                                                                                                      |
-| Tus resumable uploads    | Done   | tusd v2.9.2 daemon handles Tus protocol uploads at `/files/`. Nginx proxies with streaming (no request buffering). Post-finish webhook notifies Django at `/api/tusd-hooks/` to register FileAsset. tusd v2 sends event type as `Type` in the JSON body (view supports both the v2 body field and the legacy v1 `Hook-Name` header). Enabled events limited to `post-finish` via `-hooks-enabled-events`. Systemd service: `rnaseek-tusd`. Supports resume after network interruption. |
+| Tus resumable uploads    | Done   | tusd v2.9.2 daemon handles Tus protocol uploads at `/files/`. Nginx proxies with streaming (keepalive 64 pool, no request buffering, `Upload-Concat` header). Post-finish webhook notifies Django at `/api/tusd-hooks/` to register FileAsset. tusd v2 sends event type as `Type` in the JSON body (view supports both the v2 body field and the legacy v1 `Hook-Name` header). Enabled events limited to `post-finish` via `-hooks-enabled-events`. `-disable-download` blocks file retrieval via tusd. `LimitNOFILE=65536`. Frontend uses Uppy.js with `parallelUploads: 6` (Concatenation extension) and 100 MB chunk size for maximum WAN throughput. Systemd service: `rnaseek-tusd`. Supports resume after network interruption. |
 
 ### 3.2 Master Router
 
@@ -276,8 +276,9 @@ The Modules tab in `core_hub.html` uses a master-detail split pane. The left mas
 | `docker-compose.yml`     | Done   | 5 services: web (Daphne), worker (Celery, 32 GB RAM limit), beat, redis (7-alpine), tusd (v2 resumable uploads); shared `media-data` volume; NFS mount flags documented; health checks |
 | `docker-compose.dev.yml` | Done   | Override with live code mount, reduced concurrency (2), debug log level                                                       |
 | `deploy.sh`              | Done   | .env check, pip install, migrate, collectstatic, Nginx symlink, systemd reload                                                |
-| systemd services         | Done   | `rnaseek-web.service`, `rnaseek-worker.service`, `rnaseek-beat.service`                                                       |
-| Nginx config             | Done   | HTTPS (Let's Encrypt), WebSocket upgrade, Tus `/files/` proxy to tusd (streaming), `client_max_body_size 0` (unlimited), 30-day static cache, gzip |
+| systemd services         | Done   | `rnaseek-web.service`, `rnaseek-celery-cpu.service` (CPU-bound, `cpu_bound` queue, concurrency=5), `rnaseek-celery-ram.service` (RAM-bound, `ram_bound` queue, concurrency=4, MemoryHigh=88G, MemoryMax=96G), `rnaseek-beat.service`, `rnaseek-tusd.service`. Legacy `rnaseek-worker.service` replaced. |
+| Nginx config             | Done   | HTTPS (Let's Encrypt), WebSocket upgrade, Tus `/files/` proxy to tusd (keepalive 64 upstream pool, streaming, `Upload-Concat` header), `client_max_body_size 0` (unlimited), `sendfile on; tcp_nopush on; tcp_nodelay on`, 30-day static cache |
+| OS & Network Tuning      | Done   | `scripts/tune-production-os.sh`: TCP BBR congestion control, 128 MB socket buffers, `vm.overcommit_memory=1`, `vm.swappiness=10`, dirty page tuning, 2M file descriptors. Production-only (refuses to run on <16-core machines). |
 
 ---
 

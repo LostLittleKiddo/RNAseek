@@ -119,15 +119,26 @@ sudo systemctl reload nginx
 
 The production Nginx config (`nginx/rnaseek.conf`) handles:
 
-| Location     | Upstream                   | Purpose                                    |
-| ------------ | -------------------------- | ------------------------------------------ |
-| `/`          | `127.0.0.1:8000` (Daphne) | All Django HTTP requests                   |
-| `/ws/`       | `127.0.0.1:8000` (Daphne) | WebSocket upgrade for real-time progress   |
-| `/files/`    | `127.0.0.1:1080` (tusd)   | Tus resumable uploads (streaming proxy)    |
-| `/api/upload/` | `127.0.0.1:8000` (Daphne) | Legacy chunked upload endpoint           |
-| `/static/`   | Filesystem                 | Direct file serving with 30-day cache      |
+| Location     | Upstream                              | Purpose                                    |
+| ------------ | ------------------------------------- | ------------------------------------------ |
+| `/`          | `127.0.0.1:8000` (Daphne)            | All Django HTTP requests                   |
+| `/ws/`       | `127.0.0.1:8000` (Daphne)            | WebSocket upgrade for real-time progress   |
+| `/files/`    | `tusd_backend` (keepalive 64 pool)    | Tus resumable uploads (streaming proxy)    |
+| `/api/upload/` | `127.0.0.1:8000` (Daphne)          | Legacy chunked upload endpoint             |
+| `/static/`   | Filesystem                            | Direct file serving with 30-day cache      |
 
-`client_max_body_size` is set to `0` (unlimited) because tusd handles chunking. `proxy_request_buffering` is disabled on `/files/` so Nginx streams data directly to tusd without local disk buffering.
+**Upload optimizations:**
+- `upstream tusd_backend` with `keepalive 64` — reuses connections between Nginx ↔ tusd
+- `proxy_request_buffering off` — streams data directly to tusd without local disk buffering
+- `proxy_set_header Upload-Concat` — forwards the tus Concatenation header for parallel chunk uploads
+- `proxy_set_header Connection ""` — required for upstream keepalive pool
+- `proxy_socket_keepalive on` — detects dead connections during long uploads
+- `client_max_body_size 0` — unlimited (tusd handles chunking)
+
+**TCP tuning (server-level):**
+- `sendfile on` — kernel-space file copy for static files
+- `tcp_nopush on` — coalesces headers + body into fewer packets
+- `tcp_nodelay on` — disables Nagle’s algorithm for low-latency streaming
 
 ### 4.3 SSL Certificates
 
@@ -157,34 +168,20 @@ sudo chmod +x /usr/local/bin/tusd
 
 ### 5.1 Create a systemd Service for tusd
 
+The tusd service file is maintained in the repository at `systemd/rnaseek-tusd.service`.
+Key flags:
+- `-disable-download` — blocks file retrieval via tusd (files are served by Django)
+- `-max-size 0` — no upload size limit
+- `-behind-proxy` — trusts `X-Forwarded-*` headers from Nginx
+- `-hooks-enabled-events post-finish` — only fires webhook after upload completes
+- `LimitNOFILE=65536` — supports many concurrent upload connections
+
+The Concatenation extension is enabled by default in tusd v2 with the file store,
+allowing `tus-js-client` / Uppy.js `parallelUploads` to split a single file into
+multiple parts uploaded simultaneously.
+
 ```bash
-sudo tee /etc/systemd/system/rnaseek-tusd.service > /dev/null <<'EOF'
-[Unit]
-Description=RNAseek tusd Upload Daemon
-After=network.target
-
-[Service]
-Type=simple
-User=ubuntu
-Group=ubuntu
-ExecStart=/usr/local/bin/tusd \
-    -host 127.0.0.1 \
-    -port 1080 \
-    -upload-dir /home/ubuntu/apps/rnaseek/media/uploads \
-    -base-path /files/ \
-    -hooks-http http://127.0.0.1:8000/api/tusd-hooks/ \
-    -hooks-http-forward-headers Cookie,X-Session-ID \
-    -hooks-enabled-events post-finish \
-    -behind-proxy \
-    -max-size 0
-
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
+sudo cp systemd/rnaseek-tusd.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable rnaseek-tusd
 sudo systemctl start rnaseek-tusd
@@ -210,19 +207,30 @@ sudo systemctl daemon-reload
 
 ### 6.2 Service Overview
 
-| Service              | Binary                 | Purpose                         |
-| -------------------- | ---------------------- | ------------------------------- |
-| `rnaseek-web`        | Daphne (ASGI)          | HTTP + WebSocket on port 8000   |
-| `rnaseek-worker`     | Celery worker (prefork)| Pipeline execution              |
-| `rnaseek-beat`       | Celery Beat            | Scheduled task dispatch         |
-| `rnaseek-tusd`       | tusd v2                | Resumable uploads on port 1080  |
+| Service              | Binary                     | Purpose                                              |
+| -------------------- | -------------------------- | ---------------------------------------------------- |
+| `rnaseek-web`        | Daphne (ASGI)              | HTTP + WebSocket on port 8000                        |
+| `rnaseek-celery-cpu` | Celery worker (prefork)    | CPU-bound pipeline execution (`cpu_bound` queue, concurrency=5, 8 threads/tool, 40 cores) |
+| `rnaseek-celery-ram` | Celery worker (prefork)    | RAM-bound analytics execution (`ram_bound` queue, concurrency=4, MemoryHigh=88G, MemoryMax=96G) |
+| `rnaseek-beat`       | Celery Beat                | Scheduled task dispatch                              |
+| `rnaseek-tusd`       | tusd v2                    | Resumable uploads on port 1080, `-disable-download`, `LimitNOFILE=65536` |
+
+**Legacy:** `rnaseek-worker.service` (single worker) has been replaced by the two asymmetric workers above. Disable it if still enabled: `sudo systemctl disable rnaseek-worker`.
 
 All services use the Conda environment at `/opt/miniconda3/envs/rnaseek` and read from `/home/ubuntu/apps/rnaseek/.env`.
 
-### 6.3 Enable and Start
+### 6.3 Resource Allocation (48-core / 128 GB RAM)
+
+| Component | Cores | RAM Budget |
+| --------- | ----- | ---------- |
+| CPU worker (5 procs × 8 threads) | 40 | ~20 GB |
+| RAM worker (4 procs × ~1 thread) | 4 | ≤96 GB (hard capped by systemd MemoryMax) |
+| OS + Nginx + Redis + Daphne | 4 | ~12 GB |
+
+### 6.4 Enable and Start
 
 ```bash
-for svc in rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd; do
+for svc in rnaseek-web rnaseek-celery-cpu rnaseek-celery-ram rnaseek-beat rnaseek-tusd; do
     sudo systemctl enable "$svc"
     sudo systemctl restart "$svc"
     echo "$svc: $(sudo systemctl is-active $svc)"
@@ -382,8 +390,10 @@ sudo certbot renew --dry-run
       |
       v
   Nginx (port 443)
+  [sendfile on; tcp_nopush on; tcp_nodelay on]
+  [upstream tusd_backend: keepalive 64]
       |
-      +-- /files/     --> tusd (127.0.0.1:1080)  --> NFS media volume
+      +-- /files/     --> tusd (127.0.0.1:1080)  --> NVMe media volume
       +-- /ws/        --> Daphne (127.0.0.1:8000) --> Redis Channels
       +-- /static/    --> filesystem (staticfiles/)
       +-- /*          --> Daphne (127.0.0.1:8000)
@@ -391,11 +401,26 @@ sudo certbot renew --dry-run
                              v
                           Redis 7+
                              |
-                    +--------+--------+
+                    +--------+--------+--------+
+                    |                 |        |
+            CPU Worker         RAM Worker   Celery Beat
+        (cpu_bound queue)  (ram_bound queue) (nightly purge)
+         concurrency=5      concurrency=4
+         8 threads/tool     MemoryMax=96G
                     |                 |
-              Celery Worker     Celery Beat
-              (pipeline)        (nightly purge)
-                    |
-                    v
-              NFS /media/
+                    v                 v
+              NVMe /media/      NVMe /media/
 ```
+
+### OS-Level Tuning
+
+The production server is tuned via `scripts/tune-production-os.sh` (run once on initial setup):
+
+| Tuning | Value | Purpose |
+| ------ | ----- | ------- |
+| TCP congestion | BBR | Maximizes WAN upload throughput for 50 GB+ FASTQ files |
+| TCP buffers | 128 MB max per-socket | Covers 10 Gbps × 100 ms BDP |
+| `vm.overcommit_memory` | 1 | Prevents R `fork()` failures |
+| `vm.swappiness` | 10 | Keeps R datasets in RAM |
+| File descriptors | 2M system / 1M per-user | Supports concurrent uploads + workers |
+| User ulimits | nofile=1048576, nproc=65535 | For the `ubuntu` service user |

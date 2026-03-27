@@ -102,14 +102,21 @@ local SSD directory (`/tmp/rnaseek_uploads/`). When all chunks for a file
 arrive, they are merged in order and moved to the final NFS path under
 `media/sessions/<session_id>/<submission_id>/<subdir>/`.
 
-### Tus resumable upload path (alternative)
-Files can also be uploaded via the Tus protocol at `POST /files/`. Nginx
-proxies these requests to a tusd v2 daemon with `proxy_request_buffering off`
-for streaming throughput. tusd writes directly to the shared media volume.
-When an upload completes, tusd sends a `post-finish` webhook to
-`POST /api/tusd-hooks/`, which moves the file to the submission subdirectory
-and creates the `FileAsset` record. Tus uploads support automatic resume
-after network interruption.
+### Tus resumable upload path (production)
+Files are uploaded via the Tus protocol at `POST /files/`. Nginx proxies these
+requests through a `keepalive 64` upstream pool to a tusd v2 daemon with
+`proxy_request_buffering off` for streaming throughput. tusd writes directly to
+the NVMe media volume. When an upload completes, tusd sends a `post-finish`
+webhook to `POST /api/tusd-hooks/`, which moves the file to the submission
+subdirectory and creates the `FileAsset` record.
+
+**Upload maximization settings (Uppy.js / tus-js-client):**
+- **Chunk size:** 100 MB (reduces HTTP overhead: 500 PATCHes per 50 GB file)
+- **`parallelUploads: 6`** — each file is split into 6 parts uploaded simultaneously via the tus Concatenation extension. With HTTP/2 multiplexing, all streams share one TCP connection.
+- **`limit: 2`** — 2 files at a time × 6 parallel chunks = 12 concurrent streams
+- **Retry delays:** `[0, 1000, 3000, 5000, 10000]` ms (5 attempts)
+
+Tus uploads support automatic resume after network interruption.
 
 ---
 

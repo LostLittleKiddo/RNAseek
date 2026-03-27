@@ -8,20 +8,23 @@
 
 ```bash
 # Status of all RNAseek services
-sudo systemctl status rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd
+sudo systemctl status rnaseek-web rnaseek-celery-cpu rnaseek-celery-ram rnaseek-beat rnaseek-tusd
 
 # Restart a specific service
 sudo systemctl restart rnaseek-web
-sudo systemctl restart rnaseek-worker
+sudo systemctl restart rnaseek-celery-cpu
+sudo systemctl restart rnaseek-celery-ram
 sudo systemctl restart rnaseek-beat
 sudo systemctl restart rnaseek-tusd
 
 # Restart all services
-sudo systemctl restart rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd
+sudo systemctl restart rnaseek-web rnaseek-celery-cpu rnaseek-celery-ram rnaseek-beat rnaseek-tusd
 
 # Stop all services
-sudo systemctl stop rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd 2>/dev/null || true
+sudo systemctl stop rnaseek-web rnaseek-celery-cpu rnaseek-celery-ram rnaseek-beat rnaseek-tusd 2>/dev/null || true
 ```
+
+> **Note:** The legacy `rnaseek-worker.service` has been replaced by `rnaseek-celery-cpu` and `rnaseek-celery-ram`.
 
 ---
 
@@ -31,8 +34,11 @@ sudo systemctl stop rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd 2>/dev/
 # Live web server logs
 sudo journalctl -u rnaseek-web -f
 
-# Live worker logs (pipeline execution)
-sudo journalctl -u rnaseek-worker -f
+# Live CPU worker logs (genome alignment execution)
+sudo journalctl -u rnaseek-celery-cpu -f
+
+# Live RAM worker logs (R analytics: DESeq2, WGCNA, rMATS)
+sudo journalctl -u rnaseek-celery-ram -f
 
 # Live Beat scheduler logs
 sudo journalctl -u rnaseek-beat -f
@@ -41,7 +47,7 @@ sudo journalctl -u rnaseek-beat -f
 sudo journalctl -u rnaseek-tusd -f
 
 # Last 100 lines from a service
-sudo journalctl -u rnaseek-worker -n 100
+sudo journalctl -u rnaseek-celery-cpu -n 100
 
 # Logs from today only
 sudo journalctl -u rnaseek-web --since today
@@ -152,7 +158,10 @@ redis-cli info memory | grep used_memory_human
 ## Celery
 
 ```bash
-# Inspect active workers
+# Inspect active workers and their queues
+celery -A config inspect active_queues
+
+# Inspect active tasks
 celery -A config inspect active
 
 # Inspect registered tasks
@@ -160,6 +169,11 @@ celery -A config inspect registered
 
 # Inspect scheduled tasks (Beat)
 celery -A config inspect scheduled
+
+# Check queue lengths in Redis
+redis-cli llen cpu_bound
+redis-cli llen ram_bound
+redis-cli llen celery   # should be 0 (legacy queue)
 
 # Purge all pending tasks (destructive)
 celery -A config purge
@@ -183,11 +197,27 @@ Tests network bandwidth (iperf3/curl), sequential disk I/O (dd), and parallel wr
 ### Worker not picking up tasks
 
 ```bash
-# Check worker is connected to Redis
-celery -A config inspect ping
+# Check workers are connected to Redis and subscribed to correct queues
+celery -A config inspect active_queues
 
-# Check queue length
-redis-cli llen celery
+# Check queue lengths (tasks should be in cpu_bound or ram_bound, NOT celery)
+redis-cli llen cpu_bound
+redis-cli llen ram_bound
+redis-cli llen celery   # if > 0, Daphne may need restart to pick up new CELERY_TASK_ROUTES
+
+# If tasks are stuck in the legacy 'celery' queue after a routing change,
+# restart Daphne so it loads the new CELERY_TASK_ROUTES from settings.py:
+sudo systemctl restart rnaseek-web
+```
+
+### RAM worker OOM-killed
+
+```bash
+# Check if systemd killed the RAM worker for exceeding MemoryMax (96G)
+sudo journalctl -u rnaseek-celery-ram --since today | grep -i oom
+
+# The service auto-restarts (OOMPolicy=stop + Restart=always).
+# If persistent, reduce concurrency in rnaseek-celery-ram.service.
 ```
 
 ### tusd not accepting uploads
