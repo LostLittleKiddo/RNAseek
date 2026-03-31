@@ -1293,6 +1293,17 @@
                 html += '<p class="rna-text-sm">' + payload.hub_genes.join(", ") + '</p></div>';
             }
 
+            if (payload.stats && payload.stats.total_nodes) {
+                var ns = payload.stats;
+                html += '<div class="md-result-section"><h5>Network Statistics</h5>';
+                html += '<div style="display:flex; flex-wrap:wrap; gap:1rem;">';
+                html += '<div class="md-stat-card"><span class="md-stat-value">' + ns.total_nodes + '</span><span class="md-stat-label">Total Nodes</span></div>';
+                html += '<div class="md-stat-card"><span class="md-stat-value">' + (ns.causal_edges || 0) + '</span><span class="md-stat-label">Causal Edges</span></div>';
+                html += '<div class="md-stat-card"><span class="md-stat-value">' + (ns.ppi_edges || 0) + '</span><span class="md-stat-label">PPI Edges</span></div>';
+                html += '<div class="md-stat-card"><span class="md-stat-value">' + (ns.hub_count || 0) + '</span><span class="md-stat-label">Hub Genes</span></div>';
+                html += '</div></div>';
+            }
+
             if (payload.enrichment_summary && payload.enrichment_summary.length > 0) {
                 html += '<div class="md-result-section"><h5>Enrichment Summary</h5>';
                 html += '<div style="overflow-x:auto;"><table class="md-example-table"><thead><tr>';

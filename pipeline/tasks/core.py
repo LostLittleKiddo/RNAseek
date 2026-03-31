@@ -130,6 +130,10 @@ def run_tier2_module(self, session_id, core_job_id, module_name, params=None):
             result = _dispatch_splicing(
                 job, session_id, str(submission.submission_id), **params,
             )
+        elif module_name == "NETWORKS":
+            result = _dispatch_networks(
+                job, session_id, str(submission.submission_id), **params,
+            )
         else:
             # Placeholder for unimplemented modules.
             progress = job.step_progress or {}
@@ -417,6 +421,46 @@ def _dispatch_splicing(job, session_id, submission_id, **kwargs):
         bam_paths=bam_paths,
         genome_gtf=genome_gtf,
         sample_conditions=sample_conditions,
+    )
+
+
+def _dispatch_networks(job, session_id, submission_id, **kwargs):
+    """Resolve normalized count matrix and delegate to the causal network engine.
+
+    Required FileAsset roles on the submission:
+        NORMALIZED_COUNTS  - DESeq2 normalized count matrix
+
+    Optional params (forwarded from the frontend form):
+        tf_list    : str   (newline-separated TF gene names)
+        confidence : float (STRING confidence threshold, 0.15-1.0)
+    """
+    import os
+
+    from pipeline.models import AnalysisSubmission, FileAsset
+    from pipeline.tasks._module_networks import execute_causal_network
+
+    submission = AnalysisSubmission.objects.get(
+        submission_id=submission_id, session_id=session_id,
+    )
+
+    matrix_asset = FileAsset.objects.get(
+        session_id=session_id,
+        submission=submission,
+        file_role=FileAsset.FileRole.NORMALIZED_COUNTS,
+    )
+
+    if not os.path.isfile(matrix_asset.local_path):
+        raise FileNotFoundError(
+            f"Normalized count matrix not found at {matrix_asset.local_path}. "
+            "Run the core pipeline first."
+        )
+
+    return execute_causal_network(
+        job_id=str(job.job_id),
+        session_id=str(session_id),
+        matrix_path=matrix_asset.local_path,
+        tf_list=kwargs.get("tf_list"),
+        confidence=kwargs.get("confidence", 0.7),
     )
 
 
