@@ -28,6 +28,7 @@ def run_core_pipeline(self, session_id, submission_id):
         _route_methylation,
         _route_small_rna,
     )
+    from pipeline.tasks._track_tcga import _route_tcga
 
     job = AnalysisJob.objects.get(job_id=self.request.id)
     job.status = AnalysisJob.Status.RUNNING
@@ -51,6 +52,8 @@ def run_core_pipeline(self, session_id, submission_id):
             result = _route_alignment(submission, job)
         elif input_type == "matrix":
             result = _route_matrix(submission, job)
+        elif input_type == "tcga":
+            result = _route_tcga(submission, job)
         else:
             raise ValueError(f"Unknown input_data_type: {input_type}")
 

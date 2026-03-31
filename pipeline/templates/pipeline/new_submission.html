@@ -109,6 +109,18 @@
                                         <div class="rc-tags"><span class="rc-tag">DESeq2</span></div>
                                     </div>
                                 </label>
+                                <label class="radio-card" id="ep-tcga" tabindex="0">
+                                    <input type="radio" name="input_data_type" value="tcga">
+                                    <div class="rc-icon"><i class="bi bi-cloud-download"></i></div>
+                                    <div class="rc-content">
+                                        <div class="rc-title">TCGA Dataset</div>
+                                        <div class="rc-desc">Select a cancer cohort from The Cancer Genome Atlas.</div>
+                                        <div class="rc-tags">
+                                            <span class="rc-tag">GDC API</span>
+                                            <span class="rc-tag">DESeq2</span>
+                                        </div>
+                                    </div>
+                                </label>
                             </div>
                         </div>
 
@@ -331,6 +343,42 @@
                                 <div id="matrix-file-name" class="rna-mt-1 rna-text-xs" style="display:none;"></div>
                                 <div id="matrix-preview-area" class="rna-mt-1" style="display:none;"></div>
                                 <div id="matrix-validation" class="validation-msg rna-mt-1" style="display:none;"></div>
+                            </div>
+                        </div>
+
+                        <!-- TCGA Dataset Selection -->
+                        <div id="col-tcga" style="display:none;">
+                            <div class="wiz-section">
+                                <h3 class="wiz-section-title"><i class="bi bi-cloud-download"></i> TCGA Disease Cohort
+                                    <span class="required" aria-hidden="true">*</span><span class="sr-only">Required</span>
+                                    <span class="input-tip"><i class="bi bi-question-circle"></i>
+                                        <span class="tip-text">Select a TCGA cancer cohort. The system will automatically
+                                            download the RNA-Seq gene expression matrix and clinical metadata from the
+                                            NCI Genomic Data Commons (GDC) API.</span>
+                                    </span>
+                                </h3>
+                                <input type="text" id="tcga-search" class="rna-input" placeholder="Search TCGA projects (e.g., breast, lung, BRCA)..." autocomplete="off">
+                                <div id="tcga-cohort-list" class="tcga-cohort-list rna-mt-2">
+                                    <p class="rna-text-muted rna-text-sm">Loading cohorts...</p>
+                                </div>
+                                <div id="tcga-selected-info" class="rna-mt-2" style="display:none;">
+                                    <div class="rna-badge rna-badge-teal" id="tcga-selected-badge"></div>
+                                </div>
+                            </div>
+                            <div class="rna-card rna-mt-3" style="border-left: 4px solid #6366f1;">
+                                <div class="rna-card-body" style="padding: 1.25rem; background-color: #eef2ff;">
+                                    <h4 style="margin-top: 0; margin-bottom: 0.75rem; font-size: 0.95rem; color: #3730a3; display: flex; align-items: center; gap: 0.5rem;">
+                                        <i class="bi bi-info-circle" style="color: #6366f1;"></i> <strong>About TCGA Data</strong>
+                                    </h4>
+                                    <p class="rna-text-sm" style="color: #4338ca; margin-bottom: 0.75rem; line-height: 1.5;">
+                                        <strong>Expression Data:</strong> STAR-Counts gene expression quantification
+                                        (open access) will be downloaded for all samples in the selected cohort.
+                                    </p>
+                                    <p class="rna-text-sm" style="color: #4338ca; margin-bottom: 0; line-height: 1.5;">
+                                        <strong>Clinical Metadata:</strong> Demographic and diagnostic information will
+                                        be automatically retrieved. A Tumor vs. Normal contrast is set up by default.
+                                    </p>
+                                </div>
                             </div>
                         </div>
 

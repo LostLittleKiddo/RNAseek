@@ -32,6 +32,7 @@ class AnalysisSubmission(models.Model):
         FASTQ = "fastq", "FASTQ Files"
         ALIGNMENT = "alignment", "BAM/CRAM Alignment"
         MATRIX = "matrix", "Count Matrix"
+        TCGA = "tcga", "TCGA Dataset"
 
     class AssayType(models.TextChoices):
         STANDARD_RNA = "standard_rna", "Standard RNA-Seq (Poly-A)"
@@ -66,6 +67,7 @@ class AnalysisSubmission(models.Model):
         choices=InputDataType.choices,
         default=InputDataType.FASTQ,
     )
+    tcga_project_id = models.CharField(max_length=30, blank=True)
     assay_type = models.CharField(
         max_length=20,
         choices=AssayType.choices,

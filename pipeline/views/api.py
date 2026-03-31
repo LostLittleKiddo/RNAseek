@@ -259,7 +259,7 @@ class CorePipelineView(View):
     VALID_LIBRARY_TYPES = {"single", "paired"}
     VALID_STRANDEDNESS = {"unstranded", "fr-firststrand", "fr-secondstrand"}
     VALID_QUANT_LEVELS = {"gene", "transcript"}
-    VALID_INPUT_DATA_TYPES = {"fastq", "alignment", "matrix"}
+    VALID_INPUT_DATA_TYPES = {"fastq", "alignment", "matrix", "tcga"}
     VALID_ASSAY_TYPES = {"standard_rna", "small_rna", "chip_seq", "methylation"}
 
     def post(self, request):
@@ -309,6 +309,7 @@ class CorePipelineView(View):
         submission.max_log2fc = max_log2fc
         submission.assay_type = assay_type if input_data_type == "fastq" else "standard_rna"
         submission.metadata_payload = body.get("metadata_payload", {})
+        submission.tcga_project_id = body.get("tcga_project_id", "") if input_data_type == "tcga" else ""
         if "quant_level" not in submission.metadata_payload:
             submission.metadata_payload["quant_level"] = quant_level
         submission.save()
@@ -327,6 +328,8 @@ class CorePipelineView(View):
                 steps.insert(0, "hisat2_build")
         elif input_data_type == "alignment":
             steps = ["featurecounts", "deseq2"]
+        elif input_data_type == "tcga":
+            steps = ["tcga_download", "deseq2"]
         else:
             steps = ["deseq2"]
 
@@ -587,6 +590,53 @@ class ModuleRunView(View):
             "module": name_upper,
             "status": module_job.status,
         })
+
+
+class TCGACohortsView(View):
+    """Return the list of available TCGA disease cohorts."""
+
+    http_method_names = ["get"]
+
+    TCGA_PROJECTS = [
+        {"id": "TCGA-ACC", "name": "Adrenocortical Carcinoma"},
+        {"id": "TCGA-BLCA", "name": "Bladder Urothelial Carcinoma"},
+        {"id": "TCGA-BRCA", "name": "Breast Invasive Carcinoma"},
+        {"id": "TCGA-CESC", "name": "Cervical Squamous Cell Carcinoma"},
+        {"id": "TCGA-CHOL", "name": "Cholangiocarcinoma"},
+        {"id": "TCGA-COAD", "name": "Colon Adenocarcinoma"},
+        {"id": "TCGA-DLBC", "name": "Diffuse Large B-cell Lymphoma"},
+        {"id": "TCGA-ESCA", "name": "Esophageal Carcinoma"},
+        {"id": "TCGA-GBM", "name": "Glioblastoma Multiforme"},
+        {"id": "TCGA-HNSC", "name": "Head and Neck Squamous Cell Carcinoma"},
+        {"id": "TCGA-KICH", "name": "Kidney Chromophobe"},
+        {"id": "TCGA-KIRC", "name": "Kidney Renal Clear Cell Carcinoma"},
+        {"id": "TCGA-KIRP", "name": "Kidney Renal Papillary Cell Carcinoma"},
+        {"id": "TCGA-LAML", "name": "Acute Myeloid Leukemia"},
+        {"id": "TCGA-LGG", "name": "Brain Lower Grade Glioma"},
+        {"id": "TCGA-LIHC", "name": "Liver Hepatocellular Carcinoma"},
+        {"id": "TCGA-LUAD", "name": "Lung Adenocarcinoma"},
+        {"id": "TCGA-LUSC", "name": "Lung Squamous Cell Carcinoma"},
+        {"id": "TCGA-MESO", "name": "Mesothelioma"},
+        {"id": "TCGA-OV", "name": "Ovarian Serous Cystadenocarcinoma"},
+        {"id": "TCGA-PAAD", "name": "Pancreatic Adenocarcinoma"},
+        {"id": "TCGA-PCPG", "name": "Pheochromocytoma and Paraganglioma"},
+        {"id": "TCGA-PRAD", "name": "Prostate Adenocarcinoma"},
+        {"id": "TCGA-READ", "name": "Rectum Adenocarcinoma"},
+        {"id": "TCGA-SARC", "name": "Sarcoma"},
+        {"id": "TCGA-SKCM", "name": "Skin Cutaneous Melanoma"},
+        {"id": "TCGA-STAD", "name": "Stomach Adenocarcinoma"},
+        {"id": "TCGA-TGCT", "name": "Testicular Germ Cell Tumors"},
+        {"id": "TCGA-THCA", "name": "Thyroid Carcinoma"},
+        {"id": "TCGA-THYM", "name": "Thymoma"},
+        {"id": "TCGA-UCEC", "name": "Uterine Corpus Endometrial Carcinoma"},
+        {"id": "TCGA-UCS", "name": "Uterine Carcinosarcoma"},
+        {"id": "TCGA-UVM", "name": "Uveal Melanoma"},
+    ]
+
+    VALID_IDS = {p["id"] for p in TCGA_PROJECTS}
+
+    def get(self, request):
+        return JsonResponse({"cohorts": self.TCGA_PROJECTS})
 
 
 logger = logging.getLogger(__name__)

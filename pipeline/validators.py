@@ -34,7 +34,7 @@ def register_track_validator(input_data_type: str, assay_type: str):
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-VALID_INPUT_DATA_TYPES = {"fastq", "alignment", "matrix"}
+VALID_INPUT_DATA_TYPES = {"fastq", "alignment", "matrix", "tcga"}
 VALID_ASSAY_TYPES = {"standard_rna", "small_rna", "chip_seq", "methylation"}
 VALID_LIBRARY_TYPES = {"single", "paired"}
 VALID_STRANDEDNESS = {"unstranded", "fr-firststrand", "fr-secondstrand"}
@@ -81,6 +81,17 @@ def validate_base_fields(body: dict, submission) -> list[str]:
         if quant_level not in VALID_QUANT_LEVELS:
             errors.append("Invalid quant_level.")
 
+    # TCGA: require tcga_project_id
+    if input_data_type == "tcga":
+        tcga_project_id = body.get("tcga_project_id", "")
+        if not tcga_project_id:
+            errors.append("A TCGA project must be selected.")
+        elif not re.match(r'^TCGA-[A-Z]{2,6}$', tcga_project_id):
+            errors.append(
+                f"Invalid TCGA project ID: '{tcga_project_id}'. "
+                "Expected format: TCGA-XXXX (e.g., TCGA-BRCA)."
+            )
+
     metadata_mode = body.get("metadata_mode", "")
     if metadata_mode not in ("upload", "manual"):
         errors.append("Invalid metadata_mode.")
@@ -109,6 +120,10 @@ def validate_uploaded_files(body: dict, submission) -> list[str]:
     errors = []
     input_data_type = body.get("input_data_type", "fastq")
     library_type = body.get("library_type", "")
+
+    # TCGA: files are downloaded asynchronously during the Celery task
+    if input_data_type == "tcga":
+        return errors
 
     if input_data_type == "fastq":
         fastq_assets = submission.file_assets.filter(
@@ -237,6 +252,10 @@ def validate_metadata(body: dict, submission) -> list[str]:
     metadata_mode = body.get("metadata_mode", "")
     input_data_type = body.get("input_data_type", "fastq")
     library_type = body.get("library_type", "")
+
+    # TCGA: metadata is downloaded as part of the pipeline task
+    if input_data_type == "tcga":
+        return errors
 
     samples = meta.get("samples", [])
     if not samples:

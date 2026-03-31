@@ -50,6 +50,10 @@
     let columnMapping = { primary_group: "", batch_effect: "", covariates: [] };
     let contrasts = [];
 
+    // TCGA
+    let tcgaCohorts = [];
+    let selectedTcgaProject = "";
+
     // Custom genome
     let customGenomeFiles = { fasta: null, annotation: null };
 
@@ -202,8 +206,10 @@
        ═══════════════════════════════════════════════════════════════════ */
 
     function getEffectiveSteps() {
-        // Matrix mode skips step 3 (Reference Genome)
-        return inputDataType === "matrix" ? [1, 2, 4, 5] : [1, 2, 3, 4, 5];
+        // Matrix and TCGA modes skip step 3 (Reference Genome)
+        // TCGA also skips step 4 (metadata is auto-downloaded)
+        if (inputDataType === "tcga") return [1, 2, 5];
+        return (inputDataType === "matrix") ? [1, 2, 4, 5] : [1, 2, 3, 4, 5];
     }
 
     function goToStep(step) {
@@ -342,6 +348,9 @@
                         var mv = validateMatrixData();
                         if (!mv.valid) errors.push(mv.message);
                     }
+                } else if (inputDataType === "tcga") {
+                    if (!selectedTcgaProject)
+                        errors.push("Please select a TCGA disease cohort.");
                 }
                 break;
 
@@ -473,11 +482,21 @@
         $("col-fastq").style.display = inputDataType === "fastq" ? "" : "none";
         $("col-alignment").style.display = inputDataType === "alignment" ? "" : "none";
         $("col-matrix").style.display = inputDataType === "matrix" ? "" : "none";
+        $("col-tcga").style.display = inputDataType === "tcga" ? "" : "none";
 
         assayTypeSection.style.display = inputDataType === "fastq" ? "" : "none";
 
-        if (valGenome) valGenome.style.display = inputDataType === "matrix" ? "none" : "";
-        if (valLibrary) valLibrary.style.display = inputDataType === "matrix" ? "none" : "";
+        if (valGenome) valGenome.style.display = (inputDataType === "matrix" || inputDataType === "tcga") ? "none" : "";
+        if (valLibrary) valLibrary.style.display = (inputDataType === "matrix" || inputDataType === "tcga") ? "none" : "";
+
+        // Hide upload tip for TCGA (no uploads)
+        var tipCard = $("upload-tip-card");
+        if (tipCard) tipCard.style.display = inputDataType === "tcga" ? "none" : "";
+
+        // Fetch TCGA cohorts when selecting TCGA for the first time
+        if (inputDataType === "tcga" && tcgaCohorts.length === 0) {
+            fetchTcgaCohorts();
+        }
 
         var fl = $("fasta-label");
         if (fl) {
@@ -676,6 +695,86 @@
     function removeParseOverlay(dropZoneEl) {
         var existing = dropZoneEl.querySelector(".parse-overlay");
         if (existing) existing.remove();
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       TCGA COHORT SELECTION
+       ═══════════════════════════════════════════════════════════════════ */
+
+    async function fetchTcgaCohorts() {
+        var listEl = $("tcga-cohort-list");
+        if (!listEl) return;
+        try {
+            var resp = await fetch("/api/tcga/cohorts", {
+                headers: { "X-CSRFToken": CSRF },
+            });
+            var data = await resp.json();
+            tcgaCohorts = data.cohorts || [];
+            renderTcgaCohorts(tcgaCohorts);
+        } catch (err) {
+            listEl.innerHTML = '<p class="rna-text-sm" style="color:#ef4444;padding:.75rem;">Failed to load TCGA cohorts. Please try again.</p>';
+        }
+    }
+
+    function renderTcgaCohorts(cohorts) {
+        var listEl = $("tcga-cohort-list");
+        if (!listEl) return;
+        if (cohorts.length === 0) {
+            listEl.innerHTML = '<p class="rna-text-muted rna-text-sm" style="padding:.75rem;">No matching cohorts found.</p>';
+            return;
+        }
+        var html = "";
+        for (var i = 0; i < cohorts.length; i++) {
+            var c = cohorts[i];
+            var sel = c.id === selectedTcgaProject ? " selected" : "";
+            html += '<div class="tcga-cohort-item' + sel + '" data-tcga-id="' + escapeHtml(c.id) + '">' +
+                '<span class="tcga-cohort-id">' + escapeHtml(c.id) + '</span>' +
+                '<span class="tcga-cohort-name">' + escapeHtml(c.name) + '</span>' +
+                '</div>';
+        }
+        listEl.innerHTML = html;
+    }
+
+    function initTcgaCohortSelection() {
+        var listEl = $("tcga-cohort-list");
+        var searchEl = $("tcga-search");
+        var infoEl = $("tcga-selected-info");
+        var badgeEl = $("tcga-selected-badge");
+
+        if (listEl) {
+            listEl.addEventListener("click", function (e) {
+                var item = e.target.closest(".tcga-cohort-item");
+                if (!item) return;
+                var id = item.dataset.tcgaId;
+                selectedTcgaProject = id;
+                // Update selection styling
+                listEl.querySelectorAll(".tcga-cohort-item").forEach(function (el) {
+                    el.classList.remove("selected");
+                });
+                item.classList.add("selected");
+                // Update selected info badge
+                if (infoEl && badgeEl) {
+                    var cohort = tcgaCohorts.find(function (c) { return c.id === id; });
+                    badgeEl.textContent = id + (cohort ? " — " + cohort.name : "");
+                    infoEl.style.display = "";
+                }
+            });
+        }
+
+        if (searchEl) {
+            searchEl.addEventListener("input", function () {
+                var q = searchEl.value.trim().toLowerCase();
+                if (!q) {
+                    renderTcgaCohorts(tcgaCohorts);
+                    return;
+                }
+                var filtered = tcgaCohorts.filter(function (c) {
+                    return c.id.toLowerCase().indexOf(q) !== -1 ||
+                           c.name.toLowerCase().indexOf(q) !== -1;
+                });
+                renderTcgaCohorts(filtered);
+            });
+        }
     }
 
     /* ═══════════════════════════════════════════════════════════════════
@@ -2251,6 +2350,13 @@
     function validatePreSubmission() {
         var errs = [];
 
+        /* TCGA: only need a selected project */
+        if (inputDataType === "tcga") {
+            if (!selectedTcgaProject)
+                errs.push("Please select a TCGA disease cohort.");
+            return errs;
+        }
+
         /* 1. Matrix: content sanity (already checked in step 2, double-check) */
         if (inputDataType === "matrix" && parsedMatrixData) {
             var mv = validateMatrixData();
@@ -2541,6 +2647,8 @@
             setModalStep("create", "done", "Session " + submissionId.substring(0, 8) + "\u2026");
 
             // Step: Wait for background file uploads to finish
+            // (TCGA mode: no file uploads needed)
+            if (inputDataType !== "tcga") {
             setModalStep("files", "active");
 
             if (!areUploadsComplete()) {
@@ -2593,6 +2701,7 @@
                 if (!(await uploadCustomGenomeFiles())) throw new Error("Custom genome file upload failed.");
                 setModalStep("genome", "done");
             }
+            } // end of: if (inputDataType !== "tcga")
 
             // Step: Submit pipeline
             setModalStep("submit", "active");
@@ -2612,15 +2721,18 @@
                 assay_type: inputDataType === "fastq" ? assayType : "standard_rna",
                 library_type: libType,
                 strandedness: strandVal,
-                reference_genome: inputDataType === "matrix" ? "" : genomeSelect.value,
+                reference_genome: (inputDataType === "matrix" || inputDataType === "tcga") ? "" : genomeSelect.value,
                 custom_genome_name: genomeSelect.value === "custom" ? customGenomeName.value.trim() : "",
                 quant_level: quantLevel.value,
-                metadata_mode: metadataMode,
+                metadata_mode: inputDataType === "tcga" ? "upload" : metadataMode,
                 adjusted_pvalue: parseFloat(adjPvalue.value) || 0.05,
                 min_log2fc: parseFloat(minLog2fc.value) || -1.0,
                 max_log2fc: parseFloat(maxLog2fc.value) || 1.0,
-                metadata_payload: buildMetadataPayload(),
+                metadata_payload: inputDataType === "tcga" ? {} : buildMetadataPayload(),
             };
+            if (inputDataType === "tcga") {
+                payload.tcga_project_id = selectedTcgaProject;
+            }
 
             var res = await fetch("/api/pipeline/core", {
                 method: "POST",
@@ -2698,6 +2810,7 @@
         columnSelectableValues = { condition: [] };
         columnMapping = { primary_group: "", batch_effect: "", covariates: [] };
         contrasts = [];
+        selectedTcgaProject = "";
         customGenomeFiles = { fasta: null, annotation: null };
         currentStep = 1;
         isSubmitting = false;
@@ -2719,6 +2832,10 @@
         if (bamFileList) bamFileList.innerHTML = "";
         if (matrixFileName) { matrixFileName.style.display = "none"; matrixFileName.innerHTML = ""; }
         if (columnValidationMsg) columnValidationMsg.style.display = "none";
+        var tcgaList = $("tcga-cohort-list");
+        if (tcgaList) tcgaList.innerHTML = "";
+        var tcgaInfo = $("tcga-selected-info");
+        if (tcgaInfo) { tcgaInfo.style.display = "none"; tcgaInfo.textContent = ""; }
     }
 
     /* ─── Tooltip Fixed-Position Helper ──────────────────────── */
@@ -2799,6 +2916,7 @@
         initManualMetadata();
         initColumnMapping();
         initContrasts();
+        initTcgaCohortSelection();
         initThresholds();
         initStepNavigation();
         applyAssayVisibility();

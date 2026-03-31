@@ -2030,3 +2030,50 @@ main {
     flex-shrink: 0;
     white-space: nowrap;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   TCGA Cohort Selection
+   ═══════════════════════════════════════════════════════════════════ */
+.tcga-cohort-list {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--rna-grey-200);
+    border-radius: var(--rna-radius-md);
+    background: var(--rna-grey-50);
+}
+
+.tcga-cohort-item {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .6rem .85rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--rna-grey-100);
+    transition: background .15s ease;
+}
+
+.tcga-cohort-item:last-child {
+    border-bottom: none;
+}
+
+.tcga-cohort-item:hover {
+    background: rgba(5, 154, 152, .06);
+}
+
+.tcga-cohort-item.selected {
+    background: rgba(5, 154, 152, .10);
+    border-left: 3px solid var(--rna-teal);
+}
+
+.tcga-cohort-id {
+    font-family: var(--rna-font-mono, monospace);
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--rna-navy);
+    min-width: 100px;
+}
+
+.tcga-cohort-name {
+    font-size: .88rem;
+    color: var(--rna-grey-600);
+}
