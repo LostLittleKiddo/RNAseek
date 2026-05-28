@@ -6,12 +6,12 @@
 
 ## Prerequisites
 
-| Component      | Version  | Purpose                                   |
-| -------------- | -------- | ----------------------------------------- |
-| Python         | 3.11+    | Application runtime                       |
-| Miniconda3     | Latest   | Conda environment (R, bioinformatics CLI) |
-| Redis          | 7+       | Celery broker and Channels layer          |
-| SQLite         | Built-in | Development database (auto-created)       |
+| Component  | Version  | Purpose                                   |
+| ---------- | -------- | ----------------------------------------- |
+| Python     | 3.11+    | Application runtime                       |
+| Miniconda3 | Latest   | Conda environment (R, bioinformatics CLI) |
+| Redis      | 7+       | Celery broker and Channels layer          |
+| SQLite     | Built-in | Development database (auto-created)       |
 
 ---
 
@@ -57,9 +57,65 @@ This creates `db.sqlite3` in the project root with all tables.
 
 ---
 
-## 3. Start Services
+## 3. Set Up Reference Genomes
 
-### 3.1 Redis
+The pipeline requires pre-built genome indices stored in `pipeline/reference_genomes/`. Scripts for this are in `doc/script/`. All scripts must be run from inside that directory with the conda environment active.
+
+```bash
+cd pipeline/reference_genomes
+```
+
+### 3.1 Download Genome FASTA Files
+
+Downloads and extracts FASTA files for all 11 supported species (Human GRCh38, Mouse GRCm39/GRCm38, Rat rn7, Zebrafish GRCz11, Chicken GRCg6a, Pig Sscrofa11.1, Drosophila dm6, C. elegans WBcel235, Yeast sacCer3, Arabidopsis TAIR10). Each genome is placed in `<Species>/genome/`.
+
+```bash
+bash ../../doc/script/download_genomes.sh
+```
+
+### 3.2 Build HISAT2 Indices (RNA-seq)
+
+Required for the RNA-seq track. Builds a HISAT2 index for every species found in the directory.
+
+```bash
+bash ../../doc/script/build_hisat2_indices.sh
+```
+
+### 3.3 Build BWA Indices (ChIP-seq)
+
+Required for the ChIP-seq track. Runs up to 15 indexing jobs in parallel.
+
+```bash
+bash ../../doc/script/build_bwa_indices.sh
+```
+
+### 3.4 Build Bismark Indices (DNA Methylation)
+
+Required for the bisulfite/WGBS track. Runs up to 15 jobs in parallel; allow ~5 GB RAM per job.
+
+```bash
+bash ../../doc/script/build_bismark_indices.sh
+```
+
+### 3.5 Build miRBase Bowtie Indices (Small RNA)
+
+Downloads `mature.fa` from miRBase, extracts per-species sequences, and builds Bowtie indices for 8 species (hsa, mmu, rno, dre, gga, dme, cel, ath) under `miRBase/`.
+
+```bash
+bash ../../doc/script/build_mirbase_indices.sh
+```
+
+You can skip steps 3.2–3.5 for tracks you are not developing locally.
+
+```bash
+cd ../..   # return to project root
+```
+
+---
+
+## 4. Start Services
+
+### 4.1 Redis
 
 Redis must be running for Celery and Django Channels:
 
@@ -73,7 +129,7 @@ Or if installed via apt:
 sudo systemctl start redis
 ```
 
-### 3.2 Django Development Server
+### 4.2 Django Development Server
 
 ```bash
 python manage.py runserver
@@ -83,7 +139,7 @@ daphne -b 127.0.0.1 -p 8000 config.asgi:application
 
 The application is available at `http://localhost:8000`.
 
-### 3.3 Celery Worker
+### 4.3 Celery Worker
 
 In a separate terminal:
 
@@ -92,7 +148,7 @@ conda activate rnaseek
 celery -A config worker --loglevel=debug --concurrency=2
 ```
 
-### 3.4 Celery Beat (Optional)
+### 4.4 Celery Beat (Optional)
 
 Only needed if testing scheduled tasks:
 
@@ -100,7 +156,7 @@ Only needed if testing scheduled tasks:
 celery -A config beat --loglevel=info
 ```
 
-### 3.5 Eager Mode (No Worker)
+### 4.5 Eager Mode (No Worker)
 
 For quick debugging without running a separate worker process, set `CELERY_EAGER=1`:
 
@@ -112,9 +168,9 @@ Tasks execute synchronously in the request process. This blocks the HTTP respons
 
 ---
 
-## 4. Running Tests
+## 5. Running Tests
 
-### 4.1 Full Test Suite
+### 5.1 Full Test Suite
 
 ```bash
 python manage.py test test -v2
@@ -126,7 +182,7 @@ python manage.py test test -v2
 sudo -u postgres psql -c "ALTER USER rnaseek CREATEDB;"
 ```
 
-### 4.2 Specific Test File
+### 5.2 Specific Test File
 
 ```bash
 python manage.py test test.test_tusd_hooks -v2
@@ -134,7 +190,7 @@ python manage.py test test.test_upload_api -v2
 python manage.py test test.test_validators -v2
 ```
 
-### 4.3 Single Test
+### 5.3 Single Test
 
 ```bash
 python manage.py test test.test_tusd_hooks.TusdHookViewTests.test_post_finish_creates_file_asset -v2
@@ -142,7 +198,7 @@ python manage.py test test.test_tusd_hooks.TusdHookViewTests.test_post_finish_cr
 
 ---
 
-## 5. Project Structure
+## 6. Project Structure
 
 ```
 rnaseek/
@@ -165,47 +221,47 @@ rnaseek/
 
 ---
 
-## 6. Key Configuration
+## 7. Key Configuration
 
-### 6.1 Django Settings
+### 7.1 Django Settings
 
 `config/settings.py` auto-detects the environment via `RNASEEK_ENV`:
 
-| Setting               | Development           | Production          |
-| --------------------- | --------------------- | ------------------- |
-| `DEBUG`               | `True`                | `False`             |
-| Database              | SQLite                | PostgreSQL          |
-| `SECRET_KEY`          | Hardcoded insecure    | From `.env`         |
-| SSL redirect          | Disabled              | Enabled (HSTS)      |
-| Celery eager          | Configurable (`CELERY_EAGER=1`) | Always async |
-| Logging               | INFO for `pipeline`   | INFO for `pipeline` |
+| Setting      | Development                     | Production          |
+| ------------ | ------------------------------- | ------------------- |
+| `DEBUG`      | `True`                          | `False`             |
+| Database     | SQLite                          | PostgreSQL          |
+| `SECRET_KEY` | Hardcoded insecure              | From `.env`         |
+| SSL redirect | Disabled                        | Enabled (HSTS)      |
+| Celery eager | Configurable (`CELERY_EAGER=1`) | Always async        |
+| Logging      | INFO for `pipeline`             | INFO for `pipeline` |
 
-### 6.2 URL Routes
+### 7.2 URL Routes
 
-| Path                    | View               | Purpose                  |
-| ----------------------- | ------------------ | ------------------------ |
-| `/`                     | HomeView           | Landing page             |
-| `/tutorials/`           | TutorialsView      | File format guides       |
-| `/workspaces/`          | WorkspacesView     | Active submissions list  |
-| `/analysis_submission/new/` | NewSubmissionView | 5-step wizard          |
-| `/processing/<uuid>/`   | ProcessingView     | Real-time progress       |
-| `/hub/<uuid>/`          | CoreHubView        | Results and modules      |
-| `/api/submission/create` | CreateSubmissionView | Create submission      |
-| `/api/submission/delete` | DeleteSubmissionView | Delete submission      |
-| `/api/upload/chunk`     | ChunkUploadView    | Legacy chunked upload    |
-| `/api/upload/tus-asset`  | TusAssetLookupView | Tus asset ID lookup     |
-| `/api/webhooks/tus/`     | TusWebhookView     | tusd webhook (HMAC)     |
-| `/api/tusd-hooks/`      | TusdHookView       | tusd webhook handler     |
-| `/api/pipeline/core`    | CorePipelineView   | Pipeline dispatch        |
-| `/api/jobs/<uuid>/`     | JobStatusView      | Job status polling       |
-| `/api/files/<uuid>/`    | FileAssetDeleteView | Delete uploaded file    |
-| `/api/session/assets`   | SessionAssetsView  | List session assets      |
-| `/api/download/<uuid>`  | FileDownloadView   | File download            |
-| `/api/submissions/<uuid>/modules/<name>/run` | ModuleRunView | Tier 2 dispatch |
+| Path                                         | View                 | Purpose                 |
+| -------------------------------------------- | -------------------- | ----------------------- |
+| `/`                                          | HomeView             | Landing page            |
+| `/tutorials/`                                | TutorialsView        | File format guides      |
+| `/workspaces/`                               | WorkspacesView       | Active submissions list |
+| `/analysis_submission/new/`                  | NewSubmissionView    | 5-step wizard           |
+| `/processing/<uuid>/`                        | ProcessingView       | Real-time progress      |
+| `/hub/<uuid>/`                               | CoreHubView          | Results and modules     |
+| `/api/submission/create`                     | CreateSubmissionView | Create submission       |
+| `/api/submission/delete`                     | DeleteSubmissionView | Delete submission       |
+| `/api/upload/chunk`                          | ChunkUploadView      | Legacy chunked upload   |
+| `/api/upload/tus-asset`                      | TusAssetLookupView   | Tus asset ID lookup     |
+| `/api/webhooks/tus/`                         | TusWebhookView       | tusd webhook (HMAC)     |
+| `/api/tusd-hooks/`                           | TusdHookView         | tusd webhook handler    |
+| `/api/pipeline/core`                         | CorePipelineView     | Pipeline dispatch       |
+| `/api/jobs/<uuid>/`                          | JobStatusView        | Job status polling      |
+| `/api/files/<uuid>/`                         | FileAssetDeleteView  | Delete uploaded file    |
+| `/api/session/assets`                        | SessionAssetsView    | List session assets     |
+| `/api/download/<uuid>`                       | FileDownloadView     | File download           |
+| `/api/submissions/<uuid>/modules/<name>/run` | ModuleRunView        | Tier 2 dispatch         |
 
 ---
 
-## 7. Common Development Tasks
+## 8. Common Development Tasks
 
 ### Add a New Migration
 

@@ -6,15 +6,15 @@
 
 ## Prerequisites
 
-| Component      | Version     | Purpose                                        |
-| -------------- | ----------- | ---------------------------------------------- |
-| Ubuntu         | 22.04+      | Host operating system                          |
-| PostgreSQL     | 15+         | Production database                            |
-| Redis          | 7+          | Celery broker, Channels layer, result backend  |
-| Nginx          | Latest      | Reverse proxy, SSL termination, static serving |
-| Certbot        | Latest      | Let's Encrypt SSL certificate provisioning     |
-| Miniconda3     | Latest      | Python/R/bioinformatics tool environment       |
-| tusd           | v2          | Tus protocol resumable upload daemon           |
+| Component  | Version | Purpose                                        |
+| ---------- | ------- | ---------------------------------------------- |
+| Ubuntu     | 22.04+  | Host operating system                          |
+| PostgreSQL | 15+     | Production database                            |
+| Redis      | 7+      | Celery broker, Channels layer, result backend  |
+| Nginx      | Latest  | Reverse proxy, SSL termination, static serving |
+| Certbot    | Latest  | Let's Encrypt SSL certificate provisioning     |
+| Miniconda3 | Latest  | Python/R/bioinformatics tool environment       |
+| tusd       | v2      | Tus protocol resumable upload daemon           |
 
 ---
 
@@ -104,9 +104,62 @@ python manage.py collectstatic --noinput
 
 ---
 
-## 4. Nginx Configuration
+## 4. Set Up Reference Genomes
 
-### 4.1 Symlink and Enable
+The pipeline requires pre-built genome indices in `pipeline/reference_genomes/`. This is a one-time step. The scripts are in `doc/script/` and must be run from inside the `reference_genomes` directory with the conda environment active. Expect several hundred GB of disk space and multiple hours of build time.
+
+```bash
+conda activate rnaseek
+cd /home/ubuntu/apps/rnaseek/pipeline/reference_genomes
+```
+
+### 4.1 Download Genome FASTA Files
+
+Downloads and extracts FASTA files for all 11 supported species. Each genome is placed in `<Species>/genome/`. Pass `-c` flag allows resuming interrupted downloads.
+
+```bash
+bash ../../doc/script/download_genomes.sh
+```
+
+### 4.2 Build HISAT2 Indices (RNA-seq)
+
+```bash
+bash ../../doc/script/build_hisat2_indices.sh
+```
+
+### 4.3 Build BWA Indices (ChIP-seq)
+
+Runs up to 15 indexing jobs in parallel.
+
+```bash
+bash ../../doc/script/build_bwa_indices.sh
+```
+
+### 4.4 Build Bismark Indices (DNA Methylation)
+
+Runs up to 15 jobs in parallel; allow ~5 GB RAM per concurrent job.
+
+```bash
+bash ../../doc/script/build_bismark_indices.sh
+```
+
+### 4.5 Build miRBase Bowtie Indices (Small RNA)
+
+Downloads `mature.fa` from miRBase and builds per-species Bowtie indices under `miRBase/`.
+
+```bash
+bash ../../doc/script/build_mirbase_indices.sh
+```
+
+```bash
+cd /home/ubuntu/apps/rnaseek   # return to project root
+```
+
+---
+
+## 5. Nginx Configuration
+
+### 5.1 Symlink and Enable
 
 ```bash
 sudo ln -sf /home/ubuntu/apps/rnaseek/nginx/rnaseek.conf /etc/nginx/sites-enabled/rnaseek.conf
@@ -115,17 +168,17 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### 4.2 Key Nginx Settings
+### 5.2 Key Nginx Settings
 
 The production Nginx config (`nginx/rnaseek.conf`) handles:
 
-| Location     | Upstream                              | Purpose                                    |
-| ------------ | ------------------------------------- | ------------------------------------------ |
-| `/`          | `127.0.0.1:8000` (Daphne)            | All Django HTTP requests                   |
-| `/ws/`       | `127.0.0.1:8000` (Daphne)            | WebSocket upgrade for real-time progress   |
-| `/files/`    | `tusd_backend` (keepalive 64 pool)    | Tus resumable uploads (streaming proxy)    |
-| `/api/upload/` | `127.0.0.1:8000` (Daphne)          | Legacy chunked upload endpoint             |
-| `/static/`   | Filesystem                            | Direct file serving with 30-day cache      |
+| Location       | Upstream                           | Purpose                                  |
+| -------------- | ---------------------------------- | ---------------------------------------- |
+| `/`            | `127.0.0.1:8000` (Daphne)          | All Django HTTP requests                 |
+| `/ws/`         | `127.0.0.1:8000` (Daphne)          | WebSocket upgrade for real-time progress |
+| `/files/`      | `tusd_backend` (keepalive 64 pool) | Tus resumable uploads (streaming proxy)  |
+| `/api/upload/` | `127.0.0.1:8000` (Daphne)          | Legacy chunked upload endpoint           |
+| `/static/`     | Filesystem                         | Direct file serving with 30-day cache    |
 
 **Upload optimizations:**
 - `upstream tusd_backend` with `keepalive 64` — reuses connections between Nginx ↔ tusd
@@ -140,7 +193,7 @@ The production Nginx config (`nginx/rnaseek.conf`) handles:
 - `tcp_nopush on` — coalesces headers + body into fewer packets
 - `tcp_nodelay on` — disables Nagle’s algorithm for low-latency streaming
 
-### 4.3 SSL Certificates
+### 5.3 SSL Certificates
 
 ```bash
 sudo certbot --nginx -d rnaseek.ca -d www.rnaseek.ca
@@ -154,7 +207,7 @@ sudo systemctl status certbot.timer
 
 ---
 
-## 5. tusd Installation
+## 6. tusd Installation
 
 tusd handles resumable file uploads via the Tus protocol. Install it as a standalone binary:
 
@@ -166,7 +219,7 @@ sudo mv tusd_linux_amd64/tusd /usr/local/bin/tusd
 sudo chmod +x /usr/local/bin/tusd
 ```
 
-### 5.1 Create a systemd Service for tusd
+### 6.1 Create a systemd Service for tusd
 
 The tusd service file is maintained in the repository at `systemd/rnaseek-tusd.service`.
 Key flags:
@@ -187,7 +240,7 @@ sudo systemctl enable rnaseek-tusd
 sudo systemctl start rnaseek-tusd
 ```
 
-### 5.2 Verify tusd is Running
+### 6.2 Verify tusd is Running
 
 ```bash
 sudo systemctl status rnaseek-tusd
@@ -196,38 +249,38 @@ curl -s http://127.0.0.1:1080/files/ -I | head -5
 
 ---
 
-## 6. systemd Services
+## 7. systemd Services
 
-### 6.1 Install Service Files
+### 7.1 Install Service Files
 
 ```bash
 sudo cp /home/ubuntu/apps/rnaseek/systemd/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 ```
 
-### 6.2 Service Overview
+### 7.2 Service Overview
 
-| Service              | Binary                     | Purpose                                              |
-| -------------------- | -------------------------- | ---------------------------------------------------- |
-| `rnaseek-web`        | Daphne (ASGI)              | HTTP + WebSocket on port 8000                        |
-| `rnaseek-celery-cpu` | Celery worker (prefork)    | CPU-bound pipeline execution (`cpu_bound` queue, concurrency=5, 8 threads/tool, 40 cores) |
-| `rnaseek-celery-ram` | Celery worker (prefork)    | RAM-bound analytics execution (`ram_bound` queue, concurrency=4, MemoryHigh=88G, MemoryMax=96G) |
-| `rnaseek-beat`       | Celery Beat                | Scheduled task dispatch                              |
-| `rnaseek-tusd`       | tusd v2                    | Resumable uploads on port 1080, `-disable-download`, `LimitNOFILE=65536` |
+| Service              | Binary                  | Purpose                                                                                         |
+| -------------------- | ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `rnaseek-web`        | Daphne (ASGI)           | HTTP + WebSocket on port 8000                                                                   |
+| `rnaseek-celery-cpu` | Celery worker (prefork) | CPU-bound pipeline execution (`cpu_bound` queue, concurrency=5, 8 threads/tool, 40 cores)       |
+| `rnaseek-celery-ram` | Celery worker (prefork) | RAM-bound analytics execution (`ram_bound` queue, concurrency=4, MemoryHigh=88G, MemoryMax=96G) |
+| `rnaseek-beat`       | Celery Beat             | Scheduled task dispatch                                                                         |
+| `rnaseek-tusd`       | tusd v2                 | Resumable uploads on port 1080, `-disable-download`, `LimitNOFILE=65536`                        |
 
 **Legacy:** `rnaseek-worker.service` (single worker) has been replaced by the two asymmetric workers above. Disable it if still enabled: `sudo systemctl disable rnaseek-worker`.
 
 All services use the Conda environment at `/opt/miniconda3/envs/rnaseek` and read from `/home/ubuntu/apps/rnaseek/.env`.
 
-### 6.3 Resource Allocation (48-core / 128 GB RAM)
+### 7.3 Resource Allocation (48-core / 128 GB RAM)
 
-| Component | Cores | RAM Budget |
-| --------- | ----- | ---------- |
-| CPU worker (5 procs × 8 threads) | 40 | ~20 GB |
-| RAM worker (4 procs × ~1 thread) | 4 | ≤96 GB (hard capped by systemd MemoryMax) |
-| OS + Nginx + Redis + Daphne | 4 | ~12 GB |
+| Component                        | Cores | RAM Budget                                |
+| -------------------------------- | ----- | ----------------------------------------- |
+| CPU worker (5 procs × 8 threads) | 40    | ~20 GB                                    |
+| RAM worker (4 procs × ~1 thread) | 4     | ≤96 GB (hard capped by systemd MemoryMax) |
+| OS + Nginx + Redis + Daphne      | 4     | ~12 GB                                    |
 
-### 6.4 Enable and Start
+### 7.4 Enable and Start
 
 ```bash
 for svc in rnaseek-web rnaseek-celery-cpu rnaseek-celery-ram rnaseek-beat rnaseek-tusd; do
@@ -239,7 +292,7 @@ done
 
 ---
 
-## 7. Deployment Script
+## 8. Deployment Script
 
 For subsequent deployments after initial setup, use the automated deploy script:
 
@@ -259,11 +312,11 @@ This script:
 
 ---
 
-## 8. NFS Shared Storage (Multi-Server)
+## 9. NFS Shared Storage (Multi-Server)
 
 If running workers on separate machines, all servers must mount the same NFS export at the media path.
 
-### 8.1 NFS Server Export
+### 9.1 NFS Server Export
 
 ```bash
 # On the NFS server:
@@ -271,7 +324,7 @@ echo "/exports/rnaseek *(rw,sync,no_subtree_check,no_root_squash)" | sudo tee -a
 sudo exportfs -ra
 ```
 
-### 8.2 NFS Client Mount
+### 9.2 NFS Client Mount
 
 ```bash
 sudo mount -t nfs4 <NFS_SERVER_IP>:/exports/rnaseek /home/ubuntu/apps/rnaseek/media \
@@ -284,21 +337,21 @@ Add to `/etc/fstab` for persistence:
 <NFS_SERVER_IP>:/exports/rnaseek /home/ubuntu/apps/rnaseek/media nfs4 rw,nfsvers=4.1,async,noatime,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 0 0
 ```
 
-### 8.3 NFS Mount Flags
+### 9.3 NFS Mount Flags
 
-| Flag              | Purpose                                              |
-| ----------------- | ---------------------------------------------------- |
-| `async`           | Client ACKs writes before server confirms (throughput)|
-| `noatime`         | Skip access-time updates on reads (reduces I/O)      |
-| `rsize=1048576`   | 1 MB read blocks (matches tusd/upload chunk pattern)  |
-| `wsize=1048576`   | 1 MB write blocks                                    |
-| `hard`            | Retry indefinitely on timeout (prevents data loss)   |
-| `timeo=600`       | 60s timeout before retry                             |
-| `retrans=2`       | Two retries before marking hard error                |
+| Flag            | Purpose                                                |
+| --------------- | ------------------------------------------------------ |
+| `async`         | Client ACKs writes before server confirms (throughput) |
+| `noatime`       | Skip access-time updates on reads (reduces I/O)        |
+| `rsize=1048576` | 1 MB read blocks (matches tusd/upload chunk pattern)   |
+| `wsize=1048576` | 1 MB write blocks                                      |
+| `hard`          | Retry indefinitely on timeout (prevents data loss)     |
+| `timeo=600`     | 60s timeout before retry                               |
+| `retrans=2`     | Two retries before marking hard error                  |
 
 ---
 
-## 9. Upload Benchmarking
+## 10. Upload Benchmarking
 
 Run the built-in benchmark script to measure server upload capacity:
 
@@ -313,15 +366,15 @@ This tests:
 
 ---
 
-## 10. Health Checks
+## 11. Health Checks
 
-### 10.1 Service Status
+### 11.1 Service Status
 
 ```bash
 sudo systemctl status rnaseek-web rnaseek-worker rnaseek-beat rnaseek-tusd
 ```
 
-### 10.2 Application Logs
+### 11.2 Application Logs
 
 ```bash
 # Web server logs
@@ -337,14 +390,14 @@ sudo journalctl -u rnaseek-beat -f
 sudo journalctl -u rnaseek-tusd -f
 ```
 
-### 10.3 Database Check
+### 11.3 Database Check
 
 ```bash
 cd /home/ubuntu/apps/rnaseek
 python manage.py check --deploy
 ```
 
-### 10.4 Redis Check
+### 11.4 Redis Check
 
 ```bash
 redis-cli ping
@@ -353,9 +406,9 @@ redis-cli ping
 
 ---
 
-## 11. Maintenance
+## 12. Maintenance
 
-### 11.1 Manual Session Purge
+### 12.1 Manual Session Purge
 
 ```bash
 # Dry run (see what would be deleted):
@@ -367,13 +420,13 @@ python manage.py purge_expired
 
 The automated purge runs daily at 2:00 AM UTC via Celery Beat.
 
-### 11.2 Database Backup
+### 12.2 Database Backup
 
 ```bash
 pg_dump -U rnaseek -h 127.0.0.1 rnaseek > backup_$(date +%Y%m%d).sql
 ```
 
-### 11.3 SSL Certificate Renewal
+### 12.3 SSL Certificate Renewal
 
 Certbot auto-renews. Force a renewal test with:
 
@@ -416,11 +469,11 @@ sudo certbot renew --dry-run
 
 The production server is tuned via `scripts/tune-production-os.sh` (run once on initial setup):
 
-| Tuning | Value | Purpose |
-| ------ | ----- | ------- |
-| TCP congestion | BBR | Maximizes WAN upload throughput for 50 GB+ FASTQ files |
-| TCP buffers | 128 MB max per-socket | Covers 10 Gbps × 100 ms BDP |
-| `vm.overcommit_memory` | 1 | Prevents R `fork()` failures |
-| `vm.swappiness` | 10 | Keeps R datasets in RAM |
-| File descriptors | 2M system / 1M per-user | Supports concurrent uploads + workers |
-| User ulimits | nofile=1048576, nproc=65535 | For the `ubuntu` service user |
+| Tuning                 | Value                       | Purpose                                                |
+| ---------------------- | --------------------------- | ------------------------------------------------------ |
+| TCP congestion         | BBR                         | Maximizes WAN upload throughput for 50 GB+ FASTQ files |
+| TCP buffers            | 128 MB max per-socket       | Covers 10 Gbps × 100 ms BDP                            |
+| `vm.overcommit_memory` | 1                           | Prevents R `fork()` failures                           |
+| `vm.swappiness`        | 10                          | Keeps R datasets in RAM                                |
+| File descriptors       | 2M system / 1M per-user     | Supports concurrent uploads + workers                  |
+| User ulimits           | nofile=1048576, nproc=65535 | For the `ubuntu` service user                          |
