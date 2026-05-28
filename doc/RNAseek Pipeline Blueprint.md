@@ -83,6 +83,7 @@ Triggered by the Celery `run_core_pipeline` task. Progress updates are emitted v
 * **QC:** `FastQC` (parallelized with `-t CPU_COUNT`) and `Trimmomatic` (parallel per-sample via `ThreadPoolExecutor`; single-end and paired-end modes).
 * **Alignment:** `HISAT2` (splice-aware). `_TOOL_THREADS` per sample, parallel via `ThreadPoolExecutor`. SAM converted to sorted/indexed BAM (featureCounts requires BAM, not CRAM).
 * **Custom genome:** On-demand HISAT2 index build (`hisat2_build` pipeline step) from user-uploaded FASTA + GTF/GFF. Tracked as a separate step with a warning banner in the UI.
+* **EuGlid Multi-Species:** For organisms beyond the 11 pre-built assemblies, EuGlid provides on-demand genome retrieval and HISAT2 index generation for 800+ eukaryotic species. The pipeline resolves the selected species against the EuGlid registry, fetches the reference assembly and annotation, builds indices, caches them for reuse, and proceeds with the standard alignment track — no user-uploaded FASTA required.
 * **Quantification:** `featureCounts` at gene-level and transcript-level. Auto-detects GFF/GFF3 gene attribute via `_detect_gff_gene_attr`. Exports CSV.
 * **QC Report:** `MultiQC` interactive HTML saved to the submission hub.
 * **Handoff:** Calls `run_stage2_stats()` after quantification.
@@ -227,6 +228,8 @@ The Core Hub UI uses a 3-tab layout (Overview | Modules | Single-Cell). Tab 2 co
 
 All 11 reference genomes ship with pre-built HISAT2 indices (`.ht2`), FASTA, and GTF annotation files. Build scripts under `doc/script/` generate indices for BWA, Bismark, and miRBase/Bowtie. Only custom user-uploaded genomes trigger runtime index building via the `hisat2_build` pipeline step.
 
+**EuGlid Extended Species Support (800+ Species):** For eukaryotic organisms not covered by the 11 pre-built assemblies, the pipeline integrates EuGlid — a curated multi-species genome registry. When a user selects an EuGlid species, the pipeline fetches the reference FASTA and annotation from the EuGlid data source, builds HISAT2 indices on demand, and persists them under `pipeline/reference_genomes/euglid/` for subsequent reuse. This expands standard RNA-seq support from 11 organisms to 800+ eukaryotic species without requiring a custom genome upload.
+
 ### 8.5 Not Implemented
 
 * **Prometheus and Grafana monitoring:** No monitoring infrastructure exists for Celery queue depth or worker RAM.
@@ -245,20 +248,21 @@ All 11 reference genomes ship with pre-built HISAT2 indices (`.ht2`), FASTA, and
 
 ## Reference Genomes
 
-| Genome      | Assembly                                                      |
-| :---------- | :------------------------------------------------------------ |
-| Human       | GRCh38 (hg38)                                                 |
-| Mouse       | GRCm39 (mm39)                                                 |
-| Mouse       | GRCm38 (mm10)                                                 |
-| Rat         | rn7                                                           |
-| Zebrafish   | GRCz11 (danRer11)                                             |
-| Chicken     | GRCg6a (galGal6)                                              |
-| Pig         | Sscrofa11.1 (susScr11)                                        |
-| Drosophila  | dm6                                                           |
-| C. elegans  | WBcel235 (wbcel235)                                           |
-| Yeast       | sacCer3 (R64-1-1)                                             |
-| Arabidopsis | TAIR10 (araTha)                                               |
-| Custom      | User-uploaded FASTA + GTF/GFF with on-demand index build      |
-| Bacterial   | BASys2 On-Demand Annotation (FASTA -> Annotated GenBank/JSON) |
+| Genome      | Assembly                                                                                                |
+| :---------- | :------------------------------------------------------------------------------------------------------ |
+| Human       | GRCh38 (hg38)                                                                                           |
+| Mouse       | GRCm39 (mm39)                                                                                           |
+| Mouse       | GRCm38 (mm10)                                                                                           |
+| Rat         | rn7                                                                                                     |
+| Zebrafish   | GRCz11 (danRer11)                                                                                       |
+| Chicken     | GRCg6a (galGal6)                                                                                        |
+| Pig         | Sscrofa11.1 (susScr11)                                                                                  |
+| Drosophila  | dm6                                                                                                     |
+| C. elegans  | WBcel235 (wbcel235)                                                                                     |
+| Yeast       | sacCer3 (R64-1-1)                                                                                       |
+| Arabidopsis | TAIR10 (araTha)                                                                                         |
+| Custom      | User-uploaded FASTA + GTF/GFF with on-demand index build                                                |
+| Bacterial   | BASys2 On-Demand Annotation (FASTA -> Annotated GenBank/JSON)                                           |
+| EuGlid      | 800+ eukaryotic species via on-demand EuGlid genome registry (HISAT2 index built and cached at runtime) |
 
 ***
